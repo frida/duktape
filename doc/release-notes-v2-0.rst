@@ -2,6 +2,8 @@
 Duktape 2.0 release notes
 =========================
 
+FIXME: typeof internalPropertyKey is now "symbol".
+
 Release overview
 ================
 
