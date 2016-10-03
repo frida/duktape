@@ -582,7 +582,7 @@ DUK_EXTERNAL_DECL duk_bool_t duk_is_external_buffer(duk_context *ctx, duk_idx_t 
 
 /* Buffers and lightfuncs are not considered primitive because they mimic
  * objects and e.g. duk_to_primitive() will coerce them instead of returning
- * them as is.
+ * them as is.  Symbols are represented as strings internally.
  */
 #define duk_is_primitive(ctx,idx) \
 	duk_check_type_mask((ctx), (idx), DUK_TYPE_MASK_UNDEFINED | \
@@ -592,6 +592,7 @@ DUK_EXTERNAL_DECL duk_bool_t duk_is_external_buffer(duk_context *ctx, duk_idx_t 
 	                                  DUK_TYPE_MASK_STRING | \
 	                                  DUK_TYPE_MASK_POINTER)
 
+/* Symbols are object coercibly, covered by DUK_TYPE_MASK_STRING. */
 #define duk_is_object_coercible(ctx,idx) \
 	duk_check_type_mask((ctx), (idx), DUK_TYPE_MASK_BOOLEAN | \
 	                                  DUK_TYPE_MASK_NUMBER | \
@@ -665,6 +666,7 @@ DUK_EXTERNAL_DECL void duk_require_function(duk_context *ctx, duk_idx_t idx);
 	duk_require_function((ctx), (idx))
 DUK_EXTERNAL_DECL void *duk_require_heapptr(duk_context *ctx, duk_idx_t idx);
 
+/* Symbols are object coercible and covered by DUK_TYPE_MASK_STRING. */
 #define duk_require_object_coercible(ctx,idx) \
 	((void) duk_check_type_mask((ctx), (idx), DUK_TYPE_MASK_BOOLEAN | \
 	                                            DUK_TYPE_MASK_NUMBER | \

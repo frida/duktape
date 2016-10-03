@@ -381,6 +381,7 @@ DUK_LOCAL void duk__add_fileline(duk_hthread *thr, duk_hthread *thr_callstack, c
 
 			duk_get_prop_stridx(ctx, -1, DUK_STRIDX_FILE_NAME);
 			if (!duk_is_string(ctx, -1)) {
+				/* FIXME: reject symbols too? */
 				duk_pop_2(ctx);
 				continue;
 			}

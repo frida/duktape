@@ -18,7 +18,7 @@
 #define DUK__NUM_FUNC_PROPS_BITS         6
 #define DUK__PROP_FLAGS_BITS             3
 #define DUK__STRING_LENGTH_BITS          8
-#define DUK__STRING_CHAR_BITS            7
+#define DUK__STRING_CHAR_BITS            8  /* FIXME: used to be 7 */
 #define DUK__LENGTH_PROP_BITS            3
 #define DUK__NARGS_BITS                  3
 #define DUK__PROP_TYPE_BITS              3

@@ -186,7 +186,7 @@ DUK_LOCAL duk_ret_t duk__error_getter_helper(duk_context *ctx, duk_small_int_t o
 				/* When looking for .fileName/.lineNumber, blame first
 				 * function which has a .fileName.
 				 */
-				if (duk_is_string(ctx, -1)) {
+				if (duk_is_string_notsymbol(ctx, -1)) {
 					if (output_type == DUK__OUTPUT_TYPE_FILENAME) {
 						return 1;
 					} else if (output_type == DUK__OUTPUT_TYPE_LINENUMBER) {
@@ -197,10 +197,10 @@ DUK_LOCAL duk_ret_t duk__error_getter_helper(duk_context *ctx, duk_small_int_t o
 
 				/* XXX: Change 'anon' handling here too, to use empty string for anonymous functions? */
 				/* XXX: Could be improved by coercing to a readable duk_tval (especially string escaping) */
-				h_name = duk_get_hstring(ctx, -2);  /* may be NULL */
+				h_name = duk_get_hstring_notsymbol(ctx, -2);  /* may be NULL */
 				funcname = (h_name == NULL || h_name == DUK_HTHREAD_STRING_EMPTY_STRING(thr)) ?
 				           "[anon]" : (const char *) DUK_HSTRING_GET_DATA(h_name);
-				filename = duk_get_string(ctx, -1);
+				filename = duk_get_string_notsymbol(ctx, -1);
 				filename = filename ? filename : "";
 				DUK_ASSERT(funcname != NULL);
 				DUK_ASSERT(filename != NULL);
@@ -256,6 +256,8 @@ DUK_LOCAL duk_ret_t duk__error_getter_helper(duk_context *ctx, duk_small_int_t o
 						return 1;
 					}
 				}
+
+				/* FIXME: reject symbols here? Tracedata is trusted anyway */
 
 				duk_push_sprintf(ctx, "at [anon] (%s:%ld) internal",
 				                 (const char *) duk_get_string(ctx, -2), (long) pc);

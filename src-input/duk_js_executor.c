@@ -175,6 +175,12 @@ DUK_LOCAL DUK__INLINE_PERF void duk__vm_arith_add(duk_hthread *thr, duk_tval *tv
 
 	/* Since Duktape 2.x plain buffers are treated like ArrayBuffer. */
 	if (duk_is_string(ctx, -2) || duk_is_string(ctx, -1)) {
+		/* Symbols shouldn't technically be handled here, but should
+		 * go into the default ToNumber() coercion path instead and
+		 * fail there with a TypeError.  However, there's a ToString()
+		 * here which also fails with TypeError so no explicit check
+		 * is needed.
+		 */
 		duk_to_string(ctx, -2);
 		duk_to_string(ctx, -1);
 		duk_concat(ctx, 2);  /* [... s1 s2] -> [... s1+s2] */
@@ -2625,7 +2631,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			DUK_ASSERT(curr_pc < DUK_HCOMPFUNC_GET_CODE_END(thr->heap, DUK__FUN()));
 			DUK_UNREF(act);  /* if debugging disabled */
 
-			DUK_DDD(DUK_DDDPRINT("executing bytecode: pc=%ld, ins=0x%08lx, op=%ld, valstack_top=%ld/%ld, nregs=%ld  -->  %!I",
+			DUK_D(DUK_DPRINT("executing bytecode: pc=%ld, ins=0x%08lx, op=%ld, valstack_top=%ld/%ld, nregs=%ld  -->  %!I",
 			                     (long) (curr_pc - DUK_HCOMPFUNC_GET_CODE_BASE(thr->heap, DUK__FUN())),
 			                     (unsigned long) *curr_pc,
 			                     (long) DUK_DEC_OP(*curr_pc),

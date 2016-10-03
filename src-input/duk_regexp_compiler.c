@@ -993,6 +993,7 @@ DUK_INTERNAL void duk_regexp_compile(duk_hthread *thr) {
 	 */
 
 	/* TypeError if fails */
+	/* FIXME: check that call sites reject Symbols, or reject them here */
 	h_pattern = duk_require_hstring(ctx, -2);
 	h_flags = duk_require_hstring(ctx, -1);
 
@@ -1107,6 +1108,7 @@ DUK_INTERNAL void duk_regexp_create_instance(duk_hthread *thr) {
 
 	h_bc = duk_require_hstring(ctx, -1);
 	DUK_ASSERT(h_bc != NULL);
+	DUK_ASSERT(!DUK_HSTRING_HAS_SYMBOL(h_bc));
 	DUK_ASSERT(DUK_HSTRING_GET_BYTELEN(h_bc) >= 1);          /* always at least the header */
 	DUK_ASSERT(DUK_HSTRING_GET_CHARLEN(h_bc) >= 1);
 	DUK_ASSERT((duk_small_int_t) DUK_HSTRING_GET_DATA(h_bc)[0] < 0x80);  /* flags always encodes to 1 byte */

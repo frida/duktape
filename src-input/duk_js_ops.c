@@ -64,6 +64,10 @@ DUK_INTERNAL duk_bool_t duk_js_toboolean(duk_tval *tv) {
 		DUK_ASSERT(DUK_TVAL_GET_BOOLEAN(tv) == 0 || DUK_TVAL_GET_BOOLEAN(tv) == 1);
 		return DUK_TVAL_GET_BOOLEAN(tv);
 	case DUK_TAG_STRING: {
+		/* Symbols ToBoolean() coerce to true, regardless of their
+		 * description.  This happens with no explicit check because
+		 * of the symbol representation byte prefix.
+		 */
 		duk_hstring *h = DUK_TVAL_GET_STRING(tv);
 		DUK_ASSERT(h != NULL);
 		return (DUK_HSTRING_GET_BYTELEN(h) > 0 ? 1 : 0);
@@ -207,7 +211,11 @@ DUK_INTERNAL duk_double_t duk_js_tonumber(duk_hthread *thr, duk_tval *tv) {
 		return 0.0;
 	}
 	case DUK_TAG_STRING: {
+		/* For Symbols ToNumber() is always a TypeError. */
 		duk_hstring *h = DUK_TVAL_GET_STRING(tv);
+		if (DUK_HSTRING_HAS_SYMBOL(h)) {
+			DUK_ERROR_TYPE(thr, "cannot number coerce Symbol");  /* FIXME: msg */
+		}
 		duk_push_hstring(ctx, h);
 		return duk__tonumber_string_raw(thr);
 	}
@@ -563,7 +571,10 @@ DUK_INTERNAL duk_bool_t duk_js_equals_helper(duk_hthread *thr, duk_tval *tv_x, d
 		}
 		case DUK_TAG_STRING:
 		case DUK_TAG_OBJECT: {
-			/* heap pointer comparison suffices */
+			/* Heap pointer comparison suffices for strings and objects.
+			 * Symbols compare equal if they have the same internal
+			 * representation; again heap pointer comparison suffices.
+			 */
 			return DUK_TVAL_GET_HEAPHDR(tv_x) == DUK_TVAL_GET_HEAPHDR(tv_y);
 		}
 		case DUK_TAG_BUFFER: {
@@ -622,6 +633,8 @@ DUK_INTERNAL duk_bool_t duk_js_equals_helper(duk_hthread *thr, duk_tval *tv_x, d
 		return 1;
 	}
 
+	/* FIXME: SYMBOLS, macro like DUK_TVAL_IS_STRING_NONSYMBOL? */
+
 	/* Number/string -> coerce string to number (e.g. "'1.5' == 1.5" -> true). */
 	if (DUK_TVAL_IS_NUMBER(tv_x) && DUK_TVAL_IS_STRING(tv_y)) {
 		/* the next 'if' is guaranteed to match after swap */
@@ -671,6 +684,7 @@ DUK_INTERNAL duk_bool_t duk_js_equals_helper(duk_hthread *thr, duk_tval *tv_x, d
 		tv_y = tv_tmp;
 	}
 	if (DUK_TVAL_IS_OBJECT(tv_x) && (DUK_TVAL_IS_STRING(tv_y) || DUK_TVAL_IS_NUMBER(tv_y))) {
+		/* FIXME: test for Symbols */
 		duk_bool_t rc;
 		duk_push_tval(ctx, tv_x);
 		duk_push_tval(ctx, tv_y);
@@ -874,6 +888,8 @@ DUK_LOCAL duk_bool_t duk__compare_number(duk_bool_t retval, duk_double_t d1, duk
 }
 #endif  /* DUK_USE_PARANOID_MATH */
 
+/* FIXME: SYMBOLS */
+
 DUK_INTERNAL duk_bool_t duk_js_compare_helper(duk_hthread *thr, duk_tval *tv_x, duk_tval *tv_y, duk_small_int_t flags) {
 	duk_context *ctx = (duk_context *) thr;
 	duk_double_t d1, d2;
@@ -925,45 +941,50 @@ DUK_INTERNAL duk_bool_t duk_js_compare_helper(duk_hthread *thr, duk_tval *tv_x, 
 		DUK_ASSERT(h1 != NULL);
 		DUK_ASSERT(h2 != NULL);
 
-		rc = duk_js_string_compare(h1, h2);
-		duk_pop_2(ctx);
-		if (rc < 0) {
-			return retval ^ 1;
-		} else {
-			return retval;
+		if (!DUK_HSTRING_HAS_SYMBOL(h1) && !DUK_HSTRING_HAS_SYMBOL(h2)) {
+			rc = duk_js_string_compare(h1, h2);
+			if (rc < 0) {
+				return retval ^ 1;
+			} else {
+				return retval;
+			}
 		}
-	} else {
-		/* Ordering should not matter (E5 Section 11.8.5, step 3.a). */
+
+		/* One or both are Symbols: fall through to handle in generic
+		 * path.
+		 */
+	}
+
+	/* Ordering should not matter (E5 Section 11.8.5, step 3.a). */
 #if 0
-		if (flags & DUK_COMPARE_FLAG_EVAL_LEFT_FIRST) {
-			d1 = duk_to_number(ctx, -2);
-			d2 = duk_to_number(ctx, -1);
-		} else {
-			d2 = duk_to_number(ctx, -1);
-			d1 = duk_to_number(ctx, -2);
-		}
-#endif
+	if (flags & DUK_COMPARE_FLAG_EVAL_LEFT_FIRST) {
 		d1 = duk_to_number(ctx, -2);
 		d2 = duk_to_number(ctx, -1);
+	} else {
+		d2 = duk_to_number(ctx, -1);
+		d1 = duk_to_number(ctx, -2);
+	}
+#endif
+	d1 = duk_to_number(ctx, -2);
+	d2 = duk_to_number(ctx, -1);
 
-		/* We want to duk_pop_2(ctx); because the values are numbers
-		 * no decref check is needed.
-		 */
+	/* We want to duk_pop_2(ctx); because the values are numbers
+	 * no decref check is needed.
+	 */
 #if defined(DUK_USE_PREFER_SIZE)
-		duk_pop_2(ctx);
+	duk_pop_2(ctx);
 #else
-		DUK_ASSERT(!DUK_TVAL_NEEDS_REFCOUNT_UPDATE(duk_get_tval(ctx, -2)));
-		DUK_ASSERT(!DUK_TVAL_NEEDS_REFCOUNT_UPDATE(duk_get_tval(ctx, -1)));
-		DUK_ASSERT(duk_get_top(ctx) >= 2);
-		((duk_hthread *) ctx)->valstack_top -= 2;
-		tv_x = ((duk_hthread *) ctx)->valstack_top;
-		tv_y = tv_x + 1;
-		DUK_TVAL_SET_UNDEFINED(tv_x);  /* Value stack policy */
-		DUK_TVAL_SET_UNDEFINED(tv_y);
+	DUK_ASSERT(!DUK_TVAL_NEEDS_REFCOUNT_UPDATE(duk_get_tval(ctx, -2)));
+	DUK_ASSERT(!DUK_TVAL_NEEDS_REFCOUNT_UPDATE(duk_get_tval(ctx, -1)));
+	DUK_ASSERT(duk_get_top(ctx) >= 2);
+	((duk_hthread *) ctx)->valstack_top -= 2;
+	tv_x = ((duk_hthread *) ctx)->valstack_top;
+	tv_y = tv_x + 1;
+	DUK_TVAL_SET_UNDEFINED(tv_x);  /* Value stack policy */
+	DUK_TVAL_SET_UNDEFINED(tv_y);
 #endif
 
-		return duk__compare_number(retval, d1, d2);
-	}
+	return duk__compare_number(retval, d1, d2);
 }
 
 /*
@@ -1183,6 +1204,8 @@ DUK_INTERNAL duk_bool_t duk_js_in(duk_hthread *thr, duk_tval *tv_x, duk_tval *tv
 	duk_push_tval(ctx, tv_x);
 	duk_push_tval(ctx, tv_y);
 	duk_require_type_mask(ctx, -1, DUK_TYPE_MASK_OBJECT | DUK_TYPE_MASK_LIGHTFUNC | DUK_TYPE_MASK_BUFFER);
+
+	/* FIXME: accept symbol */
 	duk_to_string(ctx, -2);               /* coerce lval with ToString() */
 
 	retval = duk_hobject_hasprop(thr,
@@ -1230,7 +1253,16 @@ DUK_INTERNAL duk_small_uint_t duk_js_typeof_stridx(duk_tval *tv_x) {
 		break;
 	}
 	case DUK_TAG_STRING: {
-		stridx = DUK_STRIDX_LC_STRING;
+		duk_hstring *str;
+
+		/* All internal keys are identified as Symbols. */
+		str = DUK_TVAL_GET_STRING(tv_x);
+		DUK_ASSERT(str != NULL);
+		if (DUK_HSTRING_HAS_SYMBOL(str)) {
+			stridx = DUK_STRIDX_LC_SYMBOL;
+		} else {
+			stridx = DUK_STRIDX_LC_STRING;
+		}
 		break;
 	}
 	case DUK_TAG_OBJECT: {

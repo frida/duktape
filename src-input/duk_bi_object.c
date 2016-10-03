@@ -8,6 +8,10 @@
 DUK_INTERNAL duk_ret_t duk_bi_object_prototype_to_string(duk_context *ctx) {
 	duk_tval *tv;
 	tv = DUK_HTHREAD_THIS_PTR((duk_hthread *) ctx);
+	/* XXX: This is not entirely correct anymore; in ES6 the
+	 * default lookup should use @@toStringTag to come up with
+	 * e.g. [object Symbol].
+	 */
 	duk_push_class_string_tval(ctx, tv);
 	return 1;
 }
@@ -173,7 +177,7 @@ DUK_INTERNAL duk_ret_t duk_bi_object_constructor_define_properties(duk_context *
 
 	for (pass = 0; pass < 2; pass++) {
 		duk_set_top(ctx, 2);  /* -> [ hobject props ] */
-		duk_enum(ctx, 1, DUK_ENUM_OWN_PROPERTIES_ONLY /*enum_flags*/);
+		duk_enum(ctx, 1, DUK_ENUM_OWN_PROPERTIES_ONLY /*enum_flags*/);  /* FIXME: symbols */
 
 		for (;;) {
 			duk_hstring *key;
@@ -205,7 +209,9 @@ DUK_INTERNAL duk_ret_t duk_bi_object_constructor_define_properties(duk_context *
 				continue;
 			}
 
+			/* This allows symbols on purpose. */
 			key = duk_known_hstring(ctx, 3);
+			DUK_ASSERT(key != NULL);
 
 			duk_hobject_define_property_helper(ctx,
 			                                   defprop_flags,
@@ -548,7 +554,7 @@ DUK_INTERNAL duk_ret_t duk_bi_object_constructor_define_property(duk_context *ct
 	 */
 	obj = duk_require_hobject_promote_mask(ctx, 0, DUK_TYPE_MASK_LIGHTFUNC | DUK_TYPE_MASK_BUFFER);
 	DUK_ASSERT(obj != NULL);
-	key = duk_to_hstring(ctx, 1);
+	key = duk_to_hstring(ctx, 1);  /* FIXME: accept symbol */
 	(void) duk_require_hobject(ctx, 2);
 
 	DUK_ASSERT(obj != NULL);
@@ -619,8 +625,27 @@ DUK_INTERNAL duk_ret_t duk_bi_object_constructor_is_extensible(duk_context *ctx)
 
 #if defined(DUK_USE_OBJECT_BUILTIN) || defined(DUK_USE_REFLECT_BUILTIN)
 /* Shared helper for Object.getOwnPropertyNames() and Object.keys().
- * Magic: 0=Object.getOwnPropertyNames() or Reflect.ownKeys(), 1=Object.keys().
+ * Magic: 0=Object.getOwnPropertyNames() or Reflect.ownKeys(), 1=Object.keys(),
+ * 2=Object.getOwnPropertySymbols().
  */
+DUK_LOCAL const duk_small_uint_t duk__object_keys_enum_flags[3] = {
+	/* Object.getOwnPropertyNames() */
+	DUK_ENUM_INCLUDE_NONENUMERABLE |
+	    DUK_ENUM_OWN_PROPERTIES_ONLY |
+	    DUK_ENUM_NO_PROXY_BEHAVIOR,
+
+	/* Object.keys() */
+	DUK_ENUM_OWN_PROPERTIES_ONLY |
+	    DUK_ENUM_NO_PROXY_BEHAVIOR,
+
+	/* Object.getOwnPropertySymbols() */
+	/* FIXME: skip non-symbols... */
+	DUK_ENUM_INCLUDE_INTERNAL |
+	    DUK_ENUM_INCLUDE_NONENUMERABLE |
+	    DUK_ENUM_OWN_PROPERTIES_ONLY |
+	    DUK_ENUM_INCLUDE_NONENUMERABLE |
+	    DUK_ENUM_NO_PROXY_BEHAVIOR
+};
 DUK_INTERNAL duk_ret_t duk_bi_object_constructor_keys_shared(duk_context *ctx) {
 	duk_hthread *thr = (duk_hthread *) ctx;
 	duk_hobject *obj;
@@ -631,6 +656,7 @@ DUK_INTERNAL duk_ret_t duk_bi_object_constructor_keys_shared(duk_context *ctx) {
 	duk_uarridx_t i, len, idx;
 #endif
 	duk_small_uint_t enum_flags;
+	duk_int_t magic;
 
 	DUK_ASSERT_TOP(ctx, 1);
 	DUK_UNREF(thr);
@@ -671,15 +697,19 @@ DUK_INTERNAL duk_ret_t duk_bi_object_constructor_keys_shared(duk_context *ctx) {
 	idx = 0;
 	duk_push_array(ctx);
 	for (i = 0; i < len; i++) {
+		duk_hstring *h_key;
+
 		/* [ obj trap_result res_arr ] */
-		if (duk_get_prop_index(ctx, -2, i) && duk_is_string(ctx, -1)) {
+		(void) duk_get_prop_index(ctx, -2, i);  /* undefined and gap treated the same */
+		h_key = duk_get_hstring(ctx, -1);
+		if (h_key != NULL) {
 			/* XXX: for Object.keys() we should check enumerability of key */
+			/* FIXME: symbol check */
 			/* [ obj trap_result res_arr propname ] */
-			duk_put_prop_index(ctx, -2, idx);
-			idx++;
-		} else {
-			duk_pop(ctx);
+			duk_put_prop_index(ctx, -2, idx++);
+			continue;
 		}
+		duk_pop(ctx);
 	}
 
 	/* XXX: missing trap result validation for non-configurable target keys
@@ -706,17 +736,9 @@ DUK_INTERNAL duk_ret_t duk_bi_object_constructor_keys_shared(duk_context *ctx) {
 
 	DUK_ASSERT_TOP(ctx, 1);
 
-	if (duk_get_current_magic(ctx)) {
-		/* Object.keys */
-		enum_flags = DUK_ENUM_OWN_PROPERTIES_ONLY |
-		             DUK_ENUM_NO_PROXY_BEHAVIOR;
-	} else {
-		/* Object.getOwnPropertyNames */
-		enum_flags = DUK_ENUM_INCLUDE_NONENUMERABLE |
-		             DUK_ENUM_OWN_PROPERTIES_ONLY |
-		             DUK_ENUM_NO_PROXY_BEHAVIOR;
-	}
-
+	magic = duk_get_current_magic(ctx);
+	DUK_ASSERT(magic >= 0 && magic <= 2);
+	enum_flags = duk__object_keys_enum_flags[magic];
 	return duk_hobject_get_enumerated_keys(ctx, enum_flags);
 }
 #endif  /* DUK_USE_OBJECT_BUILTIN || DUK_USE_REFLECT_BUILTIN */

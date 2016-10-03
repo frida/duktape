@@ -345,6 +345,7 @@ DUK_INTERNAL void duk_hobject_enumerator_create(duk_context *ctx, duk_small_uint
 		 * consistent with how e.g. Object.keys() will process proxy trap
 		 * results (ES6, Section 19.1.2.14).
 		 */
+		/* FIXME: check behavior for Symbols */
 		if (duk_get_prop_index(ctx, -1, i) && duk_is_string(ctx, -1)) {
 			/* [ ... enum_target res trap_result val ] */
 			duk_push_true(ctx);
@@ -528,8 +529,13 @@ DUK_INTERNAL void duk_hobject_enumerator_create(duk_context *ctx, duk_small_uint
 			    !DUK_HOBJECT_E_SLOT_IS_ENUMERABLE(thr->heap, curr, i)) {
 				continue;
 			}
-			if (!(enum_flags & DUK_ENUM_INCLUDE_INTERNAL) &&
-			    DUK_HSTRING_HAS_INTERNAL(k)) {
+			if (!(enum_flags & DUK_ENUM_INCLUDE_INTERNAL) &&  /* FIXME: rename enum flag */
+			    DUK_HSTRING_HAS_HIDDEN(k)) {
+				continue;
+			}
+			/* FIXME: Symbols; symbols only */
+			/* FIXME: never enumerate hidden symbols! so need a macro to detect them */
+			if (DUK_HSTRING_HAS_SYMBOL(k)) {
 				continue;
 			}
 			if (DUK_HSTRING_HAS_ARRIDX(k)) {

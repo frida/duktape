@@ -307,7 +307,7 @@ DUK_INTERNAL void duk_xdef_prop(duk_context *ctx, duk_idx_t obj_idx, duk_small_u
 
 	obj = duk_require_hobject(ctx, obj_idx);
 	DUK_ASSERT(obj != NULL);
-	key = duk_to_hstring(ctx, -2);
+	key = duk_to_property_key_hstring(ctx, -2);
 	DUK_ASSERT(key != NULL);
 	DUK_ASSERT(duk_require_tval(ctx, -1) != NULL);
 
@@ -439,7 +439,7 @@ DUK_EXTERNAL void duk_def_prop(duk_context *ctx, duk_idx_t obj_idx, duk_uint_t f
 	} else {
 		idx_value = (duk_idx_t) -1;
 	}
-	key = duk_require_hstring(ctx, idx_base);
+	key = duk_require_hstring(ctx, idx_base);  /* Allows symbols. */
 
 	duk_require_valid_index(ctx, idx_base);
 
