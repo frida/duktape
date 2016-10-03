@@ -1,0 +1,12 @@
+define: DUK_USE_ES6_SYMBOL
+introduced: 2.0.0
+default: true
+tags:
+  - ecmascript
+  - ecmascript6
+description: >
+  Provide ES6 Symbol support.
+
+  FIXME. to be decided if this just affects built-in bindings or also
+  symbol support in internals (minimal would be to just support internal
+  keys needed by Duktape, like 1.x).
