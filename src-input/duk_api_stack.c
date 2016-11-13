@@ -2014,6 +2014,16 @@ DUK_EXTERNAL duk_double_t duk_to_number(duk_context *ctx, duk_idx_t idx) {
 	return d;
 }
 
+DUK_INTERNAL duk_double_t duk_to_number_tval(duk_context *ctx, duk_tval *tv) {
+	duk_double_t res;
+
+	/* XXX: fast path for numbers; faster pop (number is not refcounted) */
+	duk_push_tval(ctx, tv);
+	res = duk_to_number(ctx, -1);
+	duk_pop(ctx);
+	return res;
+}
+
 /* XXX: combine all the integer conversions: they share everything
  * but the helper function for coercion.
  */
@@ -2744,13 +2754,12 @@ DUK_LOCAL duk_bool_t duk__obj_flag_any_default_false(duk_context *ctx, duk_idx_t
 	return 0;
 }
 
-DUK_EXTERNAL duk_int_t duk_get_type(duk_context *ctx, duk_idx_t idx) {
-	duk_tval *tv;
-
+/* FIXME: type could be duk_uint_t */
+DUK_INTERNAL duk_int_t duk_get_type_tval(duk_context *ctx, duk_tval *tv) {
 	DUK_ASSERT_CTX_VALID(ctx);
+	DUK_UNREF(ctx);  /* FIXME */
 
-	tv = duk_get_tval_or_unused(ctx, idx);
-	DUK_ASSERT(tv != NULL);
+	/* FIXME: how to avoid default clause (= comparison)? */
 
 	switch (DUK_TVAL_GET_TAG(tv)) {
 	case DUK_TAG_UNUSED:
@@ -2781,6 +2790,17 @@ DUK_EXTERNAL duk_int_t duk_get_type(duk_context *ctx, duk_idx_t idx) {
 		return DUK_TYPE_NUMBER;
 	}
 	DUK_UNREACHABLE();
+}
+
+DUK_EXTERNAL duk_int_t duk_get_type(duk_context *ctx, duk_idx_t idx) {
+	duk_tval *tv;
+
+	DUK_ASSERT_CTX_VALID(ctx);
+
+	tv = duk_get_tval_or_unused(ctx, idx);
+	DUK_ASSERT(tv != NULL);
+
+	return duk_get_type_tval(ctx, tv);
 }
 
 #if defined(DUK_USE_VERBOSE_ERRORS) && defined(DUK_USE_PARANOID_ERRORS)
@@ -2838,13 +2858,9 @@ DUK_EXTERNAL duk_bool_t duk_check_type(duk_context *ctx, duk_idx_t idx, duk_int_
 	return (duk_get_type(ctx, idx) == type) ? 1 : 0;
 }
 
-DUK_EXTERNAL duk_uint_t duk_get_type_mask(duk_context *ctx, duk_idx_t idx) {
-	duk_tval *tv;
-
+DUK_INTERNAL duk_uint_t duk_get_type_mask_tval(duk_context *ctx, duk_tval *tv) {
 	DUK_ASSERT_CTX_VALID(ctx);
-
-	tv = duk_get_tval_or_unused(ctx, idx);
-	DUK_ASSERT(tv != NULL);
+	DUK_UNREF(ctx);  /* FIXME */
 
 	switch (DUK_TVAL_GET_TAG(tv)) {
 	case DUK_TAG_UNUSED:
@@ -2875,6 +2891,17 @@ DUK_EXTERNAL duk_uint_t duk_get_type_mask(duk_context *ctx, duk_idx_t idx) {
 		return DUK_TYPE_MASK_NUMBER;
 	}
 	DUK_UNREACHABLE();
+}
+
+DUK_EXTERNAL duk_uint_t duk_get_type_mask(duk_context *ctx, duk_idx_t idx) {
+	duk_tval *tv;
+
+	DUK_ASSERT_CTX_VALID(ctx);
+
+	tv = duk_get_tval_or_unused(ctx, idx);
+	DUK_ASSERT(tv != NULL);
+
+	return duk_get_type_mask_tval(ctx, tv);
 }
 
 DUK_EXTERNAL duk_bool_t duk_check_type_mask(duk_context *ctx, duk_idx_t idx, duk_uint_t mask) {
