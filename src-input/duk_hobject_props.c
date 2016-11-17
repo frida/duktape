@@ -2892,8 +2892,9 @@ DUK_INTERNAL duk_bool_t duk_hobject_hasprop(duk_hthread *thr, duk_tval *tv_obj, 
 				}
 			}
 
-			duk_pop_2(ctx);  /* [ key trap_result ] -> [] */
-			return tmp_bool;
+			duk_pop(ctx);  /* [ key trap_result ] -> [ key ] */
+			rc = tmp_bool;
+			goto pop_and_return;
 		}
 
 		obj = h_target;  /* resume check from proxy target */
@@ -2906,6 +2907,17 @@ DUK_INTERNAL duk_bool_t duk_hobject_hasprop(duk_hthread *thr, duk_tval *tv_obj, 
 	/* fall through */
 
  pop_and_return:
+	if (!rc && obj == thr->builtins[DUK_BIDX_GLOBAL]) {
+		duk_global_access_functions *funcs = thr->heap->global_access_funcs;
+
+		if (funcs != NULL) {
+			if (funcs->get_func(ctx, (const char *) DUK_HSTRING_GET_DATA(key), funcs->udata) == 1) {
+				duk_pop(ctx);  /* [ key value ] -> [ key ] */
+				rc = 1;
+			}
+		}
+	}
+
 	duk_pop(ctx);  /* [ key ] -> [] */
 	return rc;
 }

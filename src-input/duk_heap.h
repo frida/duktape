@@ -365,6 +365,9 @@ struct duk_heap {
 	duk_uint16_t heapptr_deleted16;
 #endif
 
+	duk_global_access_functions *global_access_funcs;
+	duk_global_access_functions global_access_funcs_storage;
+
 	/* Fatal error handling, called e.g. when a longjmp() is needed but
 	 * lj.jmpbuf_ptr is NULL.  fatal_func must never return; it's not
 	 * declared as "noreturn" because doing that for typedefs is a bit
