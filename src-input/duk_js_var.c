@@ -1199,6 +1199,15 @@ duk_bool_t duk__getvar_helper(duk_hthread *thr,
 
 		return 1;
 	} else {
+		duk_global_access_functions *funcs = thr->heap->global_access_funcs;
+
+		if (funcs != NULL) {
+			if (funcs->get_func(ctx, (const char *) DUK_HSTRING_GET_DATA(name), funcs->udata) == 1) {
+				duk_push_undefined(ctx);  /* [ value ] -> [ value this ] */
+				return 1;
+			}
+		}
+
 		if (throw_flag) {
 			DUK_ERROR_FMT1(thr, DUK_ERR_REFERENCE_ERROR,
 			               "identifier '%s' undefined",

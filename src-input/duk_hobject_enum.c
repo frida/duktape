@@ -544,6 +544,30 @@ DUK_INTERNAL void duk_hobject_enumerator_create(duk_context *ctx, duk_small_uint
 			/* [enum_target res] */
 		}
 
+		if (curr == thr->builtins[DUK_BIDX_GLOBAL]) {
+			duk_global_access_functions *funcs = thr->heap->global_access_funcs;
+
+			if (funcs != NULL) {
+				if (funcs->enumerate_func(ctx, funcs->udata) == 1) {
+					duk_size_t length, i;
+
+					length = duk_get_length(ctx, -1);
+					for (i = 0; i < length; i++) {
+						duk_get_prop_index(ctx, -1, (duk_uarridx_t) i);
+						duk_push_true(ctx);
+
+						/* [ enum_target res keys key true ] */
+						duk_put_prop(ctx, -4);
+
+						/* [ enum_target res keys ] */
+					}
+
+					duk_pop(ctx);
+					/* [ enum_target res ] */
+				}
+			}
+		}
+
 		/* Sort enumerated keys according to ES2015 requirements for
 		 * the "inheritance level" just processed.  This is far from
 		 * optimal, ES2015 semantics could be achieved more efficiently

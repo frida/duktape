@@ -65,6 +65,23 @@ duk_context *duk_create_heap(duk_alloc_function alloc_func,
 	return ctx;
 }
 
+DUK_EXTERNAL void duk_set_global_access_functions(duk_context *ctx, duk_global_access_functions *functions) {
+	duk_hthread *thr = (duk_hthread *) ctx;
+	duk_heap *heap;
+
+	DUK_ASSERT_CTX_VALID(ctx);
+	DUK_ASSERT(thr != NULL);
+	DUK_ASSERT(thr->heap != NULL);
+
+	heap = thr->heap;
+	if (functions != NULL) {
+		heap->global_access_funcs_storage = *functions;
+		heap->global_access_funcs = &heap->global_access_funcs_storage;
+	} else {
+		heap->global_access_funcs = NULL;
+	}
+}
+
 DUK_EXTERNAL void duk_destroy_heap(duk_context *ctx) {
 	duk_hthread *thr = (duk_hthread *) ctx;
 	duk_heap *heap;
