@@ -1055,7 +1055,7 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 	 * sequence (unless e.g. virtual memory addresses cause also the
 	 * heap object pointer to be the same).
 	 */
-	res->rnd_state[1] ^= (duk_uint64_t) (void *) res;
+	res->rnd_state[1] ^= (duk_uint64_t) (duk_uintptr_t) res;
 	do {
 		duk_small_int_t i;
 		for (i = 0; i < 10; i++) {
