@@ -4304,15 +4304,15 @@ DUK_INTERNAL duk_bool_t duk_hobject_delprop_raw(duk_hthread *thr, duk_hobject *o
 			tmp = DUK_HOBJECT_E_GET_VALUE_GETTER(thr->heap, obj, desc.e_idx);
 			DUK_HOBJECT_E_SET_VALUE_GETTER(thr->heap, obj, desc.e_idx, NULL);
 			DUK_UNREF(tmp);
-			DUK_HOBJECT_DECREF_ALLOWNULL(thr, tmp);  /* side effects */
+			DUK_HOBJECT_DECREF_NORZ_ALLOWNULL(thr, tmp);
 
 			tmp = DUK_HOBJECT_E_GET_VALUE_SETTER(thr->heap, obj, desc.e_idx);
 			DUK_HOBJECT_E_SET_VALUE_SETTER(thr->heap, obj, desc.e_idx, NULL);
 			DUK_UNREF(tmp);
-			DUK_HOBJECT_DECREF_ALLOWNULL(thr, tmp);  /* side effects */
+			DUK_HOBJECT_DECREF_NORZ_ALLOWNULL(thr, tmp);
 		} else {
 			tv = DUK_HOBJECT_E_GET_VALUE_TVAL_PTR(thr->heap, obj, desc.e_idx);
-			DUK_TVAL_SET_UNDEFINED_UPDREF(thr, tv);  /* side effects */
+			DUK_TVAL_SET_UNDEFINED_UPDREF_NORZ(thr, tv);
 		}
 #if 0
 		/* Not strictly necessary because if key == NULL, flag MUST be ignored. */
@@ -4325,7 +4325,13 @@ DUK_INTERNAL duk_bool_t duk_hobject_delprop_raw(duk_hthread *thr, duk_hobject *o
 		DUK_DDD(DUK_DDDPRINT("removing key at e_idx %ld", (long) desc.e_idx));
 		DUK_ASSERT(key == DUK_HOBJECT_E_GET_KEY(thr->heap, obj, desc.e_idx));
 		DUK_HOBJECT_E_SET_KEY(thr->heap, obj, desc.e_idx, NULL);
-		DUK_HSTRING_DECREF(thr, key);  /* side effects */
+		DUK_HSTRING_DECREF_NORZ(thr, key);
+
+		/* Trigger refzero side effects only when we're done as a
+		 * finalizer might operate on the affect and affect the
+		 * e_idx we're supposed to use.
+		 */
+		DUK_REFZERO_CHECK(thr);
 		goto success;
 	}
 
