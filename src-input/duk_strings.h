@@ -7,8 +7,8 @@
  *  a high chance the string could be reused.  Also, using macros allows
  *  a call site express the exact string needed, but the macro may map to an
  *  approximate string to reduce unique string count.  Macros can also be
- *  more easily tuned for low memory targets than #ifdefs throughout the
- *  code base.
+ *  more easily tuned for low memory targets than #if defined()s throughout
+ *  the code base.
  *
  *  Because format strings behave differently in the call site (they need to
  *  be followed by format arguments), they use a special prefix DUK_STR_FMT_.
@@ -18,7 +18,7 @@
  *  them anyway, and such strings won't end up unnecessarily in a symbol table.
  */
 
-#ifndef DUK_ERRMSG_H_INCLUDED
+#if !defined(DUK_ERRMSG_H_INCLUDED)
 #define DUK_ERRMSG_H_INCLUDED
 
 /* Mostly API and built-in method related */
@@ -26,6 +26,7 @@
 #define DUK_STR_UNSUPPORTED                      "unsupported"
 #define DUK_STR_INVALID_COUNT                    "invalid count"
 #define DUK_STR_INVALID_ARGS                     "invalid args"
+#define DUK_STR_INVALID_STATE                    "invalid state"
 #define DUK_STR_INVALID_INPUT                    "invalid input"
 #define DUK_STR_INVALID_LENGTH                   "invalid length"
 #define DUK_STR_NOT_CONSTRUCTABLE                "not constructable"
@@ -55,6 +56,8 @@
 #define DUK_STR_TOPRIMITIVE_FAILED               "coercion to primitive failed"
 #define DUK_STR_NUMBER_OUTSIDE_RANGE             "number outside range"
 #define DUK_STR_NOT_OBJECT_COERCIBLE             "not object coercible"
+#define DUK_STR_CANNOT_NUMBER_COERCE_SYMBOL      "cannot number coerce Symbol"
+#define DUK_STR_CANNOT_STRING_COERCE_SYMBOL      "cannot string coerce Symbol"
 #define DUK_STR_STRING_TOO_LONG                  "string too long"
 #define DUK_STR_BUFFER_TOO_LONG                  "buffer too long"
 #define DUK_STR_ALLOC_FAILED                     "alloc failed"
@@ -79,6 +82,9 @@
 #define DUK_STR_INVALID_ARRAY_LENGTH             "invalid array length"
 #define DUK_STR_SETTER_UNDEFINED                 "setter undefined"
 #define DUK_STR_INVALID_DESCRIPTOR               "invalid descriptor"
+
+/* Proxy */
+#define DUK_STR_INVALID_TRAP_RESULT              "invalid trap result"
 
 /* Variables */
 
@@ -130,13 +136,13 @@
 #define DUK_STR_INVALID_REGEXP_ESCAPE            "invalid regexp escape"
 #define DUK_STR_INVALID_BACKREFS                 "invalid backreference(s)"
 #define DUK_STR_INVALID_REGEXP_CHARACTER         "invalid regexp character"
+#define DUK_STR_INVALID_REGEXP_GROUP             "invalid regexp group"
 #define DUK_STR_UNTERMINATED_CHARCLASS           "unterminated character class"
 #define DUK_STR_INVALID_RANGE                    "invalid range"
 
 /* Limits */
 #define DUK_STR_VALSTACK_LIMIT                   "valstack limit"
 #define DUK_STR_CALLSTACK_LIMIT                  "callstack limit"
-#define DUK_STR_CATCHSTACK_LIMIT                 "catchstack limit"
 #define DUK_STR_PROTOTYPE_CHAIN_LIMIT            "prototype chain limit"
 #define DUK_STR_BOUND_CHAIN_LIMIT                "function call bound chain limit"
 #define DUK_STR_C_CALLSTACK_LIMIT                "C call stack depth limit"

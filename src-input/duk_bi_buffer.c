@@ -1,5 +1,5 @@
 /*
- *  Khronos/ES6 TypedArray and Node.js Buffer built-ins
+ *  ES2015 TypedArray and Node.js Buffer built-ins
  */
 
 #include "duk_internal.h"
@@ -133,8 +133,14 @@ DUK_LOCAL duk_hbufobj *duk__hbufobj_promote_this(duk_context *ctx) {
 	return res;
 }
 
-/* Shared helper. */
-DUK_LOCAL duk_hbufobj *duk__getrequire_bufobj_this(duk_context *ctx, duk_bool_t throw_flag) {
+#define DUK__BUFOBJ_FLAG_THROW    (1 << 0)
+#define DUK__BUFOBJ_FLAG_PROMOTE  (1 << 1)
+
+/* Shared helper.  When DUK__BUFOBJ_FLAG_PROMOTE is given, the return value is
+ * always a duk_hbufobj *.  Without the flag the return value can also be a
+ * plain buffer, and the caller must check for it using DUK_HEAPHDR_IS_BUFFER().
+ */
+DUK_LOCAL duk_heaphdr *duk__getrequire_bufobj_this(duk_context *ctx, duk_small_uint_t flags) {
 	duk_hthread *thr;
 	duk_tval *tv;
 	duk_hbufobj *h_this;
@@ -150,23 +156,28 @@ DUK_LOCAL duk_hbufobj *duk__getrequire_bufobj_this(duk_context *ctx, duk_bool_t 
 		DUK_ASSERT(h_this != NULL);
 		if (DUK_HOBJECT_IS_BUFOBJ((duk_hobject *) h_this)) {
 			DUK_ASSERT_HBUFOBJ_VALID(h_this);
-			return h_this;
+			return (duk_heaphdr *) h_this;
 		}
 	} else if (DUK_TVAL_IS_BUFFER(tv)) {
-		/* Promote a plain buffer to an ArrayBuffer.  This is very
-		 * inefficient but allows plain buffer to be used wherever
-		 * ArrayBuffer is used with very small cost; hot path functions
-		 * like index read/write calls should provide direct buffer
-		 * support to avoid promotion.
-		 */
-		/* XXX: make this conditional to a flag if call sites need it? */
-		h_this = duk__hbufobj_promote_this(ctx);
-		DUK_ASSERT(h_this != NULL);
-		DUK_ASSERT_HBUFOBJ_VALID(h_this);
-		return h_this;
+		if (flags & DUK__BUFOBJ_FLAG_PROMOTE) {
+			/* Promote a plain buffer to a Uint8Array.  This is very
+			 * inefficient but allows plain buffer to be used wherever an
+			 * Uint8Array is used with very small cost; hot path functions
+			 * like index read/write calls should provide direct buffer
+			 * support to avoid promotion.
+			 */
+			/* XXX: make this conditional to a flag if call sites need it? */
+			h_this = duk__hbufobj_promote_this(ctx);
+			DUK_ASSERT(h_this != NULL);
+			DUK_ASSERT_HBUFOBJ_VALID(h_this);
+			return (duk_heaphdr *) h_this;
+		} else {
+			/* XXX: ugly, share return pointer for duk_hbuffer. */
+			return (duk_heaphdr *) DUK_TVAL_GET_BUFFER(tv);
+		}
 	}
 
-	if (throw_flag) {
+	if (flags & DUK__BUFOBJ_FLAG_THROW) {
 		DUK_ERROR_TYPE(thr, DUK_STR_NOT_BUFFER);
 	}
 	return NULL;
@@ -174,14 +185,14 @@ DUK_LOCAL duk_hbufobj *duk__getrequire_bufobj_this(duk_context *ctx, duk_bool_t 
 
 /* Check that 'this' is a duk_hbufobj and return a pointer to it. */
 DUK_LOCAL duk_hbufobj *duk__get_bufobj_this(duk_context *ctx) {
-	return duk__getrequire_bufobj_this(ctx, 0);
+	return (duk_hbufobj *) duk__getrequire_bufobj_this(ctx, DUK__BUFOBJ_FLAG_PROMOTE);
 }
 
 /* Check that 'this' is a duk_hbufobj and return a pointer to it
  * (NULL if not).
  */
 DUK_LOCAL duk_hbufobj *duk__require_bufobj_this(duk_context *ctx) {
-	return duk__getrequire_bufobj_this(ctx, 1);
+	return (duk_hbufobj *) duk__getrequire_bufobj_this(ctx, DUK__BUFOBJ_FLAG_THROW | DUK__BUFOBJ_FLAG_PROMOTE);
 }
 
 /* Check that value is a duk_hbufobj and return a pointer to it. */
@@ -232,28 +243,9 @@ DUK_LOCAL void duk__set_bufobj_buffer(duk_context *ctx, duk_hbufobj *h_bufobj, d
 	h_bufobj->length = (duk_uint_t) DUK_HBUFFER_GET_SIZE(h_val);
 	DUK_ASSERT(h_bufobj->shift == 0);
 	DUK_ASSERT(h_bufobj->elem_type == DUK_HBUFOBJ_ELEM_UINT8);
+	DUK_ASSERT(h_bufobj->is_typedarray == 0);
 
 	DUK_ASSERT_HBUFOBJ_VALID(h_bufobj);
-}
-
-DUK_LOCAL duk_hbufobj *duk__push_arraybuffer_with_length(duk_context *ctx, duk_uint_t len) {
-	duk_hbuffer *h_val;
-	duk_hbufobj *h_bufobj;
-
-	(void) duk_push_fixed_buffer(ctx, (duk_size_t) len);
-	h_val = (duk_hbuffer *) duk_known_hbuffer(ctx, -1);
-
-	h_bufobj = duk_push_bufobj_raw(ctx,
-	                               DUK_HOBJECT_FLAG_EXTENSIBLE |
-	                               DUK_HOBJECT_FLAG_BUFOBJ |
-	                               DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_ARRAYBUFFER),
-	                               DUK_BIDX_ARRAYBUFFER_PROTOTYPE);
-	DUK_ASSERT(h_bufobj != NULL);
-
-	duk__set_bufobj_buffer(ctx, h_bufobj, h_val);
-	DUK_ASSERT_HBUFOBJ_VALID(h_bufobj);
-
-	return h_bufobj;
 }
 
 /* Shared offset/length coercion helper. */
@@ -420,21 +412,48 @@ DUK_INTERNAL void duk_hbufobj_promote_plain(duk_context *ctx, duk_idx_t idx) {
 	}
 }
 
-DUK_INTERNAL void duk_hbufobj_push_arraybuffer_from_plain(duk_hthread *thr, duk_hbuffer *h_buf) {
+DUK_INTERNAL void duk_hbufobj_push_uint8array_from_plain(duk_hthread *thr, duk_hbuffer *h_buf) {
 	duk_context *ctx;
-	duk_hbufobj *h_bufobj;
 
 	ctx = (duk_context *) thr;
 
-	/* Push ArrayBuffer which will share the same underlying buffer. */
+	/* Push Uint8Array which will share the same underlying buffer as
+	 * the plain buffer argument.  Also create an ArrayBuffer with the
+	 * same backing for the result .buffer property.
+	 */
+
+	duk_push_hbuffer(ctx, h_buf);
+	duk_push_buffer_object(ctx, -1, 0, (duk_size_t) DUK_HBUFFER_GET_SIZE(h_buf), DUK_BUFOBJ_UINT8ARRAY);
+	duk_remove_m2(ctx);
+
+#if 0
+	/* More verbose equivalent; maybe useful if e.g. .buffer is omitted. */
 	h_bufobj = duk_push_bufobj_raw(ctx,
+	                               DUK_HOBJECT_FLAG_EXTENSIBLE |
+	                               DUK_HOBJECT_FLAG_BUFOBJ |
+	                               DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_UINT8ARRAY),
+	                               DUK_BIDX_UINT8ARRAY_PROTOTYPE);
+	DUK_ASSERT(h_bufobj != NULL);
+	duk__set_bufobj_buffer(ctx, h_bufobj, h_buf);
+	h_bufobj->is_typedarray = 1;
+	DUK_ASSERT_HBUFOBJ_VALID(h_bufobj);
+
+	h_arrbuf = duk_push_bufobj_raw(ctx,
 	                               DUK_HOBJECT_FLAG_EXTENSIBLE |
 	                               DUK_HOBJECT_FLAG_BUFOBJ |
 	                               DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_ARRAYBUFFER),
 	                               DUK_BIDX_ARRAYBUFFER_PROTOTYPE);
-	DUK_ASSERT(h_bufobj != NULL);
-	duk__set_bufobj_buffer(ctx, h_bufobj, h_buf);
-	DUK_ASSERT_HBUFOBJ_VALID(h_bufobj);
+	DUK_ASSERT(h_arrbuf != NULL);
+	duk__set_bufobj_buffer(ctx, h_arrbuf, h_buf);
+	DUK_ASSERT(h_arrbuf->is_typedarray == 0);
+	DUK_ASSERT_HBUFOBJ_VALID(h_arrbuf);
+
+	DUK_ASSERT(h_bufobj->buf_prop == NULL);
+	h_bufobj->buf_prop = (duk_hobject *) h_arrbuf;
+	DUK_ASSERT(h_arrbuf != NULL);
+	DUK_HBUFOBJ_INCREF(thr, h_arrbuf);
+	duk_pop(ctx);
+#endif
 }
 
 /* Indexed read helper for buffer objects, also called from outside this file. */
@@ -509,10 +528,10 @@ DUK_INTERNAL void duk_hbufobj_validated_write(duk_context *ctx, duk_hbufobj *h_b
 		du.ui[0] = (duk_uint32_t) duk_to_int32(ctx, -1);
 		break;
 	case DUK_HBUFOBJ_ELEM_FLOAT32:
-		du.f[0] = (duk_float_t) duk_to_number(ctx, -1);
+		du.f[0] = (duk_float_t) duk_to_number_m1(ctx);
 		break;
 	case DUK_HBUFOBJ_ELEM_FLOAT64:
-		du.d = (duk_double_t) duk_to_number(ctx, -1);
+		du.d = (duk_double_t) duk_to_number_m1(ctx);
 		break;
 	default:
 		DUK_UNREACHABLE();
@@ -528,37 +547,47 @@ DUK_LOCAL duk_hbuffer *duk__hbufobj_fixed_from_argvalue(duk_context *ctx) {
 	duk_int_t len;
 	duk_int_t i;
 	duk_size_t buf_size;
+	duk_uint8_t *buf;
 
 	switch (duk_get_type(ctx, 0)) {
 	case DUK_TYPE_NUMBER: {
 		len = duk_to_int_clamped(ctx, 0, 0, DUK_INT_MAX);
-		(void) duk_push_fixed_buffer(ctx, (duk_size_t) len);
+		(void) duk_push_fixed_buffer_zero(ctx, (duk_size_t) len);
 		break;
 	}
-	case DUK_TYPE_BUFFER:  /* Treat like ArrayBuffer. */
+	case DUK_TYPE_BUFFER: { /* Treat like Uint8Array. */
+		goto slow_copy;
+	}
 	case DUK_TYPE_OBJECT: {
-		duk_uint8_t *buf;
+		duk_hobject *h;
+		duk_hbufobj *h_bufobj;
 
-		/* XXX: to be revised, https://nodejs.org/api/buffer.html#buffer_buffer_from_buffer_alloc_and_buffer_allocunsafe
-		 * "Passing an ArrayBuffer returns a Buffer that shares allocated memory with the given ArrayBuffer."
+		/* For Node.js Buffers "Passing an ArrayBuffer returns a Buffer
+		 * that shares allocated memory with the given ArrayBuffer."
+		 * https://nodejs.org/api/buffer.html#buffer_buffer_from_buffer_alloc_and_buffer_allocunsafe
 		 */
 
-		/* XXX: fast path for typed arrays and other buffer objects? */
-
-		(void) duk_get_prop_string(ctx, 0, "length");
-		len = duk_to_int_clamped(ctx, -1, 0, DUK_INT_MAX);
-		duk_pop(ctx);
-		buf = (duk_uint8_t *) duk_push_fixed_buffer_nozero(ctx, (duk_size_t) len);  /* no zeroing, all indices get initialized */
-		for (i = 0; i < len; i++) {
-			/* XXX: fast path for array or buffer arguments? */
-			duk_get_prop_index(ctx, 0, (duk_uarridx_t) i);
-			buf[i] = (duk_uint8_t) (duk_to_uint32(ctx, -1) & 0xffU);
-			duk_pop(ctx);
+		h = duk_known_hobject(ctx, 0);
+		if (DUK_HOBJECT_GET_CLASS_NUMBER(h) == DUK_HOBJECT_CLASS_ARRAYBUFFER) {
+			DUK_ASSERT(DUK_HOBJECT_IS_BUFOBJ(h));
+			h_bufobj = (duk_hbufobj *) h;
+			if (DUK_UNLIKELY(h_bufobj->buf == NULL)) {
+				DUK_ERROR_TYPE_INVALID_ARGS((duk_hthread *) ctx);
+			}
+			if (DUK_UNLIKELY(h_bufobj->offset != 0 || h_bufobj->length != DUK_HBUFFER_GET_SIZE(h_bufobj->buf))) {
+				/* No support for ArrayBuffers with slice
+				 * offset/length.
+				 */
+				DUK_ERROR_TYPE_INVALID_ARGS((duk_hthread *) ctx);
+			}
+			duk_push_hbuffer(ctx, h_bufobj->buf);
+			return h_bufobj->buf;
 		}
-		break;
+		goto slow_copy;
 	}
 	case DUK_TYPE_STRING: {
 		/* ignore encoding for now */
+		duk_require_hstring_notsymbol(ctx, 0);
 		duk_dup_0(ctx);
 		(void) duk_to_buffer(ctx, -1, &buf_size);
 		break;
@@ -566,8 +595,25 @@ DUK_LOCAL duk_hbuffer *duk__hbufobj_fixed_from_argvalue(duk_context *ctx) {
 	default:
 		DUK_ERROR_TYPE_INVALID_ARGS((duk_hthread *) ctx);
 	}
+
+ done:
 	DUK_ASSERT(duk_is_buffer(ctx, -1));
 	return duk_known_hbuffer(ctx, -1);
+
+ slow_copy:
+	/* XXX: fast path for typed arrays and other buffer objects? */
+
+	(void) duk_get_prop_stridx_short(ctx, 0, DUK_STRIDX_LENGTH);
+	len = duk_to_int_clamped(ctx, -1, 0, DUK_INT_MAX);
+	duk_pop(ctx);
+	buf = (duk_uint8_t *) duk_push_fixed_buffer_nozero(ctx, (duk_size_t) len);  /* no zeroing, all indices get initialized */
+	for (i = 0; i < len; i++) {
+		/* XXX: fast path for array or buffer arguments? */
+		duk_get_prop_index(ctx, 0, (duk_uarridx_t) i);
+		buf[i] = (duk_uint8_t) (duk_to_uint32(ctx, -1) & 0xffU);
+		duk_pop(ctx);
+	}
+	goto done;
 }
 #endif  /* DUK_USE_BUFFEROBJECT_SUPPORT */
 
@@ -621,16 +667,8 @@ DUK_INTERNAL duk_ret_t duk_bi_arraybuffer_constructor(duk_context *ctx) {
 	if (len < 0) {
 		goto fail_length;
 	}
-	(void) duk_push_fixed_buffer(ctx, (duk_size_t) len);
+	(void) duk_push_fixed_buffer_zero(ctx, (duk_size_t) len);
 	h_val = (duk_hbuffer *) duk_known_hbuffer(ctx, -1);
-
-#if !defined(DUK_USE_ZERO_BUFFER_DATA)
-	/* Khronos/ES6 requires zeroing even when DUK_USE_ZERO_BUFFER_DATA
-	 * is not set.
-	 */
-	DUK_ASSERT(!DUK_HBUFFER_HAS_DYNAMIC((duk_hbuffer *) h_val));
-	DUK_MEMZERO((void *) DUK_HBUFFER_FIXED_GET_DATA_PTR(thr->heap, h_val), (duk_size_t) len);
-#endif
 
 	h_bufobj = duk_push_bufobj_raw(ctx,
 	                               DUK_HOBJECT_FLAG_EXTENSIBLE |
@@ -663,7 +701,6 @@ DUK_INTERNAL duk_ret_t duk_bi_typedarray_constructor(duk_context *ctx) {
 	duk_tval *tv;
 	duk_hobject *h_obj;
 	duk_hbufobj *h_bufobj = NULL;
-	duk_hbufobj *h_bufarr = NULL;
 	duk_hbufobj *h_bufarg = NULL;
 	duk_hbuffer *h_val;
 	duk_small_uint_t magic;
@@ -795,13 +832,14 @@ DUK_INTERNAL duk_ret_t duk_bi_typedarray_constructor(duk_context *ctx) {
 			h_bufobj->length = byte_length;
 			h_bufobj->shift = (duk_uint8_t) shift;
 			h_bufobj->elem_type = (duk_uint8_t) elem_type;
-			h_bufobj->is_view = 1;
+			h_bufobj->is_typedarray = 1;
 			DUK_ASSERT_HBUFOBJ_VALID(h_bufobj);
 
 			/* Set .buffer to the argument ArrayBuffer. */
-			duk_dup_0(ctx);
-			duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_LC_BUFFER, DUK_PROPDESC_FLAGS_NONE);
-			duk_compact(ctx, -1);
+			DUK_ASSERT(h_bufobj->buf_prop == NULL);
+			h_bufobj->buf_prop = (duk_hobject *) h_bufarg;
+			DUK_ASSERT(h_bufarg != NULL);
+			DUK_HBUFOBJ_INCREF(thr, h_bufarg);
 			return 1;
 		} else if (DUK_HOBJECT_IS_BUFOBJ(h_obj)) {
 			/* TypedArray (or other non-ArrayBuffer duk_hbufobj).
@@ -875,15 +913,17 @@ DUK_INTERNAL duk_ret_t duk_bi_typedarray_constructor(duk_context *ctx) {
 
 	/* ArrayBuffer argument is handled specially above; the rest of the
 	 * argument variants are handled by shared code below.
+	 *
+	 * ArrayBuffer in h_bufobj->buf_prop is intentionally left unset.
+	 * It will be automatically created by the .buffer accessor on
+	 * first access.
 	 */
 
-	/* Push a new ArrayBuffer (becomes view .buffer) */
-	h_bufarr = duk__push_arraybuffer_with_length(ctx, byte_length);
-	DUK_ASSERT(h_bufarr != NULL);
-	h_val = h_bufarr->buf;
+	/* Push the resulting view object on top of a plain fixed buffer. */
+	(void) duk_push_fixed_buffer(ctx, byte_length);
+	h_val = duk_known_hbuffer(ctx, -1);
 	DUK_ASSERT(h_val != NULL);
 
-	/* Push the resulting view object and attach the ArrayBuffer. */
 	h_bufobj = duk_push_bufobj_raw(ctx,
 	                               DUK_HOBJECT_FLAG_EXTENSIBLE |
 	                               DUK_HOBJECT_FLAG_BUFOBJ |
@@ -896,13 +936,8 @@ DUK_INTERNAL duk_ret_t duk_bi_typedarray_constructor(duk_context *ctx) {
 	h_bufobj->length = byte_length;
 	h_bufobj->shift = (duk_uint8_t) shift;
 	h_bufobj->elem_type = (duk_uint8_t) elem_type;
-	h_bufobj->is_view = 1;
+	h_bufobj->is_typedarray = 1;
 	DUK_ASSERT_HBUFOBJ_VALID(h_bufobj);
-
-	/* Set .buffer */
-	duk_dup_m2(ctx);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_LC_BUFFER, DUK_PROPDESC_FLAGS_NONE);
-	duk_compact(ctx, -1);
 
 	/* Copy values, the copy method depends on the arguments.
 	 *
@@ -1002,13 +1037,6 @@ DUK_INTERNAL duk_ret_t duk_bi_typedarray_constructor(duk_context *ctx) {
 		 * ambiguity with Float32/Float64 because zero bytes also
 		 * represent 0.0.
 		 */
-#if !defined(DUK_USE_ZERO_BUFFER_DATA)
-		/* Khronos/ES6 requires zeroing even when DUK_USE_ZERO_BUFFER_DATA
-		 * is not set.
-		 */
-		DUK_ASSERT(!DUK_HBUFFER_HAS_DYNAMIC((duk_hbuffer *) h_val));
-		DUK_MEMZERO((void *) DUK_HBUFFER_FIXED_GET_DATA_PTR(thr->heap, h_val), (duk_size_t) byte_length);
-#endif
 
 		DUK_DDD(DUK_DDDPRINT("using no copy"));
 		break;
@@ -1020,6 +1048,34 @@ DUK_INTERNAL duk_ret_t duk_bi_typedarray_constructor(duk_context *ctx) {
  fail_arguments:
 	DUK_DCERROR_RANGE_INVALID_ARGS(thr);
 }
+#else  /* DUK_USE_BUFFEROBJECT_SUPPORT */
+/* When bufferobject support is disabled, new Uint8Array() could still be
+ * supported to create a plain fixed buffer.  Disabled for now.
+ */
+#if 0
+DUK_INTERNAL duk_ret_t duk_bi_typedarray_constructor(duk_context *ctx) {
+	duk_int_t elem_length_signed;
+	duk_uint_t byte_length;
+
+	/* XXX: The same copy helpers could be shared with at least some
+	 * buffer functions.
+	 */
+
+	duk_require_constructor_call(ctx);
+
+	elem_length_signed = duk_require_int(ctx, 0);
+	if (elem_length_signed < 0) {
+		goto fail_arguments;
+	}
+	byte_length = (duk_uint_t) elem_length_signed;
+
+	(void) duk_push_fixed_buffer_zero(ctx, (duk_size_t) byte_length);
+	return 1;
+
+ fail_arguments:
+	DUK_DCERROR_RANGE_INVALID_ARGS((duk_hthread *) ctx);
+}
+#endif  /* 0 */
 #endif  /* DUK_USE_BUFFEROBJECT_SUPPORT */
 
 #if defined(DUK_USE_BUFFEROBJECT_SUPPORT)
@@ -1034,6 +1090,9 @@ DUK_INTERNAL duk_ret_t duk_bi_dataview_constructor(duk_context *ctx) {
 
 	h_bufarg = duk__require_bufobj_value(ctx, 0);
 	DUK_ASSERT(h_bufarg != NULL);
+	if (DUK_HOBJECT_GET_CLASS_NUMBER((duk_hobject *) h_bufarg) != DUK_HOBJECT_CLASS_ARRAYBUFFER) {
+		DUK_DCERROR_TYPE_INVALID_ARGS((duk_hthread *) ctx);
+	}
 
 	duk__resolve_offset_opt_length(ctx, h_bufarg, 1, 2, &offset, &length, 1 /*throw_flag*/);
 	DUK_ASSERT(offset <= h_bufarg->length);
@@ -1055,22 +1114,12 @@ DUK_INTERNAL duk_ret_t duk_bi_dataview_constructor(duk_context *ctx) {
 	h_bufobj->length = length;
 	DUK_ASSERT(h_bufobj->shift == 0);
 	DUK_ASSERT(h_bufobj->elem_type == DUK_HBUFOBJ_ELEM_UINT8);
-	h_bufobj->is_view = 1;
+	DUK_ASSERT(h_bufobj->is_typedarray == 0);
 
-	/* The DataView .buffer property is ordinarily set to the argument
-	 * which is an ArrayBuffer.  We accept any duk_hbufobj as
-	 * an argument and .buffer will be set to the argument regardless
-	 * of what it is.  This may be a bit confusing if the argument
-	 * is e.g. a DataView or another TypedArray view.
-	 *
-	 * XXX: Copy .buffer property from a DataView/TypedArray argument?
-	 * Create a fresh ArrayBuffer for Node.js Buffer argument?
-	 * See: test-bug-dataview-buffer-prop.js.
-	 */
-
-	duk_dup_0(ctx);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_LC_BUFFER, DUK_PROPDESC_FLAGS_NONE);
-	duk_compact(ctx, -1);
+	DUK_ASSERT(h_bufobj->buf_prop == NULL);
+	h_bufobj->buf_prop = (duk_hobject *) h_bufarg;
+	DUK_ASSERT(h_bufarg != NULL);
+	DUK_HBUFOBJ_INCREF((duk_hthread *) ctx, h_bufarg);
 
 	DUK_ASSERT_HBUFOBJ_VALID(h_bufobj);
 	return 1;
@@ -1086,9 +1135,17 @@ DUK_INTERNAL duk_ret_t duk_bi_arraybuffer_isview(duk_context *ctx) {
 	duk_hobject *h_obj;
 	duk_bool_t ret = 0;
 
-	h_obj = duk_get_hobject(ctx, 0);
-	if (h_obj != NULL && DUK_HOBJECT_IS_BUFOBJ(h_obj)) {
-		ret = ((duk_hbufobj *) h_obj)->is_view;
+	if (duk_is_buffer(ctx, 0)) {
+		ret = 1;
+	} else {
+		h_obj = duk_get_hobject(ctx, 0);
+		if (h_obj != NULL && DUK_HOBJECT_IS_BUFOBJ(h_obj)) {
+			/* DataView needs special casing: ArrayBuffer.isView() is
+			 * true, but ->is_typedarray is 0.
+			 */
+			ret = ((duk_hbufobj *) h_obj)->is_typedarray ||
+			      (DUK_HOBJECT_GET_CLASS_NUMBER(h_obj) == DUK_HOBJECT_CLASS_DATAVIEW);
+		}
 	}
 	duk_push_boolean(ctx, ret);
 	return 1;
@@ -1096,22 +1153,22 @@ DUK_INTERNAL duk_ret_t duk_bi_arraybuffer_isview(duk_context *ctx) {
 #endif  /* DUK_USE_BUFFEROBJECT_SUPPORT */
 
 /*
- *  ArrayBuffer.allocPlain()
+ *  Uint8Array.allocPlain()
  */
 
 #if defined(DUK_USE_BUFFEROBJECT_SUPPORT)
-DUK_INTERNAL duk_ret_t duk_bi_arraybuffer_allocplain(duk_context *ctx) {
+DUK_INTERNAL duk_ret_t duk_bi_uint8array_allocplain(duk_context *ctx) {
 	duk__hbufobj_fixed_from_argvalue(ctx);
 	return 1;
 }
 #endif  /* DUK_USE_BUFFEROBJECT_SUPPORT */
 
 /*
- *  ArrayBuffer.plainOf()
+ *  Uint8Array.plainOf()
  */
 
 #if defined(DUK_USE_BUFFEROBJECT_SUPPORT)
-DUK_INTERNAL duk_ret_t duk_bi_arraybuffer_plainof(duk_context *ctx) {
+DUK_INTERNAL duk_ret_t duk_bi_uint8array_plainof(duk_context *ctx) {
 	duk_hbufobj *h_bufobj;
 
 #if !defined(DUK_USE_PREFER_SIZE)
@@ -1206,7 +1263,6 @@ DUK_INTERNAL duk_ret_t duk_bi_nodejs_buffer_tostring(duk_context *ctx) {
 DUK_INTERNAL duk_ret_t duk_bi_nodejs_buffer_tojson(duk_context *ctx) {
 	duk_hthread *thr;
 	duk_hbufobj *h_this;
-	duk_harray *h_arr;
 	duk_uint8_t *buf;
 	duk_uint_t i, n;
 	duk_tval *tv;
@@ -1227,20 +1283,18 @@ DUK_INTERNAL duk_ret_t duk_bi_nodejs_buffer_tojson(duk_context *ctx) {
 
 	duk_push_object(ctx);
 	duk_push_hstring_stridx(ctx, DUK_STRIDX_UC_BUFFER);
-	duk_put_prop_stridx(ctx, -2, DUK_STRIDX_TYPE);
+	duk_put_prop_stridx_short(ctx, -2, DUK_STRIDX_TYPE);
 
+	/* XXX: uninitialized would be OK */
 	DUK_ASSERT_DISABLE((duk_size_t) h_this->length <= (duk_size_t) DUK_UINT32_MAX);
-	h_arr = duk_push_harray_with_size(ctx, (duk_uint32_t) h_this->length);  /* XXX: needs revision with >4G buffers */
-	DUK_ASSERT(h_arr != NULL);
-	DUK_ASSERT(h_arr->length == h_this->length);
-	tv = DUK_HOBJECT_A_GET_BASE(thr->heap, (duk_hobject *) h_arr);
+	tv = duk_push_harray_with_size_outptr(ctx, (duk_uint32_t) h_this->length);  /* XXX: needs revision with >4G buffers */
 
 	DUK_ASSERT(h_this->buf != NULL);
 	buf = DUK_HBUFOBJ_GET_SLICE_BASE(thr->heap, h_this);
 	for (i = 0, n = h_this->length; i < n; i++) {
 		DUK_TVAL_SET_U32(tv + i, (duk_uint32_t) buf[i]);  /* no need for decref or incref */
 	}
-	duk_put_prop_stridx(ctx, -2, DUK_STRIDX_DATA);
+	duk_put_prop_stridx_short(ctx, -2, DUK_STRIDX_DATA);
 
 	return 1;
 }
@@ -1332,10 +1386,11 @@ DUK_INTERNAL duk_ret_t duk_bi_nodejs_buffer_fill(duk_context *ctx) {
 
 	/* [ value offset end ] */
 
-	if (duk_is_string(ctx, 0)) {
+	if (duk_is_string_notsymbol(ctx, 0)) {
 		fill_str_ptr = (const duk_uint8_t *) duk_get_lstring(ctx, 0, &fill_str_len);
 		DUK_ASSERT(fill_str_ptr != NULL);
 	} else {
+		/* Symbols get ToNumber() coerced and cause TypeError. */
 		fill_value = (duk_uint8_t) duk_to_uint32(ctx, 0);
 		fill_str_ptr = (const duk_uint8_t *) &fill_value;
 		fill_str_len = 1;
@@ -1403,7 +1458,7 @@ DUK_INTERNAL duk_ret_t duk_bi_nodejs_buffer_write(duk_context *ctx) {
 	DUK_ASSERT(h_this != NULL);
 
 	/* Argument must be a string, e.g. a buffer is not allowed. */
-	str_data = (const duk_uint8_t *) duk_require_lstring(ctx, 0, &str_len);
+	str_data = (const duk_uint8_t *) duk_require_lstring_notsymbol(ctx, 0, &str_len);
 
 	duk__resolve_offset_opt_length(ctx, h_this, 1, 2, &offset, &length, 0 /*throw_flag*/);
 	DUK_ASSERT(offset <= h_this->length);
@@ -1598,7 +1653,7 @@ DUK_INTERNAL duk_ret_t duk_bi_typedarray_set(duk_context *ctx) {
 	}
 
 	duk_hbufobj_promote_plain(ctx, 0);
-	h_obj = duk_known_hobject(ctx, 0);
+	h_obj = duk_require_hobject(ctx, 0);
 
 	/* XXX: V8 throws a TypeError for negative values.  Would it
 	 * be more useful to interpret negative offsets here from the
@@ -1988,11 +2043,11 @@ DUK_INTERNAL duk_ret_t duk_bi_buffer_slice_shared(duk_context *ctx) {
 	                               res_proto_bidx);
 	DUK_ASSERT(h_bufobj != NULL);
 
-	h_bufobj->length = slice_length;
+	DUK_ASSERT(h_bufobj->length == 0);
 	h_bufobj->shift = h_this->shift;  /* inherit */
 	h_bufobj->elem_type = h_this->elem_type;  /* inherit */
-	h_bufobj->is_view = magic & 0x01;
-	DUK_ASSERT(h_bufobj->is_view == 0 || h_bufobj->is_view == 1);
+	h_bufobj->is_typedarray = magic & 0x01;
+	DUK_ASSERT(h_bufobj->is_typedarray == 0 || h_bufobj->is_typedarray == 1);
 
 	h_val = h_this->buf;
 	if (h_val == NULL) {
@@ -2004,7 +2059,7 @@ DUK_INTERNAL duk_ret_t duk_bi_buffer_slice_shared(duk_context *ctx) {
 		duk_uint8_t *p_copy;
 		duk_size_t copy_length;
 
-		p_copy = (duk_uint8_t *) duk_push_fixed_buffer(ctx, (duk_size_t) slice_length);  /* must be zeroed, not all bytes always copied */
+		p_copy = (duk_uint8_t *) duk_push_fixed_buffer_zero(ctx, (duk_size_t) slice_length);  /* must be zeroed, not all bytes always copied */
 		DUK_ASSERT(p_copy != NULL);
 
 		/* Copy slice, respecting underlying buffer limits; remainder
@@ -2019,12 +2074,14 @@ DUK_INTERNAL duk_ret_t duk_bi_buffer_slice_shared(duk_context *ctx) {
 
 		h_bufobj->buf = h_val;
 		DUK_HBUFFER_INCREF(thr, h_val);
+		h_bufobj->length = slice_length;
 		DUK_ASSERT(h_bufobj->offset == 0);
 
 		duk_pop(ctx);  /* reachable so pop OK */
 	} else {
 		h_bufobj->buf = h_val;
 		DUK_HBUFFER_INCREF(thr, h_val);
+		h_bufobj->length = slice_length;
 		h_bufobj->offset = (duk_uint_t) (h_this->offset + start_offset);
 
 		/* Copy the .buffer property, needed for TypedArray.prototype.subarray().
@@ -2032,13 +2089,9 @@ DUK_INTERNAL duk_ret_t duk_bi_buffer_slice_shared(duk_context *ctx) {
 		 * XXX: limit copy only for TypedArray classes specifically?
 		 */
 
-		duk_push_this(ctx);
-		if (duk_get_prop_stridx(ctx, -1, DUK_STRIDX_LC_BUFFER)) {
-			duk_xdef_prop_stridx(ctx, -3, DUK_STRIDX_LC_BUFFER, DUK_PROPDESC_FLAGS_NONE);
-			duk_pop(ctx);
-		} else {
-			duk_pop_2(ctx);
-		}
+		DUK_ASSERT(h_bufobj->buf_prop == NULL);
+		h_bufobj->buf_prop = h_this->buf_prop;  /* may be NULL */
+		DUK_HOBJECT_INCREF_ALLOWNULL(thr, (duk_hobject *) h_bufobj->buf_prop);
 	}
 	/* unbalanced stack on purpose */
 
@@ -2190,7 +2243,7 @@ DUK_INTERNAL duk_ret_t duk_bi_nodejs_buffer_concat(duk_context *ctx) {
 	                               DUK_BIDX_NODEJS_BUFFER_PROTOTYPE);
 	DUK_ASSERT(h_bufres != NULL);
 
-	p = (duk_uint8_t *) duk_push_fixed_buffer(ctx, total_length);  /* must be zeroed, all bytes not necessarily written over */
+	p = (duk_uint8_t *) duk_push_fixed_buffer_zero(ctx, total_length);  /* must be zeroed, all bytes not necessarily written over */
 	DUK_ASSERT(p != NULL);
 	space_left = total_length;
 
@@ -2224,6 +2277,7 @@ DUK_INTERNAL duk_ret_t duk_bi_nodejs_buffer_concat(duk_context *ctx) {
 	h_val = duk_known_hbuffer(ctx, -1);
 
 	duk__set_bufobj_buffer(ctx, h_bufres, h_val);
+	h_bufres->is_typedarray = 1;
 	DUK_ASSERT_HBUFOBJ_VALID(h_bufres);
 
 	duk_pop(ctx);  /* pop plain buffer, now reachable through h_bufres */
@@ -2766,7 +2820,7 @@ DUK_INTERNAL duk_ret_t duk_bi_buffer_writefield(duk_context *ctx) {
 	 */
 	if (magic_typedarray) {
 		/* For TypedArrays 'undefined' return value is specified
-		 * by ES6 (matches V8).
+		 * by ES2015 (matches V8).
 		 */
 		return 0;
 	}
@@ -2790,5 +2844,134 @@ DUK_INTERNAL duk_ret_t duk_bi_buffer_writefield(duk_context *ctx) {
 		return 1;
 	}
 	DUK_DCERROR_RANGE_INVALID_ARGS(thr);
+}
+#endif  /* DUK_USE_BUFFEROBJECT_SUPPORT */
+
+/*
+ *  Accessors for .buffer, .byteLength, .byteOffset
+ */
+
+#if defined(DUK_USE_BUFFEROBJECT_SUPPORT)
+DUK_LOCAL duk_hbufobj *duk__autospawn_arraybuffer(duk_context *ctx, duk_hbuffer *h_buf) {
+	duk_hbufobj *h_res;
+
+	h_res = duk_push_bufobj_raw(ctx,
+	                            DUK_HOBJECT_FLAG_EXTENSIBLE |
+	                            DUK_HOBJECT_FLAG_BUFOBJ |
+	                            DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_ARRAYBUFFER),
+	                            DUK_BIDX_ARRAYBUFFER_PROTOTYPE);
+	DUK_ASSERT(h_res != NULL);
+	DUK_UNREF(h_res);
+
+	duk__set_bufobj_buffer(ctx, h_res, h_buf);
+	DUK_ASSERT_HBUFOBJ_VALID(h_res);
+	DUK_ASSERT(h_res->buf_prop == NULL);
+	return h_res;
+}
+
+DUK_INTERNAL duk_ret_t duk_bi_typedarray_buffer_getter(duk_context *ctx) {
+	duk_hbufobj *h_bufobj;
+
+	h_bufobj = (duk_hbufobj *) duk__getrequire_bufobj_this(ctx, DUK__BUFOBJ_FLAG_THROW /*flags*/);
+	DUK_ASSERT(h_bufobj != NULL);
+	if (DUK_HEAPHDR_IS_BUFFER((duk_heaphdr *) h_bufobj)) {
+		DUK_DD(DUK_DDPRINT("autospawn ArrayBuffer for plain buffer"));
+		(void) duk__autospawn_arraybuffer(ctx, (duk_hbuffer *) h_bufobj);
+		return 1;
+	} else {
+		if (h_bufobj->buf_prop == NULL &&
+		    DUK_HOBJECT_GET_CLASS_NUMBER((duk_hobject *) h_bufobj) != DUK_HOBJECT_CLASS_ARRAYBUFFER &&
+		    h_bufobj->buf != NULL) {
+			duk_hbufobj *h_arrbuf;
+
+			DUK_DD(DUK_DDPRINT("autospawn ArrayBuffer for typed array or DataView"));
+			h_arrbuf = duk__autospawn_arraybuffer(ctx, h_bufobj->buf);
+
+			if (h_bufobj->buf_prop == NULL) {
+				/* Must recheck buf_prop, in case ArrayBuffer
+				 * alloc had a side effect which already filled
+				 * it!
+				 */
+
+				/* Set ArrayBuffer's .byteOffset and .byteLength based
+				 * on the view so that Arraybuffer[view.byteOffset]
+				 * matches view[0].
+				 */
+				h_arrbuf->offset = 0;
+				DUK_ASSERT(h_bufobj->offset + h_bufobj->length >= h_bufobj->offset);  /* Wrap check on creation. */
+				h_arrbuf->length = h_bufobj->offset + h_bufobj->length;
+				DUK_ASSERT(h_arrbuf->buf_prop == NULL);
+
+				DUK_ASSERT(h_bufobj->buf_prop == NULL);
+				h_bufobj->buf_prop = (duk_hobject *) h_arrbuf;
+				DUK_HBUFOBJ_INCREF(thr, h_arrbuf);  /* Now reachable and accounted for. */
+			}
+
+			/* Left on stack; pushed for the second time below (OK). */
+		}
+		if (h_bufobj->buf_prop) {
+			duk_push_hobject(ctx, h_bufobj->buf_prop);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+DUK_INTERNAL duk_ret_t duk_bi_typedarray_byteoffset_getter(duk_context *ctx) {
+	duk_hbufobj *h_bufobj;
+
+	h_bufobj = (duk_hbufobj *) duk__getrequire_bufobj_this(ctx, DUK__BUFOBJ_FLAG_THROW /*flags*/);
+	DUK_ASSERT(h_bufobj != NULL);
+	if (DUK_HEAPHDR_IS_BUFFER((duk_heaphdr *) h_bufobj)) {
+		duk_push_uint(ctx, 0);
+	} else {
+		/* If neutered must return 0; offset is zeroed during
+		 * neutering.
+		 */
+		duk_push_uint(ctx, h_bufobj->offset);
+	}
+	return 1;
+}
+
+DUK_INTERNAL duk_ret_t duk_bi_typedarray_bytelength_getter(duk_context *ctx) {
+	duk_hbufobj *h_bufobj;
+
+	h_bufobj = (duk_hbufobj *) duk__getrequire_bufobj_this(ctx, DUK__BUFOBJ_FLAG_THROW /*flags*/);
+	DUK_ASSERT(h_bufobj != NULL);
+	if (DUK_HEAPHDR_IS_BUFFER((duk_heaphdr *) h_bufobj)) {
+		duk_hbuffer *h_buf;
+
+		h_buf = (duk_hbuffer *) h_bufobj;
+		DUK_ASSERT(DUK_HBUFFER_GET_SIZE(h_buf) <= DUK_UINT_MAX);  /* Buffer limits. */
+		duk_push_uint(ctx, (duk_uint_t) DUK_HBUFFER_GET_SIZE(h_buf));
+	} else {
+		/* If neutered must return 0; length is zeroed during
+		 * neutering.
+		 */
+		duk_push_uint(ctx, h_bufobj->length);
+	}
+	return 1;
+}
+#else  /* DUK_USE_BUFFEROBJECT_SUPPORT */
+/* No .buffer getter without ArrayBuffer support. */
+#if 0
+DUK_INTERNAL duk_ret_t duk_bi_typedarray_buffer_getter(duk_context *ctx) {
+	return 0;
+}
+#endif
+
+DUK_INTERNAL duk_ret_t duk_bi_typedarray_byteoffset_getter(duk_context *ctx) {
+	duk_push_uint(ctx, 0);
+	return 1;
+}
+
+DUK_INTERNAL duk_ret_t duk_bi_typedarray_bytelength_getter(duk_context *ctx) {
+	duk_hbuffer *h_buf;
+
+	/* XXX: helper? */
+	duk_push_this(ctx);
+	h_buf = duk_require_hbuffer(ctx, -1);
+	duk_push_uint(ctx, DUK_HBUFFER_GET_SIZE(h_buf));
+	return 1;
 }
 #endif  /* DUK_USE_BUFFEROBJECT_SUPPORT */

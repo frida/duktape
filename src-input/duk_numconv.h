@@ -1,10 +1,10 @@
-#ifndef DUK_NUMCONV_H_INCLUDED
-#define DUK_NUMCONV_H_INCLUDED
-
 /*
  *  Number-to-string conversion.  The semantics of these is very tightly
  *  bound with the Ecmascript semantics required for call sites.
  */
+
+#if !defined(DUK_NUMCONV_H_INCLUDED)
+#define DUK_NUMCONV_H_INCLUDED
 
 /* Output a specified number of digits instead of using the shortest
  * form.  Used for toPrecision() and toFixed().
@@ -80,12 +80,12 @@
  */
 #define DUK_S2N_FLAG_ALLOW_AUTO_LEGACY_OCT_INT   (1 << 12)
 
-/* Allow automatic detection of ES6 octal base ("0o123"),
+/* Allow automatic detection of ES2015 octal base ("0o123"),
  * overrides radix argument and forces integer mode.
  */
 #define DUK_S2N_FLAG_ALLOW_AUTO_OCT_INT   (1 << 13)
 
-/* Allow automatic detection of ES6 binary base ("0b10001"),
+/* Allow automatic detection of ES2015 binary base ("0b10001"),
  * overrides radix argument and forces integer mode.
  */
 #define DUK_S2N_FLAG_ALLOW_AUTO_BIN_INT   (1 << 14)

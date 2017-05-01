@@ -32,6 +32,9 @@ strings:
     class_name: true
   - str: "String"
     class_name: true
+  - str: "Symbol"
+    class_name: true
+    es6: true
   - str: "Boolean"
     class_name: true
   - str: "Number"
@@ -306,7 +309,9 @@ strings:
   - str: "ignoreCase"
   - str: "multiline"
   - str: "lastIndex"
-  - str: "(?:)"
+  - str: "flags"
+#  - str: "unicode"
+#  - str: "sticky"
 
   # RegExp exec() results
   - str: "index"
@@ -367,6 +372,8 @@ strings:
   - str: "boolean"
   - str: "number"
   - str: "string"
+  - str: "symbol"
+    es6: true
   - str: "object"    # also returned for typeof null
   - str: "function"
 
@@ -402,7 +409,7 @@ strings:
   - str: "get"
   - str: "set"
 
-  # --- ES6 specific strings ---
+  # --- ES2015 specific strings ---
 
   # Proxy
   - str: "Proxy"
@@ -410,7 +417,7 @@ strings:
   #- str: "revocable"
   #  es6: true
 
-  # Proxy trap names (ES6 Section 9.5)
+  # Proxy trap names (ES2015 Section 9.5)
   #- str: "getPrototypeOf"
   #  es6: true
   #- str: "setPrototypeOf"
@@ -431,8 +438,8 @@ strings:
     es6: true
   #- str: "defineProperty"
   #  es6: true
-  - str: "enumerate"
-    es6: true
+  #- str: "enumerate"   # obsoleted in ES2016
+  #  es6: true
   - str: "ownKeys"
     es6: true
   #- str: "apply"
@@ -468,6 +475,12 @@ strings:
     es6: true
   - str: "setPrototypeOf"
     es6: true
+
+  # Well-known symbols
+  - str:
+      type: symbol
+      variant: wellknown
+      string: "Symbol.toPrimitive"
 
   # Misc
   - str: "setPrototypeOf"
@@ -638,12 +651,12 @@ strings:
     typed_array: true
   - str: "length"
     typed_array: true
-  - str: "byteLength"
-    typed_array: true
-  - str: "byteOffset"
-    typed_array: true
-  - str: "BYTES_PER_ELEMENT"
-    typed_array: true
+  #- str: "byteLength"
+  #  typed_array: true
+  #- str: "byteOffset"
+  #  typed_array: true
+  #- str: "BYTES_PER_ELEMENT"
+  #  typed_array: true
 
   # TypedArray TypedArray (e.g. Uint8Array)
   - str: "set"
@@ -726,7 +739,10 @@ strings:
     duktape: true
   #- str: "code"
   #  duktape: true
-  - str: "\u00ffTracedata"
+  - str:
+      type: symbol
+      variant: hidden
+      string: "Tracedata"
     duktape: true
     internal: true
 
@@ -743,7 +759,10 @@ strings:
     duktape: true
 
   # internal property for primitive value (Boolean, Number, String)
-  - str: "\u00ffValue"
+  - str:
+      type: symbol
+      variant: hidden
+      string: "Value"
     duktape: true
     internal: true
 
@@ -767,12 +786,6 @@ strings:
   - str: "\u00ffVarmap"
     duktape: true
     internal: true
-  - str: "\u00ffLexenv"
-    duktape: true
-    internal: true
-  - str: "\u00ffVarenv"
-    duktape: true
-    internal: true
   - str: "\u00ffSource"
     duktape: true
     internal: true
@@ -782,19 +795,11 @@ strings:
 
   # internal properties for thread objects
 
-  # internal properties for bound function objects
-  - str: "\u00ffTarget"  # [[TargetFunction]]
-    duktape: true
-    internal: true
-  - str: "\u00ffThis"    # [[BoundThis]]
-    duktape: true
-    internal: true
-  - str: "\u00ffArgs"    # [[BoundArguments]]
-    duktape: true
-    internal: true
-
   # internal properties for argument objects
   - str: "\u00ffMap"
+    duktape: true
+    internal: true
+  - str: "\u00ffVarenv"
     duktape: true
     internal: true
   - str: "\u00ffCallee"
@@ -806,33 +811,6 @@ strings:
   #  duktape: true
   #  internal: true
   - str: "\u00ffFinalizer"
-    duktape: true
-    internal: true
-
-  # internal properties for Proxy objects
-  - str: "\u00ffTarget"    # [[ProxyTarget]]
-    duktape: true
-    internal: true
-  - str: "\u00ffHandler"   # [[ProxyHandler]]
-    duktape: true
-    internal: true
-
-  # internal properties for declarative environment records
-  - str: "\u00ffCallee"    # to access varmap
-    duktape: true
-    internal: true
-  - str: "\u00ffThread"    # to identify valstack
-    duktape: true
-    internal: true
-  - str: "\u00ffRegbase"   # to determine absolute valstack index
-    duktape: true
-    internal: true
-
-  # internal properties for object environment records
-  - str: "\u00ffTarget"    # target object
-    duktape: true
-    internal: true
-  - str: "\u00ffThis"      # implicit this binding value
     duktape: true
     internal: true
 
@@ -1121,6 +1099,8 @@ special_define_names:
   "Function": "UC_FUNCTION"
   "string": "LC_STRING"
   "String": "UC_STRING"
+  "symbol": "LC_SYMBOL"
+  "Symbol": "UC_SYMBOL"
   "arguments": "LC_ARGUMENTS"
   "Arguments": "UC_ARGUMENTS"
   "buffer": "LC_BUFFER"
@@ -1158,7 +1138,6 @@ special_define_names:
   "MAX_VALUE": "MAX_VALUE"
   "NEGATIVE_INFINITY": "NEGATIVE_INFINITY"
   "POSITIVE_INFINITY": "POSITIVE_INFINITY"
-  "(?:)": "ESCAPED_EMPTY_REGEXP"
   "Invalid Date": "INVALID_DATE"
 
   "decodeURIComponent": "DECODE_URI_COMPONENT"

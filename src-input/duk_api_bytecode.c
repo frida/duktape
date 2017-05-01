@@ -205,12 +205,15 @@ DUK_LOCAL duk_uint8_t *duk__dump_formals(duk_hthread *thr, duk_uint8_t *p, duk_b
 				 */
 				varname = DUK_TVAL_GET_STRING(tv_val);
 				DUK_ASSERT(varname != NULL);
+				DUK_ASSERT(DUK_HSTRING_GET_BYTELEN(varname) >= 1);  /* won't be confused with terminator */
 
 				DUK_ASSERT(DUK_HSTRING_MAX_BYTELEN <= 0x7fffffffUL);  /* ensures no overflow */
 				p = DUK_BW_ENSURE_RAW(thr, bw_ctx, 4 + DUK_HSTRING_GET_BYTELEN(varname), p);
 				p = duk__dump_hstring_raw(p, varname);
 			}
 		}
+	} else {
+		DUK_DD(DUK_DDPRINT("dumping function without _Formals, emit empty list"));
 	}
 	p = DUK_BW_ENSURE_RAW(thr, bw_ctx, 4, p);
 	DUK_RAW_WRITE_U32_BE(p, 0);  /* end of _Formals */
@@ -275,7 +278,8 @@ static duk_uint8_t *duk__dump_func(duk_context *ctx, duk_hcompfunc *func, duk_bu
 	DUK_RAW_WRITE_U32_BE(p, 0);
 	DUK_RAW_WRITE_U32_BE(p, 0);
 #endif
-	tmp32 = ((duk_heaphdr *) func)->h_flags & DUK_HEAPHDR_FLAGS_FLAG_MASK;
+	tmp32 = DUK_HEAPHDR_GET_FLAGS((duk_heaphdr *) func);  /* masks flags, only duk_hobject flags */
+	tmp32 &= ~(DUK_HOBJECT_FLAG_HAVE_FINALIZER);  /* finalizer flag is lost */
 	DUK_RAW_WRITE_U32_BE(p, tmp32);
 
 	/* Bytecode instructions: endian conversion needed unless
@@ -335,6 +339,8 @@ static duk_uint8_t *duk__dump_func(duk_context *ctx, duk_hcompfunc *func, duk_bu
 		fn++;
 	}
 
+	/* Lexenv and varenv are not dumped. */
+
 	/* Object extra properties.
 	 *
 	 * There are some difference between function templates and functions.
@@ -343,9 +349,15 @@ static duk_uint8_t *duk__dump_func(duk_context *ctx, duk_hcompfunc *func, duk_bu
 	 */
 
 	p = duk__dump_uint32_prop(thr, p, bw_ctx, (duk_hobject *) func, DUK_STRIDX_LENGTH, (duk_uint32_t) func->nargs);
+#if defined(DUK_USE_FUNC_NAME_PROPERTY)
 	p = duk__dump_string_prop(thr, p, bw_ctx, (duk_hobject *) func, DUK_STRIDX_NAME);
+#endif
+#if defined(DUK_USE_FUNC_FILENAME_PROPERTY)
 	p = duk__dump_string_prop(thr, p, bw_ctx, (duk_hobject *) func, DUK_STRIDX_FILE_NAME);
+#endif
+#if defined(DUK_USE_PC2LINE)
 	p = duk__dump_buffer_prop(thr, p, bw_ctx, (duk_hobject *) func, DUK_STRIDX_INT_PC2LINE);
+#endif
 	p = duk__dump_varmap(thr, p, bw_ctx, (duk_hobject *) func);
 	p = duk__dump_formals(thr, p, bw_ctx, (duk_hobject *) func);
 
@@ -382,6 +394,8 @@ static duk_uint8_t *duk__load_func(duk_context *ctx, duk_uint8_t *p, duk_uint8_t
 	duk_idx_t idx_base;
 	duk_tval *tv1;
 	duk_uarridx_t arr_idx;
+	duk_hobject *func_env;
+	duk_bool_t need_pop;
 
 	/* XXX: There's some overlap with duk_js_closure() here, but
 	 * seems difficult to share code.  Ensure that the final function
@@ -416,12 +430,13 @@ static duk_uint8_t *duk__load_func(duk_context *ctx, duk_uint8_t *p, duk_uint8_t
 	/* Push function object, init flags etc.  This must match
 	 * duk_js_push_closure() quite carefully.
 	 */
-	duk_push_compiledfunction(ctx);
-	h_fun = duk_known_hcompfunc(ctx, -1);
+	h_fun = duk_push_hcompfunc(ctx);
+	DUK_ASSERT(h_fun != NULL);
 	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC((duk_hobject *) h_fun));
 	DUK_ASSERT(DUK_HCOMPFUNC_GET_DATA(thr->heap, h_fun) == NULL);
 	DUK_ASSERT(DUK_HCOMPFUNC_GET_FUNCS(thr->heap, h_fun) == NULL);
 	DUK_ASSERT(DUK_HCOMPFUNC_GET_BYTECODE(thr->heap, h_fun) == NULL);
+	DUK_ASSERT(DUK_HOBJECT_GET_PROTOTYPE(thr->heap, (duk_hobject *) h_fun) == thr->builtins[DUK_BIDX_FUNCTION_PROTOTYPE]);
 
 	h_fun->nregs = DUK_RAW_READ_U16_BE(p);
 	h_fun->nargs = DUK_RAW_READ_U16_BE(p);
@@ -434,17 +449,20 @@ static duk_uint8_t *duk__load_func(duk_context *ctx, duk_uint8_t *p, duk_uint8_t
 
 	/* duk_hcompfunc flags; quite version specific */
 	tmp32 = DUK_RAW_READ_U32_BE(p);
-	DUK_HEAPHDR_SET_FLAGS((duk_heaphdr *) h_fun, tmp32);
+	DUK_HEAPHDR_SET_FLAGS((duk_heaphdr *) h_fun, tmp32);  /* masks flags to only change duk_hobject flags */
 
-	/* standard prototype */
+	/* standard prototype (no need to set here, already set) */
+	DUK_ASSERT(DUK_HOBJECT_GET_PROTOTYPE(thr->heap, (duk_hobject *) h_fun) == thr->builtins[DUK_BIDX_FUNCTION_PROTOTYPE]);
+#if 0
 	DUK_HOBJECT_SET_PROTOTYPE_UPDREF(thr, &h_fun->obj, thr->builtins[DUK_BIDX_FUNCTION_PROTOTYPE]);
+#endif
 
 	/* assert just a few critical flags */
 	DUK_ASSERT(DUK_HEAPHDR_GET_TYPE((duk_heaphdr *) h_fun) == DUK_HTYPE_OBJECT);
 	DUK_ASSERT(!DUK_HOBJECT_HAS_BOUNDFUNC(&h_fun->obj));
 	DUK_ASSERT(DUK_HOBJECT_HAS_COMPFUNC(&h_fun->obj));
 	DUK_ASSERT(!DUK_HOBJECT_HAS_NATFUNC(&h_fun->obj));
-	DUK_ASSERT(!DUK_HOBJECT_HAS_THREAD(&h_fun->obj));
+	DUK_ASSERT(!DUK_HOBJECT_IS_THREAD(&h_fun->obj));
 	DUK_ASSERT(!DUK_HOBJECT_HAS_EXOTIC_ARRAY(&h_fun->obj));
 	DUK_ASSERT(!DUK_HOBJECT_HAS_EXOTIC_STRINGOBJ(&h_fun->obj));
 	DUK_ASSERT(!DUK_HOBJECT_HAS_EXOTIC_ARGUMENTS(&h_fun->obj));
@@ -558,42 +576,73 @@ static duk_uint8_t *duk__load_func(duk_context *ctx, duk_uint8_t *p, duk_uint8_t
 	/* Setup function properties. */
 	tmp32 = DUK_RAW_READ_U32_BE(p);
 	duk_push_u32(ctx, tmp32);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_NONE);
+	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_C);
 
-	p = duk__load_string_raw(ctx, p);
+#if defined(DUK_USE_FUNC_NAME_PROPERTY)
+	p = duk__load_string_raw(ctx, p);  /* -> [ func funcname ] */
+	func_env = thr->builtins[DUK_BIDX_GLOBAL_ENV];
+	DUK_ASSERT(func_env != NULL);
+	need_pop = 0;
 	if (DUK_HOBJECT_HAS_NAMEBINDING((duk_hobject *) h_fun)) {
 		/* Original function instance/template had NAMEBINDING.
 		 * Must create a lexical environment on loading to allow
 		 * recursive functions like 'function foo() { foo(); }'.
 		 */
-		duk_hobject *proto;
+		duk_hdecenv *new_env;
 
-		proto = thr->builtins[DUK_BIDX_GLOBAL_ENV];
-		(void) duk_push_object_helper_proto(ctx,
-		                                    DUK_HOBJECT_FLAG_EXTENSIBLE |
-		                                    DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_DECENV),
-		                                    proto);
+		new_env = duk_hdecenv_alloc(thr,
+		                            DUK_HOBJECT_FLAG_EXTENSIBLE |
+		                            DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_DECENV));
+		DUK_ASSERT(new_env != NULL);
+		DUK_ASSERT(new_env->thread == NULL);  /* Closed. */
+		DUK_ASSERT(new_env->varmap == NULL);
+		DUK_ASSERT(new_env->regbase == 0);
+		DUK_ASSERT_HDECENV_VALID(new_env);
+		DUK_ASSERT(DUK_HOBJECT_GET_PROTOTYPE(thr->heap, (duk_hobject *) new_env) == NULL);
+		DUK_HOBJECT_SET_PROTOTYPE(thr->heap, (duk_hobject *) new_env, func_env);
+		DUK_HOBJECT_INCREF(thr, func_env);
+
+		func_env = (duk_hobject *) new_env;
+
+		duk_push_hobject(ctx, (duk_hobject *) new_env);
+
 		duk_dup_m2(ctx);                                  /* -> [ func funcname env funcname ] */
 		duk_dup(ctx, idx_base);                           /* -> [ func funcname env funcname func ] */
 		duk_xdef_prop(ctx, -3, DUK_PROPDESC_FLAGS_NONE);  /* -> [ func funcname env ] */
-		duk_xdef_prop_stridx(ctx, idx_base, DUK_STRIDX_INT_LEXENV, DUK_PROPDESC_FLAGS_WC);
-		/* since closure has NEWENV, never define DUK_STRIDX_INT_VARENV, as it
-		 * will be ignored anyway
-		 */
+
+		need_pop = 1;  /* Need to pop env, but -after- updating h_fun and increfs. */
 	}
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_NAME, DUK_PROPDESC_FLAGS_NONE);
+	DUK_ASSERT(func_env != NULL);
+	DUK_HCOMPFUNC_SET_LEXENV(thr->heap, h_fun, func_env);
+	DUK_HCOMPFUNC_SET_VARENV(thr->heap, h_fun, func_env);
+	DUK_HOBJECT_INCREF(thr, func_env);
+	DUK_HOBJECT_INCREF(thr, func_env);
+	if (need_pop) {
+		duk_pop(ctx);
+	}
+	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_NAME, DUK_PROPDESC_FLAGS_C);
+#endif  /* DUK_USE_FUNC_NAME_PROPERTY */
 
+#if defined(DUK_USE_FUNC_FILENAME_PROPERTY)
 	p = duk__load_string_raw(ctx, p);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_FILE_NAME, DUK_PROPDESC_FLAGS_WC);
+	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_FILE_NAME, DUK_PROPDESC_FLAGS_C);
+#endif  /* DUK_USE_FUNC_FILENAME_PROPERTY */
 
-	duk_push_object(ctx);
-	duk_dup_m2(ctx);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_CONSTRUCTOR, DUK_PROPDESC_FLAGS_WC);  /* func.prototype.constructor = func */
-	duk_compact(ctx, -1);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_PROTOTYPE, DUK_PROPDESC_FLAGS_W);
+	if (DUK_HOBJECT_HAS_CONSTRUCTABLE((duk_hobject *) h_fun)) {
+		/* Restore empty external .prototype only for constructable
+		 * functions.
+		 */
+		duk_push_object(ctx);
+		duk_dup_m2(ctx);
+		duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_CONSTRUCTOR, DUK_PROPDESC_FLAGS_WC);  /* func.prototype.constructor = func */
+		duk_compact_m1(ctx);
+		duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_PROTOTYPE, DUK_PROPDESC_FLAGS_W);
+	}
 
+#if defined(DUK_USE_PC2LINE)
 	p = duk__load_buffer_raw(ctx, p);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_INT_PC2LINE, DUK_PROPDESC_FLAGS_WC);
+	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_INT_PC2LINE, DUK_PROPDESC_FLAGS_WC);
+#endif  /* DUK_USE_PC2LINE */
 
 	duk_push_object(ctx);  /* _Varmap */
 	for (;;) {
@@ -607,9 +656,14 @@ static duk_uint8_t *duk__load_func(duk_context *ctx, duk_uint8_t *p, duk_uint8_t
 		duk_push_u32(ctx, tmp32);
 		duk_put_prop(ctx, -3);
 	}
-	duk_compact(ctx, -1);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_INT_VARMAP, DUK_PROPDESC_FLAGS_NONE);
+	duk_compact_m1(ctx);
+	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_INT_VARMAP, DUK_PROPDESC_FLAGS_NONE);
 
+	/* If _Formals wasn't present in the original function, the list
+	 * here will be empty.  Same happens if _Formals was present but
+	 * had zero length.  We can omit _Formals from the result if its
+	 * length is zero and matches nargs.
+	 */
 	duk_push_array(ctx);  /* _Formals */
 	for (arr_idx = 0; ; arr_idx++) {
 		/* XXX: awkward */
@@ -620,8 +674,12 @@ static duk_uint8_t *duk__load_func(duk_context *ctx, duk_uint8_t *p, duk_uint8_t
 		}
 		duk_put_prop_index(ctx, -2, arr_idx);
 	}
-	duk_compact(ctx, -1);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_INT_FORMALS, DUK_PROPDESC_FLAGS_NONE);
+	if (arr_idx == 0 && h_fun->nargs == 0) {
+		duk_pop(ctx);
+	} else {
+		duk_compact_m1(ctx);
+		duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_INT_FORMALS, DUK_PROPDESC_FLAGS_NONE);
+	}
 
 	/* Return with final function pushed on stack top. */
 	DUK_DD(DUK_DDPRINT("final loaded function: %!iT", duk_get_tval(ctx, -1)));
@@ -644,7 +702,7 @@ DUK_EXTERNAL void duk_dump_function(duk_context *ctx) {
 
 	/* Bound functions don't have all properties so we'd either need to
 	 * lookup the non-bound target function or reject bound functions.
-	 * For now, bound functions are rejected.
+	 * For now, bound functions are rejected with TypeError.
 	 */
 	func = duk_require_hcompfunc(ctx, -1);
 	DUK_ASSERT(func != NULL);
@@ -663,7 +721,7 @@ DUK_EXTERNAL void duk_dump_function(duk_context *ctx) {
 
 	DUK_DD(DUK_DDPRINT("serialized result: %!T", duk_get_tval(ctx, -1)));
 
-	duk_remove(ctx, -2);  /* [ ... func buf ] -> [ ... buf ] */
+	duk_remove_m2(ctx);  /* [ ... func buf ] -> [ ... buf ] */
 }
 
 DUK_EXTERNAL void duk_load_function(duk_context *ctx) {
@@ -699,7 +757,7 @@ DUK_EXTERNAL void duk_load_function(duk_context *ctx) {
 		goto format_error;
 	}
 
-	duk_remove(ctx, -2);  /* [ ... buf func ] -> [ ... func ] */
+	duk_remove_m2(ctx);  /* [ ... buf func ] -> [ ... func ] */
 	return;
 
  format_error:

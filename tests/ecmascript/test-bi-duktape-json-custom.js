@@ -316,7 +316,7 @@ SyntaxError
 
 function characterEscapeEncodeTest() {
     function mk(hex) {
-        return bufferToString(Duktape.dec('hex', hex));
+        return bufferToStringRaw(Duktape.dec('hex', hex));
     }
 
     var values = [
@@ -492,10 +492,10 @@ try {
 
 /*===
 avoid key quotes
-jx {$:true,_:true,a:true,z:true,A:true,Z:true,"0":false,"9":false,"":false}
-jc {"$":true,"_":true,"a":true,"z":true,"A":true,"Z":true,"0":false,"9":false,"":false}
-jx {$$:true,__:true,a$:true,z_:true,A0:true,Z9:true,"0$":false,"1_":false,"2a":false,"3z":false,"4A":false,"5A":false,"60":false,"79":false}
-jc {"$$":true,"__":true,"a$":true,"z_":true,"A0":true,"Z9":true,"0$":false,"1_":false,"2a":false,"3z":false,"4A":false,"5A":false,"60":false,"79":false}
+jx {"0":false,"9":false,$:true,_:true,a:true,z:true,A:true,Z:true,"":false}
+jc {"0":false,"9":false,"$":true,"_":true,"a":true,"z":true,"A":true,"Z":true,"":false}
+jx {"60":false,"79":false,$$:true,__:true,a$:true,z_:true,A0:true,Z9:true,"0$":false,"1_":false,"2a":false,"3z":false,"4A":false,"5A":false}
+jc {"60":false,"79":false,"$$":true,"__":true,"a$":true,"z_":true,"A0":true,"Z9":true,"0$":false,"1_":false,"2a":false,"3z":false,"4A":false,"5A":false}
 jx {test:true,test_key:true,_test_key:true,$test_key:true}
 jc {"test":true,"test_key":true,"_test_key":true,"$test_key":true}
 jx {"%foo":false,"foo%":false,"foo-bar":false,"foo bar":false}
@@ -734,10 +734,6 @@ e188
 json  22c3a1c28822
 jx "\xe1\x88"
 jc "\u00e1\u0088"
-ff41
-json  22c3bf4122
-jx "\xffA"
-jc "\u00ffA"
 c080
 json  220022
 jx "\x00"
@@ -756,14 +752,13 @@ jc "\u0000"
 function invalidXutf8Test() {
     var values = [
         'e188',     // last byte missing from U+1234 encoding (e188b4)
-        'ff41',     // first byte is an invalid initial byte
         'c080',     // non-shortest encoding for U+0000
     ];
 
     // Because standard JSON does not escape non-ASCII codepoints, hex
     // encode its output
     values.forEach(function (v) {
-        var t = bufferToString(Duktape.dec('hex', v));
+        var t = bufferToStringRaw(Duktape.dec('hex', v));
         print(v);
         print('json ', Duktape.enc('hex', JSON.stringify(t)));
         print('jx', encJx(t));

@@ -54,6 +54,7 @@
 #endif
 #if defined(DUK_CMDLINE_LINENOISE)
 #include "linenoise.h"
+#include <stdint.h>  /* Assume C99/C++11 with linenoise. */
 #endif
 #if defined(DUK_CMDLINE_PRINTALERT_SUPPORT)
 #include "duk_print_alert.h"
@@ -121,7 +122,7 @@ static int debugger_reattach = 0;
 
 static void print_greet_line(void) {
 	printf("((o) Duktape%s %d.%d.%d (%s)\n",
-#ifdef DUK_CMDLINE_LINENOISE
+#if defined(DUK_CMDLINE_LINENOISE)
 	       " [linenoise]",
 #else
 	       "",
@@ -238,12 +239,13 @@ static duk_ret_t wrapped_compile_execute(duk_context *ctx, void *udata) {
 
 	if (src_data != NULL && src_len >= 2 && src_data[0] == (char) 0xff) {
 		/* Bytecode. */
-		duk_push_lstring(ctx, src_data, src_len);
-		duk_to_buffer(ctx, -1, NULL);
+		void *buf;
+		buf = duk_push_fixed_buffer(ctx, src_len);
+		memcpy(buf, (const void *) src_data, src_len);
 		duk_load_function(ctx);
 	} else {
 		/* Source code. */
-		comp_flags = 0;
+		comp_flags = DUK_COMPILE_SHEBANG;
 		duk_compile_lstring_filename(ctx, comp_flags, src_data, src_len);
 	}
 
@@ -288,7 +290,7 @@ static duk_ret_t wrapped_compile_execute(duk_context *ctx, void *udata) {
 
 #if 0
 	/* Manual test for bytecode dump/load cycle: dump and load before
-	 * execution.  Enable manually, then run "make qecmatest" for a
+	 * execution.  Enable manually, then run "make ecmatest" for a
 	 * reasonably good coverage of different functions and programs.
 	 */
 	duk_dump_function(ctx);
@@ -358,7 +360,7 @@ static const char *linenoise_completion_script =
 	"    // access.  Look up all the components (starting from the global\n"
 	"    // object now) except the last; treat the last component as a\n"
 	"    // partial name and use it as a filter for possible properties.\n"
-	"    var match, propseq, obj, i, partial, names, name;\n"
+	"    var match, propseq, obj, i, partial, names, name, sanity;\n"
 	"\n"
 	"    if (!input) { return; }\n"
 	"    match = /^.*?((?:\\w+\\.)*\\w*)$/.exec(input);\n"
@@ -373,9 +375,12 @@ static const char *linenoise_completion_script =
 	"    if (obj === void 0 || obj === null) { return; }\n"
 	"\n"
 	"    partial = propseq[propseq.length - 1];\n"
+	"    sanity = 1000;\n"
 	"    while (obj != null) {\n"
+	"        if (--sanity < 0) { throw new Error('sanity'); }\n"
 	"        names = Object.getOwnPropertyNames(Object(obj));\n"
 	"        for (i = 0; i < names.length; i++) {\n"
+	"            if (--sanity < 0) { throw new Error('sanity'); }\n"
 	"            name = names[i];\n"
 	"            if (Number(name) >= 0) { continue; }  // ignore array keys\n"
 	"            if (name.substring(0, partial.length) !== partial) { continue; }\n"
@@ -389,7 +394,7 @@ static const char *linenoise_completion_script =
 static const char *linenoise_hints_script =
 	"(function linenoiseHints(input) {\n"
 	"    // Similar to completions but different handling for final results.\n"
-	"    var match, propseq, obj, i, partial, names, name, res, found, first;\n"
+	"    var match, propseq, obj, i, partial, names, name, res, found, first, sanity;\n"
 	"\n"
 	"    if (!input) { return; }\n"
 	"    match = /^.*?((?:\\w+\\.)*\\w*)$/.exec(input);\n"
@@ -406,10 +411,13 @@ static const char *linenoise_hints_script =
 	"    partial = propseq[propseq.length - 1];\n"
 	"    res = [];\n"
 	"    found = Object.create(null);  // keys already handled\n"
+	"    sanity = 1000;\n"
 	"    while (obj != null) {\n"
+	"        if (--sanity < 0) { throw new Error('sanity'); }\n"
 	"        names = Object.getOwnPropertyNames(Object(obj));\n"
 	"        first = true;\n"
 	"        for (i = 0; i < names.length; i++) {\n"
+	"            if (--sanity < 0) { throw new Error('sanity'); }\n"
 	"            name = names[i];\n"
 	"            if (Number(name) >= 0) { continue; }  // ignore array keys\n"
 	"            if (name.substring(0, partial.length) !== partial) { continue; }\n"
@@ -459,7 +467,7 @@ static char *linenoise_hints(const char *buf, int *color, int *bold) {
 		*color = 31;  /* red */
 		*bold = 1;
 		duk_pop_2(ctx);
-		return (char *) res;
+		return (char *) (uintptr_t) res;  /* uintptr_t cast to avoid const discard warning. */
 	}
 
 	if (duk_is_object(ctx, -1)) {
@@ -482,7 +490,7 @@ static char *linenoise_hints(const char *buf, int *color, int *bold) {
 		duk_pop(ctx);
 
 		duk_pop_2(ctx);
-		return (char *) res;
+		return (char *) (uintptr_t) res;  /* uintptr_t cast to avoid const discard warning. */
 	}
 
 	duk_pop_2(ctx);
@@ -964,10 +972,10 @@ static duk_ret_t fileio_write_file(duk_context *ctx) {
 #endif  /* DUK_CMDLINE_FILEIO */
 
 /*
- *  String.fromBuffer()
+ *  String.fromBufferRaw()
  */
 
-static duk_ret_t string_frombuffer(duk_context *ctx) {
+static duk_ret_t string_frombufferraw(duk_context *ctx) {
 	duk_buffer_to_string(ctx, 0);
 	return 1;
 }
@@ -1014,7 +1022,7 @@ static void debugger_detached(duk_context *ctx, void *udata) {
 	/* Ensure socket is closed even when detach is initiated by Duktape
 	 * rather than debug client.
 	 */
-        duk_trans_socket_finish();
+	duk_trans_socket_finish();
 
 	if (debugger_reattach) {
 		/* For automatic reattach testing. */
@@ -1115,7 +1123,7 @@ static duk_context *create_duktape_heap(int alloc_provider, int debugger, int aj
 	if (!ctx) {
 		fprintf(stderr, "Failed to create Duktape heap\n");
 		fflush(stderr);
-		exit(-1);
+		exit(1);
 	}
 
 #if defined(DUK_CMDLINE_AJSHEAP)
@@ -1136,8 +1144,8 @@ static duk_context *create_duktape_heap(int alloc_provider, int debugger, int aj
 	duk_print_alert_init(ctx, 0 /*flags*/);
 #endif
 
-	/* Register String.fromBuffer() which does a 1:1 buffer-to-string
-	 * coercion needed by testcases.  String.fromBuffer() is -not- a
+	/* Register String.fromBufferRaw() which does a 1:1 buffer-to-string
+	 * coercion needed by testcases.  String.fromBufferRaw() is -not- a
 	 * default built-in!  For stripped builds the 'String' built-in
 	 * doesn't exist and we create it here; for ROM builds it may be
 	 * present but unwritable (which is ignored).
@@ -1145,9 +1153,9 @@ static duk_context *create_duktape_heap(int alloc_provider, int debugger, int aj
 	duk_eval_string(ctx,
 		"(function(v){"
 		    "if (typeof String === 'undefined') { String = {}; }"
-		    "Object.defineProperty(String, 'fromBuffer', {value:v, configurable:true});"
+		    "Object.defineProperty(String, 'fromBufferRaw', {value:v, configurable:true});"
 		"})");
-	duk_push_c_function(ctx, string_frombuffer, 1 /*nargs*/);
+	duk_push_c_function(ctx, string_frombufferraw, 1 /*nargs*/);
 	(void) duk_pcall(ctx, 1);
 	duk_pop(ctx);
 

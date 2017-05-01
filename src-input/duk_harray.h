@@ -1,12 +1,12 @@
 /*
- *  Heap Array object representation.  Used for actual Array instances.
+ *  Array object representation, used for actual Array instances.
  *
  *  All objects with the exotic array behavior (which must coincide with having
  *  internal class array) MUST be duk_harrays.  No other object can be a
  *  duk_harray.  However, duk_harrays may not always have an array part.
  */
 
-#ifndef DUK_HARRAY_H_INCLUDED
+#if !defined(DUK_HARRAY_H_INCLUDED)
 #define DUK_HARRAY_H_INCLUDED
 
 #define DUK_ASSERT_HARRAY_VALID(h) do { \

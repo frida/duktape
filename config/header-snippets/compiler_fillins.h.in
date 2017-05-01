@@ -29,9 +29,8 @@
 #endif
 
 #if !defined(DUK_CAUSE_SEGFAULT)
-/* This is used by the default fatal error handling to cause the program to
- * intentionally segfault on a fatal error.  Valgrind will then indicate the
- * C call stack leading to the error.
+/* This can be used for testing; valgrind will then indicate the C call stack
+ * leading to the call site.
  */
 #define DUK_CAUSE_SEGFAULT()  do { *((volatile duk_uint32_t *) NULL) = (duk_uint32_t) 0xdeadbeefUL; } while (0)
 #endif
@@ -39,7 +38,8 @@
 /* Macro for suppressing warnings for potentially unreferenced variables.
  * The variables can be actually unreferenced or unreferenced in some
  * specific cases only; for instance, if a variable is only debug printed,
- * it is unreferenced when debug printing is disabled.
+ * it is unreferenced when debug printing is disabled.  May cause warnings
+ * for volatile arguments.
  */
 #define DUK_UNREF(x)  do { (void) (x); } while (0)
 #endif
@@ -67,6 +67,9 @@
 #if !defined(DUK_UNLIKELY)
 #define DUK_UNLIKELY(x)  (x)
 #endif
+#if !defined(DUK_UNPREDICTABLE)
+#define DUK_UNPREDICTABLE(x)  (x)
+#endif
 
 #if !defined(DUK_NOINLINE)
 #define DUK_NOINLINE       /*nop*/
@@ -76,6 +79,13 @@
 #endif
 #if !defined(DUK_ALWAYS_INLINE)
 #define DUK_ALWAYS_INLINE  /*nop*/
+#endif
+
+#if !defined(DUK_HOT)
+#define DUK_HOT            /*nop*/
+#endif
+#if !defined(DUK_COLD)
+#define DUK_COLD           /*nop*/
 #endif
 
 #if !defined(DUK_EXTERNAL_DECL)

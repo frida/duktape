@@ -90,14 +90,15 @@ DUK_LOCAL double duk__fmax_fixed(double x, double y) {
 	return duk_double_fmax(x, y);
 }
 
+#if defined(DUK_USE_ES6)
 DUK_LOCAL double duk__cbrt(double x) {
 	/* cbrt() is C99.  To avoid hassling embedders with the need to provide a
 	 * cube root function, we can get by with pow().  The result is not
-	 * identical, but that's OK: ES6 says it's implementation-dependent.
+	 * identical, but that's OK: ES2015 says it's implementation-dependent.
 	 */
 
 #if defined(DUK_CBRT)
-	/* cbrt() matches ES6 requirements. */
+	/* cbrt() matches ES2015 requirements. */
 	return DUK_CBRT(x);
 #else
 	duk_small_int_t c = (duk_small_int_t) DUK_FPCLASSIFY(x);
@@ -118,7 +119,7 @@ DUK_LOCAL double duk__log2(double x) {
 #if defined(DUK_LOG2)
 	return DUK_LOG2(x);
 #else
-	return DUK_LOG(x) / DUK_LOG(2.0);
+	return DUK_LOG(x) * DUK_DOUBLE_LOG2E;
 #endif
 }
 
@@ -126,7 +127,7 @@ DUK_LOCAL double duk__log10(double x) {
 #if defined(DUK_LOG10)
 	return DUK_LOG10(x);
 #else
-	return DUK_LOG(x) / DUK_LOG(10.0);
+	return DUK_LOG(x) * DUK_DOUBLE_LOG10E;
 #endif
 }
 
@@ -134,9 +135,13 @@ DUK_LOCAL double duk__trunc(double x) {
 #if defined(DUK_TRUNC)
 	return DUK_TRUNC(x);
 #else
+	/* Handles -0 correctly: -0.0 matches 'x >= 0.0' but floor()
+	 * is required to return -0 when the argument is -0.
+	 */
 	return x >= 0.0 ? DUK_FLOOR(x) : DUK_CEIL(x);
 #endif
 }
+#endif  /* DUK_USE_ES6 */
 
 DUK_LOCAL double duk__round_fixed(double x) {
 	/* Numbers half-way between integers must be rounded towards +Infinity,
@@ -220,7 +225,34 @@ DUK_LOCAL double duk__sqrt(double x) {
 DUK_LOCAL double duk__tan(double x) {
 	return DUK_TAN(x);
 }
-DUK_LOCAL double duk__atan2(double x, double y) {
+DUK_LOCAL double duk__atan2_fixed(double x, double y) {
+#if defined(DUK_USE_ATAN2_WORKAROUNDS)
+	/* Specific fixes to common atan2() implementation issues:
+	 * - test-bug-mingw-math-issues.js
+	 */
+	if (DUK_ISINF(x) && DUK_ISINF(y)) {
+		if (DUK_SIGNBIT(x)) {
+			if (DUK_SIGNBIT(y)) {
+				return -2.356194490192345;
+			} else {
+				return -0.7853981633974483;
+			}
+		} else {
+			if (DUK_SIGNBIT(y)) {
+				return 2.356194490192345;
+			} else {
+				return 0.7853981633974483;
+			}
+		}
+	}
+#else
+	/* Some ISO C assumptions. */
+	DUK_ASSERT(DUK_ATAN2(DUK_DOUBLE_INFINITY, DUK_DOUBLE_INFINITY) == 0.7853981633974483);
+	DUK_ASSERT(DUK_ATAN2(-DUK_DOUBLE_INFINITY, DUK_DOUBLE_INFINITY) == -0.7853981633974483);
+	DUK_ASSERT(DUK_ATAN2(DUK_DOUBLE_INFINITY, -DUK_DOUBLE_INFINITY) == 2.356194490192345);
+	DUK_ASSERT(DUK_ATAN2(-DUK_DOUBLE_INFINITY, -DUK_DOUBLE_INFINITY) == -2.356194490192345);
+#endif
+
 	return DUK_ATAN2(x, y);
 }
 #endif  /* DUK_USE_AVOID_PLATFORM_FUNCPTRS */
@@ -241,11 +273,13 @@ DUK_LOCAL const duk__one_arg_func duk__one_arg_funcs[] = {
 	duk__sin,
 	duk__sqrt,
 	duk__tan,
+#if defined(DUK_USE_ES6)
 	duk__cbrt,
 	duk__log2,
 	duk__log10,
 	duk__trunc
-#else
+#endif
+#else  /* DUK_USE_AVOID_PLATFORM_FUNCPTRS */
 	DUK_FABS,
 	DUK_ACOS,
 	DUK_ASIN,
@@ -259,20 +293,22 @@ DUK_LOCAL const duk__one_arg_func duk__one_arg_funcs[] = {
 	DUK_SIN,
 	DUK_SQRT,
 	DUK_TAN,
+#if defined(DUK_USE_ES6)
 	duk__cbrt,
 	duk__log2,
 	duk__log10,
 	duk__trunc
 #endif
+#endif  /* DUK_USE_AVOID_PLATFORM_FUNCPTRS */
 };
 
 /* order must match constants in genbuiltins.py */
 DUK_LOCAL const duk__two_arg_func duk__two_arg_funcs[] = {
 #if defined(DUK_USE_AVOID_PLATFORM_FUNCPTRS)
-	duk__atan2,
+	duk__atan2_fixed,
 	duk_js_arith_pow
 #else
-	DUK_ATAN2,
+	duk__atan2_fixed,
 	duk_js_arith_pow
 #endif
 };

@@ -14,4 +14,10 @@ summary: |
 example: |
   printf("value: %lf\n", (double) duk_get_number(ctx, -3));
 
+tags:
+  - stack
+
+seealso:
+  - duk_get_number_default
+
 introduced: 1.0.0

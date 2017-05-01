@@ -62,7 +62,7 @@ DUK_LOCAL duk_uint32_t duk__push_this_obj_len_u32(duk_context *ctx) {
 	/* XXX: push more directly? */
 	(void) duk_push_this_coercible_to_object(ctx);
 	DUK_ASSERT_HOBJECT_VALID(duk_get_hobject(ctx, -1));
-	duk_get_prop_stridx(ctx, -1, DUK_STRIDX_LENGTH);
+	duk_get_prop_stridx_short(ctx, -1, DUK_STRIDX_LENGTH);
 	len = duk_to_uint32(ctx, -1);
 
 	/* -> [ ... ToObject(this) ToUint32(length) ] */
@@ -192,7 +192,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_constructor_is_array(duk_context *ctx) {
 
 DUK_INTERNAL duk_ret_t duk_bi_array_prototype_to_string(duk_context *ctx) {
 	(void) duk_push_this_coercible_to_object(ctx);
-	duk_get_prop_stridx(ctx, -1, DUK_STRIDX_JOIN);
+	duk_get_prop_stridx_short(ctx, -1, DUK_STRIDX_JOIN);
 
 	/* [ ... this func ] */
 	if (!duk_is_callable(ctx, -1)) {
@@ -302,7 +302,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_concat(duk_context *ctx) {
 	 * is known to be an array, this should be equivalent.
 	 */
 	duk_push_uarridx(ctx, idx_last);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_W);
+	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_W);
 
 	DUK_ASSERT_TOP(ctx, n + 1);
 	return 1;
@@ -379,11 +379,11 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_join_shared(duk_context *ctx) {
 		duk_get_prop_index(ctx, 1, (duk_uarridx_t) idx);
 		if (duk_is_null_or_undefined(ctx, -1)) {
 			duk_pop(ctx);
-			duk_push_hstring_stridx(ctx, DUK_STRIDX_EMPTY_STRING);
+			duk_push_hstring_empty(ctx);
 		} else {
 			if (to_locale_string) {
 				duk_to_object(ctx, -1);
-				duk_get_prop_stridx(ctx, -1, DUK_STRIDX_TO_LOCALE_STRING);
+				duk_get_prop_stridx_short(ctx, -1, DUK_STRIDX_TO_LOCALE_STRING);
 				duk_insert(ctx, -2);  /* -> [ ... toLocaleString ToObject(val) ] */
 				duk_call_method(ctx, 0);
 			}
@@ -468,7 +468,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_pop(duk_context *ctx) {
 	len = duk__push_this_obj_len_u32(ctx);
 	if (len == 0) {
 		duk_push_int(ctx, 0);
-		duk_put_prop_stridx(ctx, 0, DUK_STRIDX_LENGTH);
+		duk_put_prop_stridx_short(ctx, 0, DUK_STRIDX_LENGTH);
 		return 0;
 	}
 	idx = len - 1;
@@ -476,7 +476,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_pop(duk_context *ctx) {
 	duk_get_prop_index(ctx, 0, (duk_uarridx_t) idx);
 	duk_del_prop_index(ctx, 0, (duk_uarridx_t) idx);
 	duk_push_u32(ctx, idx);
-	duk_put_prop_stridx(ctx, 0, DUK_STRIDX_LENGTH);
+	duk_put_prop_stridx_short(ctx, 0, DUK_STRIDX_LENGTH);
 	return 1;
 }
 
@@ -523,6 +523,8 @@ DUK_LOCAL duk_ret_t duk__array_push_fastpath(duk_context *ctx, duk_harray *h_arr
 	len += n;
 	h_arr->length = len;
 
+	DUK_ASSERT((duk_uint_t) len == len);
+	duk_push_uint(ctx, (duk_uint_t) len);
 	return 1;
 }
 #endif  /* DUK_USE_ARRAY_FASTPATH */
@@ -580,7 +582,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_push(duk_context *ctx) {
 
 	duk_push_u32(ctx, len);
 	duk_dup_top(ctx);
-	duk_put_prop_stridx(ctx, -4, DUK_STRIDX_LENGTH);
+	duk_put_prop_stridx_short(ctx, -4, DUK_STRIDX_LENGTH);
 
 	/* [ arg1 ... argN obj length new_length ] */
 	return 1;
@@ -671,25 +673,25 @@ DUK_LOCAL duk_small_int_t duk__array_sort_compare(duk_context *ctx, duk_int_t id
 	if (!duk_is_undefined(ctx, idx_fn)) {
 		duk_double_t d;
 
-		/* no need to check callable; duk_call() will do that */
+		/* No need to check callable; duk_call() will do that. */
 		duk_dup(ctx, idx_fn);    /* -> [ ... x y fn ] */
 		duk_insert(ctx, -3);     /* -> [ ... fn x y ] */
 		duk_call(ctx, 2);        /* -> [ ... res ] */
 
-		/* The specification is a bit vague what to do if the return
-		 * value is not a number.  Other implementations seem to
-		 * tolerate non-numbers but e.g. V8 won't apparently do a
-		 * ToNumber().
+		/* ES5 is a bit vague about what to do if the return value is
+		 * not a number.  ES2015 provides a concrete description:
+		 * http://www.ecma-international.org/ecma-262/6.0/#sec-sortcompare.
 		 */
 
-		/* XXX: best behavior for real world compatibility? */
-
-		d = duk_to_number(ctx, -1);
+		d = duk_to_number_m1(ctx);
 		if (d < 0.0) {
 			ret = -1;
 		} else if (d > 0.0) {
 			ret = 1;
 		} else {
+			/* Because NaN compares to false, NaN is handled here
+			 * without an explicit check above.
+			 */
 			ret = 0;
 		}
 
@@ -702,7 +704,7 @@ DUK_LOCAL duk_small_int_t duk__array_sort_compare(duk_context *ctx, duk_int_t id
 
 	/* XXX: any special handling for plain array; causes repeated coercion now? */
 	h1 = duk_to_hstring(ctx, -2);
-	h2 = duk_to_hstring(ctx, -1);
+	h2 = duk_to_hstring_m1(ctx);
 	DUK_ASSERT(h1 != NULL);
 	DUK_ASSERT(h2 != NULL);
 
@@ -938,11 +940,11 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_splice(duk_context *ctx) {
 	}
 	DUK_ASSERT(act_start >= 0 && act_start <= (duk_int_t) len);
 
-#ifdef DUK_USE_NONSTD_ARRAY_SPLICE_DELCOUNT
+#if defined(DUK_USE_NONSTD_ARRAY_SPLICE_DELCOUNT)
 	if (have_delcount) {
 #endif
 		del_count = duk_to_int_clamped(ctx, 1, 0, len - act_start);
-#ifdef DUK_USE_NONSTD_ARRAY_SPLICE_DELCOUNT
+#if defined(DUK_USE_NONSTD_ARRAY_SPLICE_DELCOUNT)
 	} else {
 		/* E5.1 standard behavior when deleteCount is not given would be
 		 * to treat it just like if 'undefined' was given, which coerces
@@ -987,7 +989,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_splice(duk_context *ctx) {
 		}
 	}
 	duk_push_u32(ctx, (duk_uint32_t) del_count);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_W);
+	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_W);
 
 	/* Steps 12 and 13: reorganize elements to make room for itemCount elements */
 
@@ -1060,7 +1062,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_splice(duk_context *ctx) {
 	 */
 
 	duk_push_u32(ctx, len - del_count + item_count);
-	duk_put_prop_stridx(ctx, -4, DUK_STRIDX_LENGTH);
+	duk_put_prop_stridx_short(ctx, -4, DUK_STRIDX_LENGTH);
 
 	/* result array is already at the top of stack */
 	DUK_ASSERT_TOP(ctx, nargs + 3);
@@ -1174,7 +1176,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_slice(duk_context *ctx) {
 	}
 
 	duk_push_u32(ctx, res_length);
-	duk_xdef_prop_stridx(ctx, 4, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_W);
+	duk_xdef_prop_stridx_short(ctx, 4, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_W);
 
 	DUK_ASSERT_TOP(ctx, 5);
 	return 1;
@@ -1191,7 +1193,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_shift(duk_context *ctx) {
 	len = duk__push_this_obj_len_u32(ctx);
 	if (len == 0) {
 		duk_push_int(ctx, 0);
-		duk_put_prop_stridx(ctx, 0, DUK_STRIDX_LENGTH);
+		duk_put_prop_stridx_short(ctx, 0, DUK_STRIDX_LENGTH);
 		return 0;
 	}
 
@@ -1216,7 +1218,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_shift(duk_context *ctx) {
 	duk_del_prop_index(ctx, 0, (duk_uarridx_t) (len - 1));
 
 	duk_push_u32(ctx, (duk_uint32_t) (len - 1));
-	duk_put_prop_stridx(ctx, 0, DUK_STRIDX_LENGTH);
+	duk_put_prop_stridx_short(ctx, 0, DUK_STRIDX_LENGTH);
 
 	DUK_ASSERT_TOP(ctx, 3);
 	return 1;
@@ -1280,7 +1282,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_unshift(duk_context *ctx) {
 	DUK_ASSERT_TOP(ctx, nargs + 2);
 	duk_push_u32(ctx, len + nargs);
 	duk_dup_top(ctx);  /* -> [ ... ToObject(this) ToUint32(length) final_len final_len ] */
-	duk_put_prop_stridx(ctx, -4, DUK_STRIDX_LENGTH);
+	duk_put_prop_stridx_short(ctx, -4, DUK_STRIDX_LENGTH);
 	return 1;
 }
 
@@ -1508,7 +1510,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_iter_shared(duk_context *ctx) {
 		DUK_ASSERT_TOP(ctx, 5);
 		DUK_ASSERT(duk_is_array(ctx, -1));  /* topmost element is the result array already */
 		duk_push_u32(ctx, res_length);
-		duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_W);
+		duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_W);
 		break;
 	default:
 		DUK_UNREACHABLE();

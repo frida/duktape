@@ -15,10 +15,10 @@ index 10, string: 'foo'
 index 11, string: 'foo'
 index 12, string: '[object Object]'
 index 13, string: '[object Thread]'
-index 14, string: '[object ArrayBuffer]'
-index 15, string: '[object ArrayBuffer]'
-index 16, string: '[object ArrayBuffer]'
-index 17, string: '[object ArrayBuffer]'
+index 14, string: '[object Uint8Array]'
+index 15, string: '[object Uint8Array]'
+index 16, string: '[object Uint8Array]'
+index 17, string: '[object Uint8Array]'
 index 18, string: 'null'
 index 19, string: '0xdeadbeef'
 ==> rc=0, result='undefined'
@@ -60,7 +60,7 @@ static duk_ret_t test_1(duk_context *ctx, void *udata) {
 		ptr[i] = (char) ('a' + i);
 	}
 	duk_push_pointer(ctx, (void *) NULL);
-	duk_push_pointer(ctx, (void *) 0xdeadbeef);
+	duk_push_pointer(ctx, (void *) 0xdeadbeefUL);
 
 	n = duk_get_top(ctx);
 	printf("top: %ld\n", (long) n);

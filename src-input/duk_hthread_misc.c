@@ -7,11 +7,9 @@
 DUK_INTERNAL void duk_hthread_terminate(duk_hthread *thr) {
 	DUK_ASSERT(thr != NULL);
 
-	/* Order of unwinding is important */
-
-	duk_hthread_catchstack_unwind(thr, 0);
-
-	duk_hthread_callstack_unwind(thr, 0);  /* side effects, possibly errors */
+	while (thr->callstack_curr != NULL) {
+		duk_hthread_activation_unwind_norz(thr);
+	}
 
 	thr->valstack_bottom = thr->valstack;
 	duk_set_top((duk_context *) thr, 0);  /* unwinds valstack, updating refcounts */
@@ -21,26 +19,13 @@ DUK_INTERNAL void duk_hthread_terminate(duk_hthread *thr) {
 	/* Here we could remove references to built-ins, but it may not be
 	 * worth the effort because built-ins are quite likely to be shared
 	 * with another (unterminated) thread, and terminated threads are also
-	 * usually garbage collected quite quickly.  Also, doing DECREFs
-	 * could trigger finalization, which would run on the current thread
-	 * and have access to only some of the built-ins.  Garbage collection
-	 * deals with this correctly already.
+	 * usually garbage collected quite quickly.
+	 *
+	 * We could also shrink the value stack here, but that also may not
+	 * be worth the effort for the same reason.
 	 */
 
-	/* XXX: Shrink the stacks to minimize memory usage?  May not
-	 * be worth the effort because terminated threads are usually
-	 * garbage collected quite soon.
-	 */
-}
-
-DUK_INTERNAL duk_activation *duk_hthread_get_current_activation(duk_hthread *thr) {
-	DUK_ASSERT(thr != NULL);
-
-	if (thr->callstack_top > 0) {
-		return thr->callstack + thr->callstack_top - 1;
-	} else {
-		return NULL;
-	}
+	DUK_REFZERO_CHECK_SLOW(thr);
 }
 
 #if defined(DUK_USE_DEBUGGER_SUPPORT)
@@ -88,7 +73,9 @@ DUK_INTERNAL void duk_hthread_sync_currpc(duk_hthread *thr) {
 	if (thr->ptr_curr_pc != NULL) {
 		/* ptr_curr_pc != NULL only when bytecode executor is active. */
 		DUK_ASSERT(thr->callstack_top > 0);
-		act = thr->callstack + thr->callstack_top - 1;
+		DUK_ASSERT(thr->callstack_curr != NULL);
+		act = thr->callstack_curr;
+		DUK_ASSERT(act != NULL);
 		act->curr_pc = *thr->ptr_curr_pc;
 	}
 }
@@ -101,7 +88,9 @@ DUK_INTERNAL void duk_hthread_sync_and_null_currpc(duk_hthread *thr) {
 	if (thr->ptr_curr_pc != NULL) {
 		/* ptr_curr_pc != NULL only when bytecode executor is active. */
 		DUK_ASSERT(thr->callstack_top > 0);
-		act = thr->callstack + thr->callstack_top - 1;
+		DUK_ASSERT(thr->callstack_curr != NULL);
+		act = thr->callstack_curr;
+		DUK_ASSERT(act != NULL);
 		act->curr_pc = *thr->ptr_curr_pc;
 		thr->ptr_curr_pc = NULL;
 	}

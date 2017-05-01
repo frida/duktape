@@ -26,43 +26,43 @@ Duktape.dec function wc
 Duktape.compact function wc
 Duktape.env string wc
 Duktape.modLoaded object wc
-Duktape.Pointer.name string none
-Duktape.Pointer.length number none
+Duktape.Pointer.name string c
+Duktape.Pointer.length number c
 Duktape.Pointer.prototype object none
 Duktape.Pointer.prototype.constructor function wc
 Duktape.Pointer.prototype.toString function wc
 Duktape.Pointer.prototype.valueOf function wc
-Duktape.Pointer.prototype.toString.length number none
-Duktape.Pointer.prototype.toString.name string none
-Duktape.Pointer.prototype.valueOf.length number none
-Duktape.Pointer.prototype.valueOf.name string none
-Duktape.Thread.name string none
-Duktape.Thread.length number none
+Duktape.Pointer.prototype.toString.length number c
+Duktape.Pointer.prototype.toString.name string c
+Duktape.Pointer.prototype.valueOf.length number c
+Duktape.Pointer.prototype.valueOf.name string c
+Duktape.Thread.name string c
+Duktape.Thread.length number c
 Duktape.Thread.prototype object none
 Duktape.Thread.yield function wc
 Duktape.Thread.resume function wc
 Duktape.Thread.current function wc
 Duktape.Thread.prototype.constructor function wc
-Duktape.Thread.yield.length number none
-Duktape.Thread.yield.name string none
-Duktape.Thread.resume.length number none
-Duktape.Thread.resume.name string none
-Duktape.Thread.current.length number none
-Duktape.Thread.current.name string none
-Duktape.info.length number none
-Duktape.info.name string none
-Duktape.act.length number none
-Duktape.act.name string none
-Duktape.gc.length number none
-Duktape.gc.name string none
-Duktape.fin.length number none
-Duktape.fin.name string none
-Duktape.enc.length number none
-Duktape.enc.name string none
-Duktape.dec.length number none
-Duktape.dec.name string none
-Duktape.compact.length number none
-Duktape.compact.name string none
+Duktape.Thread.yield.length number c
+Duktape.Thread.yield.name string c
+Duktape.Thread.resume.length number c
+Duktape.Thread.resume.name string c
+Duktape.Thread.current.length number c
+Duktape.Thread.current.name string c
+Duktape.info.length number c
+Duktape.info.name string c
+Duktape.act.length number c
+Duktape.act.name string c
+Duktape.gc.length number c
+Duktape.gc.name string c
+Duktape.fin.length number c
+Duktape.fin.name string c
+Duktape.enc.length number c
+Duktape.enc.name string c
+Duktape.dec.length number c
+Duktape.dec.name string c
+Duktape.compact.length number c
+Duktape.compact.name string c
 ===*/
 
 function propsTest() {
@@ -155,7 +155,7 @@ function printEnc(x) {
 
 function printDec(x) {
     print(typeof x);
-    x = bufferToString(x);
+    x = bufferToStringRaw(x);
     var res = [];
     for (var i = 0; i < x.length; i++) {
         res.push(x.charCodeAt(i));
@@ -191,34 +191,38 @@ function encDecTest() {
 
     // ArrayBuffer input
     var ab = new ArrayBuffer(3);
-    ab[0] = 'f'.charCodeAt(0);
-    ab[1] = 'o'.charCodeAt(0);
-    ab[2] = 'o'.charCodeAt(0);
+    var u8 = new Uint8Array(ab);
+    u8[0] = 'f'.charCodeAt(0);
+    u8[1] = 'o'.charCodeAt(0);
+    u8[2] = 'o'.charCodeAt(0);
     printEnc(Duktape.enc('base64', ab));
     var ab = new ArrayBuffer(4);
-    ab[0] = 'Z'.charCodeAt(0);
-    ab[1] = 'm'.charCodeAt(0);
-    ab[2] = '9'.charCodeAt(0);
-    ab[3] = 'v'.charCodeAt(0);
+    var u8 = new Uint8Array(ab);
+    u8[0] = 'Z'.charCodeAt(0);
+    u8[1] = 'm'.charCodeAt(0);
+    u8[2] = '9'.charCodeAt(0);
+    u8[3] = 'v'.charCodeAt(0);
     printDec(Duktape.dec('base64', ab));
 
     // Uint8Array slice input
     var ab = new ArrayBuffer(6);
-    ab[0] = '!'.charCodeAt(0);
-    ab[1] = '!'.charCodeAt(0);
-    ab[2] = 'f'.charCodeAt(0);
-    ab[3] = 'o'.charCodeAt(0);
-    ab[4] = 'o'.charCodeAt(0);
-    ab[5] = '!'.charCodeAt(0);
+    var u8 = new Uint8Array(ab);
+    u8[0] = '!'.charCodeAt(0);
+    u8[1] = '!'.charCodeAt(0);
+    u8[2] = 'f'.charCodeAt(0);
+    u8[3] = 'o'.charCodeAt(0);
+    u8[4] = 'o'.charCodeAt(0);
+    u8[5] = '!'.charCodeAt(0);
     printEnc(Duktape.enc('base64', new Uint8Array(ab).subarray(2, 5)));
     var ab = new ArrayBuffer(7);
-    ab[0] = '_'.charCodeAt(0);
-    ab[1] = '_'.charCodeAt(0);
-    ab[2] = 'Z'.charCodeAt(0);
-    ab[3] = 'm'.charCodeAt(0);
-    ab[4] = '9'.charCodeAt(0);
-    ab[5] = 'v'.charCodeAt(0);
-    ab[6] = '_'.charCodeAt(0);
+    var u8 = new Uint8Array(ab);
+    u8[0] = '_'.charCodeAt(0);
+    u8[1] = '_'.charCodeAt(0);
+    u8[2] = 'Z'.charCodeAt(0);
+    u8[3] = 'm'.charCodeAt(0);
+    u8[4] = '9'.charCodeAt(0);
+    u8[5] = 'v'.charCodeAt(0);
+    u8[6] = '_'.charCodeAt(0);
     printDec(Duktape.dec('base64', new Uint8Array(ab).subarray(2, 6)));
 }
 

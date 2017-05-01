@@ -100,8 +100,9 @@ static duk_ret_t duk__console_dir(duk_context *ctx) {
 
 static void duk__console_reg_vararg_func(duk_context *ctx, duk_c_function func, const char *name) {
 	duk_push_c_function(ctx, func, DUK_VARARGS);
+	duk_push_string(ctx, "name");
 	duk_push_string(ctx, name);
-	duk_put_prop_string(ctx, -2, "name");  /* Improve stacktraces by displaying function name */
+	duk_def_prop(ctx, -3, DUK_DEFPROP_HAVE_VALUE | DUK_DEFPROP_FORCE);  /* Improve stacktraces by displaying function name */
 	duk_put_prop_string(ctx, -2, name);
 }
 
@@ -118,7 +119,7 @@ void duk_console_init(duk_context *ctx, duk_uint_t flags) {
 		        "try{"
 		            "return E('jx',v);"
 		        "}catch(e){"
-		            "return ''+v;"
+		            "return String(v);"  /* String() allows symbols, ToString() internal algorithm doesn't. */
 		        "}"
 		    "};"
 		"})(Duktape.enc)");

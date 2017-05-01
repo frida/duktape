@@ -16,7 +16,7 @@
  *  avoid evaluating their argument more than once.
  */
 
-#ifndef DUK_TVAL_H_INCLUDED
+#if !defined(DUK_TVAL_H_INCLUDED)
 #define DUK_TVAL_H_INCLUDED
 
 /* sanity */
@@ -62,6 +62,9 @@ typedef struct {
 /* for convenience */
 #define DUK_XTAG_BOOLEAN_FALSE    0xfff50000UL
 #define DUK_XTAG_BOOLEAN_TRUE     0xfff50001UL
+
+#define DUK_TVAL_IS_VALID_TAG(tv) \
+	(DUK_TVAL_GET_TAG((tv)) - DUK_TAG_MIN <= DUK_TAG_MAX - DUK_TAG_MIN)
 
 /* DUK_TVAL_UNUSED initializer for duk_tval_unused, works for any endianness. */
 #define DUK_TVAL_UNUSED_INITIALIZER() \
@@ -347,6 +350,9 @@ typedef struct {
 #define DUK_TAG_BUFFER                10
 #define DUK_TAG_MAX                   10
 
+#define DUK_TVAL_IS_VALID_TAG(tv) \
+	(DUK_TVAL_GET_TAG((tv)) - DUK_TAG_MIN <= DUK_TAG_MAX - DUK_TAG_MIN)
+
 /* DUK_TAG_NUMBER is intentionally first, as it is the default clause in code
  * to support the 8-byte representation.  Further, it is a non-heap-allocated
  * type so it should come before DUK_TAG_STRING.  Finally, it should not break
@@ -589,10 +595,15 @@ DUK_INTERNAL_DECL duk_double_t duk_tval_get_number_unpacked_fastint(duk_tval *tv
 #define DUK_TVAL_SET_BOOLEAN_TRUE(tv)        DUK_TVAL_SET_BOOLEAN((tv), 1)
 #define DUK_TVAL_SET_BOOLEAN_FALSE(tv)       DUK_TVAL_SET_BOOLEAN((tv), 0)
 
+#define DUK_TVAL_STRING_IS_SYMBOL(tv) \
+	DUK_HSTRING_HAS_SYMBOL(DUK_TVAL_GET_STRING((tv)))
+
 /* Lightfunc flags packing and unpacking. */
-/* Sign extend: 0x0000##00 -> 0x##000000 -> sign extend to 0xssssss## */
+/* Sign extend: 0x0000##00 -> 0x##000000 -> sign extend to 0xssssss##.
+ * Avoid signed shifts due to portability limitations.
+ */
 #define DUK_LFUNC_FLAGS_GET_MAGIC(lf_flags) \
-	((((duk_int32_t) (lf_flags)) << 16) >> 24)
+	((duk_int32_t) (duk_int8_t) (((duk_uint16_t) (lf_flags)) >> 8))
 #define DUK_LFUNC_FLAGS_GET_LENGTH(lf_flags) \
 	(((lf_flags) >> 4) & 0x0f)
 #define DUK_LFUNC_FLAGS_GET_NARGS(lf_flags) \

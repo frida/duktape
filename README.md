@@ -16,9 +16,11 @@ to call Ecmascript functions from C code and vice versa.
 Main features:
 
 * Embeddable, portable, compact
-* Ecmascript E5/E5.1 compliant, some features implemented from
-  Ecmascript 2015 (E6) and Ecmascript 2016 (E7)
-* Khronos/ES6 TypedArray and Node.js Buffer bindings
+* Ecmascript E5/E5.1 compliant, with some semantics updated from ES2015+
+* Partial support for Ecmascript 2015 (E6) and Ecmascript 2016 (E7),
+  [Post-ES5 feature status](http://wiki.duktape.org/PostEs5Features.html),
+  [kangax/compat-table](https://kangax.github.io/compat-table">kangax/compat-table)
+* ES2015 TypedArray and Node.js Buffer bindings
 * WHATWG Encoding API living standard
 * Built-in debugger
 * Built-in regular expression engine
@@ -26,7 +28,7 @@ Main features:
 * Minimal platform dependencies
 * Combined reference counting and mark-and-sweep garbage collection with finalization
 * Custom features like co-routines
-* Property virtualization using a subset of Ecmascript E6 Proxy object
+* Property virtualization using a subset of Ecmascript E2015 Proxy object
 * Bytecode dump/load for caching compiled functions
 * Distributable includes an optional logging framework, CommonJS-based module
   loading implementations, etc
@@ -143,13 +145,17 @@ Branch policy
   on to active development of the next major release.  For example,
   `v1-maintenance` was created when 1.5.0 was released (last planned 1.x
   release) and development of 2.0.0 (with API incompatible changes) started
-  on master.  If a 1.6.0 is made, it will be made from `v1-maintenance`.
+  on master.  The 1.6.0 and 1.7.0 releases were made from `v1-maintenance`
+  for example.
 
 Versioning
 ----------
 
-Duktape uses [Semantic Versioning](http://semver.org/), see
-[Versioning](http://duktape.org/guide.html#versioning).
+Duktape uses [Semantic Versioning](http://semver.org/).
+Because Duktape tracks the latest Ecmascript specification versions,
+compliance fixes are made in minor versions even when they are technically
+not backwards compatible.  See
+[Versioning](http://duktape.org/guide.html#versioning) for details.
 
 Reporting bugs
 --------------

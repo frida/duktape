@@ -428,23 +428,12 @@ a variable.  However, this approach does not allow validation of the
 resulting value stack index (e.g. to verify that it is indeed inside the
 activation record's frame).
 
-The internal object is initialized with:
-
-* Object class set to ``DUK_HOBJECT_CLASS_DECENV``
-
-* Object flag ``DUK_HOBJECT_FLAG_ENVRECCLOSED`` cleared (assuming the
-  environment is open)
-
-* Internal prototype referring to outer environment record
-
-* Internal control properties: ``_Callee``, ``_Thread``, ``_Regbase``
-
 When a declarative environment is "closed", identifiers bound to
-activation registers are copied  to the internal environment record
-object as plain properties (with the help of the callee's ``_Varmap``)
-and the environment record's internal control properties are deleted.
-The flag ``DUK_HOBJECT_FLAG_ENVRECCLOSED`` is set to allow open scope
-lookups to be skipped in later lookups.
+activation registers are copied to the internal environment record
+object as plain properties (with the help of the callee's ``_Varmap``).
+The internal control fields are updated to indicate that the environment
+is closed, so that later lookups can skip open scope lookups which would
+now reference stale value stack indices.
 
 The variables mapped as properties have their attributes set as follows:
 
@@ -518,9 +507,10 @@ This could happen in this example::
     }
   }
 
-The objects could be roughly as follows (leading underscore indicates
-an internal value not visible to the program, ``__prototype`` denotes
-internal prototype)::
+The objects could be roughly as follows; leading underscore indicates
+an internal value not visible to the program, double leading underscore
+indicates internal properties stored directly in internal structures
+outside the property table, e.g. ``__prototype`` denotes internal prototype::
 
   global_object = {
     "NaN": NaN,
@@ -544,16 +534,16 @@ internal prototype)::
   record1 = {
     // Flag DUK_HOBJECT_CLASS_OBJENV set
     "__prototype": null,
-    "_Target": global_object,    // identifies binding target
+    "__target": global_object,    // identifies binding target
+    "__has_this": false
   }
 
   record2 = {
     // Flag DUK_HOBJECT_CLASS_DECENV set
-    // Flag DUK_HOBJECT_CLASS_ENVRECCLOSED not set (still open)
     "__prototype": record1,
-    "_Callee": func,     // provides access to _Varmap (name-to-reg)
-    "_Thread": thread,   // identifies valstack
-    "_Regbase": 100,     // identifies valstack base for regs
+    "__varmap": varmap,  // _Varmap of target function (name-to-reg)
+    "__thread": thread,  // identifies valstack
+    "__regbase": 100,   // identifies valstack base for regs
     "quux": "a non-register binding"
 
     // var "foo" resides in value stack absolute index 100 + 0 = 100,
@@ -563,7 +553,8 @@ internal prototype)::
   record3 = {
     // Flag DUK_HOBJECT_CLASS_OBJENV set
     "__prototype": record2,
-    "_Target": with_object
+    "__target": with_object,
+    "__has_this": true
   }
 
 Once again, the compiler strives to avoid creating explicit environment
@@ -590,8 +581,8 @@ detailed properties vary a bit between the two.
 
 More concretely:
 
-* The ``DUK_HOBJECT_FLAG_NEWENV`` object level flag, and the internal
-  properties ``_Lexenv`` and ``_Varenv`` control activation record
+* The ``DUK_HOBJECT_FLAG_NEWENV`` object level flag, and the ``lex_env``
+  and ``var_env`` fields of ``duk_hcompfunc`` control activation record
   lexical and variable environment initialization as described below.
 
 * The internal property ``_Varmap`` contains a mapping from an
@@ -606,35 +597,6 @@ More concretely:
   represents a named function expression.  For such functions, the function
   name (stored in ``name``) needs to be bound in an environment record just
   outside a function activation's environment record.
-
-To minimize book-keeping in common cases, the following short cuts
-are supported:
-
-* If both scope references are missing:
-
-  + Assume that the function has an empty declarative environment record,
-    whose parent is the global environment record.
-
-  + For variable lookups this means that we proceed directly to the global
-    environment record.
-
-  + For variable declarations this means that a declarative environment
-    record needs to be created on demand.
-
-* If ``_Varenv`` is missing:
-
-  + Assume that ``_Varenv`` has the same value as ``_Lexenv``.
-
-  + This is very common, and saves one (unnecessary) reference.
-
-  + Note: it would be more logical to allow ``_Lexenv`` to be missing
-    and default it to ``_Varenv``; however, dynamic variable
-    declarations are comparatively rare so the defaulting is more
-    useful this way around
-
-* If ``_Varmap`` is missing:
-
-  + Assume that the function has no register-mapped variables.
 
 * The compiler attempts to drop any fields not required from compiled
   objects.  In many common cases (even when dynamic variables accesses
@@ -651,11 +613,6 @@ Notes:
 * Environment record initialization is done only when (if) it is actually
   needed (e.g. for a function declaration).  It is not created
   unnecessarily when a function is called.
-
-* The default behavior for ``_Lexenv`` and ``_Varenv`` allows them to
-  be omitted in a large number of cases (for instance, many functions
-  are declared in the global scope, and for many compiled eval
-  functions the values are the same).
 
 * The ``DUK_HOBJECT_FLAG_NEWENV`` is set for ordinary functions, which
   always get a new environment record for variable declaration and

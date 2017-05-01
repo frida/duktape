@@ -3,17 +3,21 @@
  *
  *  Note: for a fully implemented Proxy getting at the Proxy object properties
  *  (instead of the target object properties) is not easy.  Right now Duktape's
- *  Proxy is a subset of the ES6 Proxy, and it's possible to access properties
+ *  Proxy is a subset of the ES2015 Proxy, and it's possible to access properties
  *  of the Proxy itself using e.g. Object.getOwnPropertyDescriptor() to check for
  *  property attributes.  Once that behavior is fixed, this test will fail and
  *  can maybe be reimplemented using the C API.
+ *
+ *  Skipped since Duktape 2.2: with duk_hproxy proxy target and handler are
+ *  struct fields rather than internal properties.
  */
 
 /*@include util-buffer.js@*/
 
 /*---
 {
-    "custom": true
+    "custom": true,
+    "skip": true
 }
 ---*/
 
@@ -54,12 +58,10 @@ function proxyPropertyTest(key) {
 }
 
 function proxyInternalKeysSandboxTest() {
-    var pfx = bufferToString(Duktape.dec('hex', 'ff'));
-
     print('_Target');
-    proxyPropertyTest(pfx + 'Target');
+    proxyPropertyTest(bufferToStringRaw(Duktape.dec('hex', 'ff546172676574')));
     print('_Handler');
-    proxyPropertyTest(pfx + 'Handler');
+    proxyPropertyTest(bufferToStringRaw(Duktape.dec('hex', 'ff48616e646c6572')));
 }
 
 try {

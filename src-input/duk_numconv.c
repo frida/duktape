@@ -105,7 +105,7 @@ DUK_LOCAL void duk__bi_print(const char *name, duk__bigint *x) {
 }
 #endif
 
-#ifdef DUK_USE_ASSERTIONS
+#if defined(DUK_USE_ASSERTIONS)
 DUK_LOCAL duk_small_int_t duk__bi_is_valid(duk__bigint *x) {
 	return (duk_small_int_t)
 	       ( ((x->n >= 0) && (x->n <= DUK__BI_MAX_PARTS)) /* is valid size */ &&
@@ -190,7 +190,7 @@ DUK_LOCAL int duk__bi_compare(duk__bigint *x, duk__bigint *y) {
 }
 
 /* x <- y + z */
-#ifdef DUK_USE_64BIT_OPS
+#if defined(DUK_USE_64BIT_OPS)
 DUK_LOCAL void duk__bi_add(duk__bigint *x, duk__bigint *y, duk__bigint *z) {
 	duk_uint64_t tmp;
 	duk_small_int_t i, ny, nz;
@@ -300,7 +300,7 @@ DUK_LOCAL void duk__bi_add_copy(duk__bigint *x, duk__bigint *y, duk__bigint *t) 
 #endif
 
 /* x <- y - z, require x >= y => z >= 0, i.e. y >= z */
-#ifdef DUK_USE_64BIT_OPS
+#if defined(DUK_USE_64BIT_OPS)
 DUK_LOCAL void duk__bi_sub(duk__bigint *x, duk__bigint *y, duk__bigint *z) {
 	duk_small_int_t i, ny, nz;
 	duk_uint32_t ty, tz;
@@ -417,7 +417,7 @@ DUK_LOCAL void duk__bi_mul(duk__bigint *x, duk__bigint *y, duk__bigint *z) {
 
 	nz = z->n;
 	for (i = 0; i < y->n; i++) {
-#ifdef DUK_USE_64BIT_OPS
+#if defined(DUK_USE_64BIT_OPS)
 		duk_uint64_t tmp = 0U;
 		for (j = 0; j < nz; j++) {
 			tmp += (duk_uint64_t) y->v[i] * (duk_uint64_t) z->v[j] + x->v[i+j];
@@ -1783,6 +1783,10 @@ DUK_INTERNAL void duk_numconv_parse(duk_context *ctx, duk_small_int_t radix, duk
 	 *  Automatic hex number detection (leading '0x' or '0X') and octal
 	 *  number detection (leading '0' followed by at least one octal digit)
 	 *  is done here too.
+	 *
+	 *  Symbols are not explicitly rejected here (that's up to the caller).
+	 *  If a symbol were passed here, it should ultimately safely fail
+	 *  parsing due to a syntax error.
 	 */
 
 	if (flags & DUK_S2N_FLAG_TRIM_WHITE) {

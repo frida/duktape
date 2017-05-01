@@ -8,7 +8,7 @@
  *  Local declarations.
  */
 
-DUK_LOCAL_DECL void duk__js_execute_bytecode_inner(duk_hthread *entry_thread, duk_size_t entry_callstack_top);
+DUK_LOCAL_DECL void duk__js_execute_bytecode_inner(duk_hthread *entry_thread, duk_activation *entry_act);
 
 /*
  *  Misc helpers.
@@ -73,15 +73,7 @@ DUK_LOCAL void duk__push_tvals_incref_only(duk_hthread *thr, duk_tval *tv_src, d
  */
 
 DUK_LOCAL DUK__INLINE_PERF duk_double_t duk__compute_mod(duk_double_t d1, duk_double_t d2) {
-	/*
-	 *  Ecmascript modulus ('%') does not match IEEE 754 "remainder"
-	 *  operation (implemented by remainder() in C99) but does seem
-	 *  to match ANSI C fmod().
-	 *
-	 *  Compare E5 Section 11.5.3 and "man fmod".
-	 */
-
-	return (duk_double_t) DUK_FMOD((double) d1, (double) d2);
+	return (duk_double_t) duk_js_arith_mod((double) d1, (double) d2);
 }
 
 #if defined(DUK_USE_ES7_EXP_OPERATOR)
@@ -175,14 +167,20 @@ DUK_LOCAL DUK__INLINE_PERF void duk__vm_arith_add(duk_hthread *thr, duk_tval *tv
 
 	/* Since Duktape 2.x plain buffers are treated like ArrayBuffer. */
 	if (duk_is_string(ctx, -2) || duk_is_string(ctx, -1)) {
+		/* Symbols shouldn't technically be handled here, but should
+		 * go into the default ToNumber() coercion path instead and
+		 * fail there with a TypeError.  However, there's a ToString()
+		 * here which also fails with TypeError so no explicit check
+		 * is needed.
+		 */
 		duk_to_string(ctx, -2);
 		duk_to_string(ctx, -1);
 		duk_concat(ctx, 2);  /* [... s1 s2] -> [... s1+s2] */
 	} else {
 		duk_double_t d1, d2;
 
-		d1 = duk_to_number(ctx, -2);
-		d2 = duk_to_number(ctx, -1);
+		d1 = duk_to_number_m2(ctx);
+		d2 = duk_to_number_m1(ctx);
 		DUK_ASSERT(duk_is_number(ctx, -2));
 		DUK_ASSERT(duk_is_number(ctx, -1));
 		DUK_ASSERT_DOUBLE_IS_NORMALIZED(d1);
@@ -278,7 +276,7 @@ DUK_LOCAL DUK__INLINE_PERF void duk__vm_arith_binary_op(duk_hthread *thr, duk_tv
 			break;
 		}
 		default: {
-			DUK_UNREACHABLE();
+			/* Possible with DUK_OP_EXP. */
 			goto skip_fastint;
 		}
 		}
@@ -301,8 +299,8 @@ DUK_LOCAL DUK__INLINE_PERF void duk__vm_arith_binary_op(duk_hthread *thr, duk_tv
 	} else {
 		duk_push_tval(ctx, tv_x);
 		duk_push_tval(ctx, tv_y);
-		d1 = duk_to_number(ctx, -2);  /* side effects */
-		d2 = duk_to_number(ctx, -1);
+		d1 = duk_to_number_m2(ctx);  /* side effects */
+		d2 = duk_to_number_m1(ctx);
 		DUK_ASSERT(duk_is_number(ctx, -2));
 		DUK_ASSERT(duk_is_number(ctx, -1));
 		DUK_ASSERT_DOUBLE_IS_NORMALIZED(d1);
@@ -731,7 +729,7 @@ DUK_LOCAL DUK__INLINE_PERF void duk__prepost_incdec_var_helper(duk_hthread *thr,
 	DUK_ASSERT(DUK_TVAL_IS_STRING(tv_id));
 	name = DUK_TVAL_GET_STRING(tv_id);
 	DUK_ASSERT(name != NULL);
-	act = thr->callstack + thr->callstack_top - 1;
+	act = thr->callstack_curr;
 	(void) duk_js_getvar_activation(thr, act, name, 1 /*throw*/);  /* -> [ ... val this ] */
 
 	/* XXX: Fastint fast path would be useful here.  Also fastints
@@ -739,7 +737,7 @@ DUK_LOCAL DUK__INLINE_PERF void duk__prepost_incdec_var_helper(duk_hthread *thr,
 	 * not intuitive.
 	 */
 
-	x = duk_to_number(ctx, -2);
+	x = duk_to_number_m2(ctx);
 	if (op & 0x01) {
 		y = x - 1.0;
 	} else {
@@ -750,11 +748,13 @@ DUK_LOCAL DUK__INLINE_PERF void duk__prepost_incdec_var_helper(duk_hthread *thr,
 
 	if (op & 0x02) {
 		duk_push_number(ctx, y);  /* -> [ ... x this y ] */
+		DUK_ASSERT(act == thr->callstack_curr);
 		duk_js_putvar_activation(thr, act, name, DUK_GET_TVAL_NEGIDX(ctx, -1), is_strict);
 		duk_pop_2(ctx);  /* -> [ ... x ] */
 	} else {
 		duk_pop_2(ctx);  /* -> [ ... ] */
 		duk_push_number(ctx, y);  /* -> [ ... y ] */
+		DUK_ASSERT(act == thr->callstack_curr);
 		duk_js_putvar_activation(thr, act, name, DUK_GET_TVAL_NEGIDX(ctx, -1), is_strict);
 	}
 
@@ -786,31 +786,32 @@ DUK_LOCAL DUK__INLINE_PERF void duk__prepost_incdec_var_helper(duk_hthread *thr,
  * top are combined into one pass.
  */
 
-/* Reconfigure value stack for return to an Ecmascript function at 'act_idx'. */
-DUK_LOCAL void duk__reconfig_valstack_ecma_return(duk_hthread *thr, duk_size_t act_idx) {
+/* Reconfigure value stack for return to an Ecmascript function at
+ * callstack top (caller unwinds).
+ */
+DUK_LOCAL void duk__reconfig_valstack_ecma_return(duk_hthread *thr) {
 	duk_activation *act;
 	duk_hcompfunc *h_func;
 	duk_idx_t clamp_top;
 
 	DUK_ASSERT(thr != NULL);
-	DUK_ASSERT_DISABLE(act_idx >= 0);  /* unsigned */
-	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack + act_idx) != NULL);
-	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack + act_idx)));
-	DUK_ASSERT_DISABLE(thr->callstack[act_idx].idx_retval >= 0);  /* unsigned */
+	act = thr->callstack_curr;
+	DUK_ASSERT(act != NULL);
+	DUK_ASSERT(DUK_ACT_GET_FUNC(act) != NULL);
+	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(act)));
+	DUK_ASSERT_DISABLE(act->idx_retval >= 0);  /* unsigned */
 
 	/* Clamp so that values at 'clamp_top' and above are wiped and won't
 	 * retain reachable garbage.  Then extend to 'nregs' because we're
 	 * returning to an Ecmascript function.
 	 */
 
-	act = thr->callstack + act_idx;
 	h_func = (duk_hcompfunc *) DUK_ACT_GET_FUNC(act);
 
 	thr->valstack_bottom = thr->valstack + act->idx_bottom;
 	DUK_ASSERT(act->idx_retval >= act->idx_bottom);
 	clamp_top = (duk_idx_t) (act->idx_retval - act->idx_bottom + 1);  /* +1 = one retval */
 	duk_set_top((duk_context *) thr, clamp_top);
-	act = NULL;
 
 	(void) duk_valstack_resize_raw((duk_context *) thr,
 	                               (thr->valstack_bottom - thr->valstack) +  /* bottom of current func */
@@ -823,20 +824,21 @@ DUK_LOCAL void duk__reconfig_valstack_ecma_return(duk_hthread *thr, duk_size_t a
 	duk_set_top((duk_context *) thr, h_func->nregs);
 }
 
-DUK_LOCAL void duk__reconfig_valstack_ecma_catcher(duk_hthread *thr, duk_size_t act_idx, duk_size_t cat_idx) {
-	duk_activation *act;
+/* Reconfigure value stack for an Ecmascript catcher.  Use topmost catcher
+ * in 'act'.
+ */
+DUK_LOCAL void duk__reconfig_valstack_ecma_catcher(duk_hthread *thr, duk_activation *act) {
 	duk_catcher *cat;
 	duk_hcompfunc *h_func;
 	duk_idx_t clamp_top;
 
 	DUK_ASSERT(thr != NULL);
-	DUK_ASSERT_DISABLE(act_idx >= 0);  /* unsigned */
-	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack + act_idx) != NULL);
-	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack + act_idx)));
-	DUK_ASSERT_DISABLE(thr->callstack[act_idx].idx_retval >= 0);  /* unsigned */
+	DUK_ASSERT(act != NULL);
+	DUK_ASSERT(DUK_ACT_GET_FUNC(act) != NULL);
+	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(act)));
+	cat = act->cat;
+	DUK_ASSERT(cat != NULL);
 
-	act = thr->callstack + act_idx;
-	cat = thr->catchstack + cat_idx;
 	h_func = (duk_hcompfunc *) DUK_ACT_GET_FUNC(act);
 
 	thr->valstack_bottom = thr->valstack + act->idx_bottom;
@@ -857,46 +859,58 @@ DUK_LOCAL void duk__reconfig_valstack_ecma_catcher(duk_hthread *thr, duk_size_t 
 	duk_set_top((duk_context *) thr, h_func->nregs);
 }
 
-/* Set catcher regs: idx_base+0 = value, idx_base+1 = lj_type. */
-DUK_LOCAL void duk__set_catcher_regs(duk_hthread *thr, duk_size_t cat_idx, duk_tval *tv_val_unstable, duk_small_uint_t lj_type) {
+/* Set catcher regs: idx_base+0 = value, idx_base+1 = lj_type.
+ * No side effects.
+ */
+DUK_LOCAL void duk__set_catcher_regs_norz(duk_hthread *thr, duk_catcher *cat, duk_tval *tv_val_unstable, duk_small_uint_t lj_type) {
 	duk_tval *tv1;
 
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(tv_val_unstable != NULL);
 
-	tv1 = thr->valstack + thr->catchstack[cat_idx].idx_base;
+	tv1 = thr->valstack + cat->idx_base;
 	DUK_ASSERT(tv1 < thr->valstack_top);
-	DUK_TVAL_SET_TVAL_UPDREF(thr, tv1, tv_val_unstable);  /* side effects */
+	DUK_TVAL_SET_TVAL_UPDREF_NORZ(thr, tv1, tv_val_unstable);
 
-	tv1 = thr->valstack + thr->catchstack[cat_idx].idx_base + 1;
+	tv1++;
+	DUK_ASSERT(tv1 == thr->valstack + cat->idx_base + 1);
 	DUK_ASSERT(tv1 < thr->valstack_top);
-
-	DUK_TVAL_SET_U32_UPDREF(thr, tv1, (duk_uint32_t) lj_type);  /* side effects */
+	DUK_TVAL_SET_U32_UPDREF_NORZ(thr, tv1, (duk_uint32_t) lj_type);
 }
 
-DUK_LOCAL void duk__handle_catch(duk_hthread *thr, duk_size_t cat_idx, duk_tval *tv_val_unstable, duk_small_uint_t lj_type) {
+DUK_LOCAL void duk__handle_catch(duk_hthread *thr, duk_tval *tv_val_unstable, duk_small_uint_t lj_type) {
 	duk_context *ctx;
 	duk_activation *act;
+	duk_catcher *cat;
 
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(tv_val_unstable != NULL);
 	ctx = (duk_context *) thr;
 
-	duk__set_catcher_regs(thr, cat_idx, tv_val_unstable, lj_type);
+	act = thr->callstack_curr;
+	DUK_ASSERT(act != NULL);
+	DUK_ASSERT(act->cat != NULL);
+	DUK_ASSERT(DUK_CAT_GET_TYPE(act->cat) == DUK_CAT_TYPE_TCF);
 
-	duk_hthread_catchstack_unwind(thr, cat_idx + 1);
-	duk_hthread_callstack_unwind(thr, thr->catchstack[cat_idx].callstack_index + 1);
-
-	DUK_ASSERT(thr->callstack_top >= 1);
-	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1) != NULL);
-	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1)));
-
-	duk__reconfig_valstack_ecma_catcher(thr, thr->callstack_top - 1, cat_idx);
+	duk__set_catcher_regs_norz(thr, act->cat, tv_val_unstable, lj_type);
 
 	DUK_ASSERT(thr->callstack_top >= 1);
-	act = thr->callstack + thr->callstack_top - 1;
-	act->curr_pc = thr->catchstack[cat_idx].pc_base + 0;  /* +0 = catch */
-	act = NULL;
+	DUK_ASSERT(thr->callstack_curr != NULL);
+	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack_curr) != NULL);
+	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack_curr)));
+
+	DUK_ASSERT(thr->callstack_top >= 1);
+	DUK_ASSERT(act == thr->callstack_curr);
+	DUK_ASSERT(act != NULL);
+	duk__reconfig_valstack_ecma_catcher(thr, act);
+
+	DUK_ASSERT(thr->callstack_top >= 1);
+	DUK_ASSERT(act == thr->callstack_curr);
+	DUK_ASSERT(act != NULL);
+	cat = act->cat;
+	DUK_ASSERT(cat != NULL);
+
+	act->curr_pc = cat->pc_base + 0;  /* +0 = catch */
 
 	/*
 	 *  If entering a 'catch' block which requires an automatic
@@ -908,9 +922,8 @@ DUK_LOCAL void duk__handle_catch(duk_hthread *thr, duk_size_t cat_idx, duk_tval 
 	 *  which implies the binding is not deletable.
 	 */
 
-	if (DUK_CAT_HAS_CATCH_BINDING_ENABLED(&thr->catchstack[cat_idx])) {
-		duk_hobject *new_env;
-		duk_hobject *act_lex_env;
+	if (DUK_CAT_HAS_CATCH_BINDING_ENABLED(cat)) {
+		duk_hdecenv *new_env;
 
 		DUK_DDD(DUK_DDDPRINT("catcher has an automatic catch binding"));
 
@@ -918,7 +931,8 @@ DUK_LOCAL void duk__handle_catch(duk_hthread *thr, duk_size_t cat_idx, duk_tval 
 		 * points, so we re-lookup it multiple times.
 		 */
 		DUK_ASSERT(thr->callstack_top >= 1);
-		act = thr->callstack + thr->callstack_top - 1;
+		DUK_ASSERT(act == thr->callstack_curr);  /* still valid from above */
+		DUK_ASSERT(act != NULL);
 
 		if (act->lex_env == NULL) {
 			DUK_ASSERT(act->var_env == NULL);
@@ -926,23 +940,25 @@ DUK_LOCAL void duk__handle_catch(duk_hthread *thr, duk_size_t cat_idx, duk_tval 
 
 			/* this may have side effects, so re-lookup act */
 			duk_js_init_activation_environment_records_delayed(thr, act);
-			act = thr->callstack + thr->callstack_top - 1;
+			DUK_ASSERT(act == thr->callstack_curr);
+			DUK_ASSERT(act != NULL);
 		}
 		DUK_ASSERT(act->lex_env != NULL);
 		DUK_ASSERT(act->var_env != NULL);
 		DUK_ASSERT(DUK_ACT_GET_FUNC(act) != NULL);
-		DUK_UNREF(act);  /* unreferenced without assertions */
 
-		act = thr->callstack + thr->callstack_top - 1;
-		act_lex_env = act->lex_env;
-		act = NULL;  /* invalidated */
-
-		(void) duk_push_object_helper_proto(ctx,
-		                                    DUK_HOBJECT_FLAG_EXTENSIBLE |
-		                                    DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_DECENV),
-		                                    act_lex_env);
-		new_env = DUK_GET_HOBJECT_NEGIDX(ctx, -1);
+		/* XXX: If an out-of-memory happens here, longjmp state asserts
+		 * will be triggered at present and a try-catch fails to catch.
+		 * That's not sandboxing fatal (C API protected calls are what
+		 * matters), and script catch code can immediately throw anyway
+		 * for almost any operation.
+		 */
+		new_env = duk_hdecenv_alloc(thr,
+		                            DUK_HOBJECT_FLAG_EXTENSIBLE |
+		                            DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_DECENV));
 		DUK_ASSERT(new_env != NULL);
+		duk_push_hobject(ctx, (duk_hobject *) new_env);
+		DUK_ASSERT(DUK_HOBJECT_GET_PROTOTYPE(thr->heap, (duk_hobject *) new_env) == NULL);
 		DUK_DDD(DUK_DDDPRINT("new_env allocated: %!iO", (duk_heaphdr *) new_env));
 
 		/* Note: currently the catch binding is handled without a register
@@ -951,72 +967,90 @@ DUK_LOCAL void duk__handle_catch(duk_hthread *thr, duk_size_t cat_idx, duk_tval 
 		 * record regbases etc.
 		 */
 
-		DUK_ASSERT(thr->catchstack[cat_idx].h_varname != NULL);
-		duk_push_hstring(ctx, thr->catchstack[cat_idx].h_varname);
-		duk_push_tval(ctx, thr->valstack + thr->catchstack[cat_idx].idx_base);
+		/* XXX: duk_xdef_prop() may cause an out-of-memory, see above. */
+		DUK_ASSERT(cat->h_varname != NULL);
+		duk_push_hstring(ctx, cat->h_varname);
+		duk_push_tval(ctx, thr->valstack + cat->idx_base);
 		duk_xdef_prop(ctx, -3, DUK_PROPDESC_FLAGS_W);  /* writable, not configurable */
 
-		act = thr->callstack + thr->callstack_top - 1;
-		act->lex_env = new_env;
-		DUK_HOBJECT_INCREF(thr, new_env);  /* reachable through activation */
+		DUK_ASSERT(act == thr->callstack_curr);
+		DUK_ASSERT(act != NULL);
+		DUK_HOBJECT_SET_PROTOTYPE(thr->heap, (duk_hobject *) new_env, act->lex_env);
+		act->lex_env = (duk_hobject *) new_env;
+		DUK_HOBJECT_INCREF(thr, (duk_hobject *) new_env);  /* reachable through activation */
+		/* Net refcount change to act->lex_env is 0: incref for new_env's
+		 * prototype, decref for act->lex_env overwrite.
+		 */
 
-		DUK_CAT_SET_LEXENV_ACTIVE(&thr->catchstack[cat_idx]);
+		DUK_CAT_SET_LEXENV_ACTIVE(cat);
 
 		duk_pop(ctx);
 
 		DUK_DDD(DUK_DDDPRINT("new_env finished: %!iO", (duk_heaphdr *) new_env));
 	}
 
-	DUK_CAT_CLEAR_CATCH_ENABLED(&thr->catchstack[cat_idx]);
+	DUK_CAT_CLEAR_CATCH_ENABLED(cat);
 }
 
-DUK_LOCAL void duk__handle_finally(duk_hthread *thr, duk_size_t cat_idx, duk_tval *tv_val_unstable, duk_small_uint_t lj_type) {
+DUK_LOCAL void duk__handle_finally(duk_hthread *thr, duk_tval *tv_val_unstable, duk_small_uint_t lj_type) {
 	duk_activation *act;
+	duk_catcher *cat;
 
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(tv_val_unstable != NULL);
 
-	duk__set_catcher_regs(thr, cat_idx, tv_val_unstable, lj_type);
+	act = thr->callstack_curr;
+	DUK_ASSERT(act != NULL);
+	DUK_ASSERT(act->cat != NULL);
+	DUK_ASSERT(DUK_CAT_GET_TYPE(act->cat) == DUK_CAT_TYPE_TCF);
 
-	duk_hthread_catchstack_unwind(thr, cat_idx + 1);  /* cat_idx catcher is kept, even for finally */
-	duk_hthread_callstack_unwind(thr, thr->catchstack[cat_idx].callstack_index + 1);
-
-	DUK_ASSERT(thr->callstack_top >= 1);
-	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1) != NULL);
-	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1)));
-
-	duk__reconfig_valstack_ecma_catcher(thr, thr->callstack_top - 1, cat_idx);
+	duk__set_catcher_regs_norz(thr, act->cat, tv_val_unstable, lj_type);
 
 	DUK_ASSERT(thr->callstack_top >= 1);
-	act = thr->callstack + thr->callstack_top - 1;
-	act->curr_pc = thr->catchstack[cat_idx].pc_base + 1;  /* +1 = finally */
-	act = NULL;
+	DUK_ASSERT(thr->callstack_curr != NULL);
+	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack_curr) != NULL);
+	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack_curr)));
 
-	DUK_CAT_CLEAR_FINALLY_ENABLED(&thr->catchstack[cat_idx]);
+	DUK_ASSERT(thr->callstack_top >= 1);
+	DUK_ASSERT(act == thr->callstack_curr);
+	DUK_ASSERT(act != NULL);
+	duk__reconfig_valstack_ecma_catcher(thr, act);
+
+	DUK_ASSERT(thr->callstack_top >= 1);
+	DUK_ASSERT(act == thr->callstack_curr);
+	DUK_ASSERT(act != NULL);
+	cat = act->cat;
+	DUK_ASSERT(cat != NULL);
+
+	act->curr_pc = cat->pc_base + 1;  /* +1 = finally */
+
+	DUK_CAT_CLEAR_FINALLY_ENABLED(cat);
 }
 
-DUK_LOCAL void duk__handle_label(duk_hthread *thr, duk_size_t cat_idx, duk_small_uint_t lj_type) {
+DUK_LOCAL void duk__handle_label(duk_hthread *thr, duk_small_uint_t lj_type) {
 	duk_activation *act;
+	duk_catcher *cat;
 
 	DUK_ASSERT(thr != NULL);
 
 	DUK_ASSERT(thr->callstack_top >= 1);
-	act = thr->callstack + thr->callstack_top - 1;
-
+	act = thr->callstack_curr;
+	DUK_ASSERT(act != NULL);
 	DUK_ASSERT(DUK_ACT_GET_FUNC(act) != NULL);
 	DUK_ASSERT(DUK_HOBJECT_HAS_COMPFUNC(DUK_ACT_GET_FUNC(act)));
 
 	/* +0 = break, +1 = continue */
-	act->curr_pc = thr->catchstack[cat_idx].pc_base + (lj_type == DUK_LJ_TYPE_CONTINUE ? 1 : 0);
-	act = NULL;  /* invalidated */
+	cat = act->cat;
+	DUK_ASSERT(cat != NULL);
+	DUK_ASSERT(DUK_CAT_GET_TYPE(cat) == DUK_CAT_TYPE_LABEL);
 
-	duk_hthread_catchstack_unwind(thr, cat_idx + 1);  /* keep label catcher */
-	/* no need to unwind callstack */
+	act->curr_pc = cat->pc_base + (lj_type == DUK_LJ_TYPE_CONTINUE ? 1 : 0);
 
 	/* valstack should not need changes */
 #if defined(DUK_USE_ASSERTIONS)
 	DUK_ASSERT(thr->callstack_top >= 1);
-	act = thr->callstack + thr->callstack_top - 1;
+	DUK_ASSERT(act == thr->callstack_curr);
+	DUK_ASSERT(act != NULL);
 	DUK_ASSERT((duk_size_t) (thr->valstack_top - thr->valstack_bottom) ==
 	           (duk_size_t) ((duk_hcompfunc *) DUK_ACT_GET_FUNC(act))->nregs);
 #endif
@@ -1024,41 +1058,35 @@ DUK_LOCAL void duk__handle_label(duk_hthread *thr, duk_size_t cat_idx, duk_small
 
 /* Called for handling both a longjmp() with type DUK_LJ_TYPE_YIELD and
  * when a RETURN opcode terminates a thread and yields to the resumer.
+ * Caller unwinds so that top of callstack is the activation we return to.
  */
 #if defined(DUK_USE_COROUTINE_SUPPORT)
-DUK_LOCAL void duk__handle_yield(duk_hthread *thr, duk_hthread *resumer, duk_size_t act_idx, duk_tval *tv_val_unstable) {
+DUK_LOCAL void duk__handle_yield(duk_hthread *thr, duk_hthread *resumer, duk_tval *tv_val_unstable) {
+	duk_activation *act_resumer;
 	duk_tval *tv1;
 
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(resumer != NULL);
 	DUK_ASSERT(tv_val_unstable != NULL);
-	DUK_ASSERT(DUK_ACT_GET_FUNC(resumer->callstack + act_idx) != NULL);
-	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(resumer->callstack + act_idx)));  /* resume caller must be an ecmascript func */
+	act_resumer = resumer->callstack_curr;
+	DUK_ASSERT(act_resumer != NULL);
+	DUK_ASSERT(DUK_ACT_GET_FUNC(act_resumer) != NULL);
+	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(act_resumer)));  /* resume caller must be an ecmascript func */
 
-	tv1 = resumer->valstack + resumer->callstack[act_idx].idx_retval;  /* return value from Duktape.Thread.resume() */
-	DUK_TVAL_SET_TVAL_UPDREF(thr, tv1, tv_val_unstable);  /* side effects */
+	tv1 = resumer->valstack + act_resumer->idx_retval;  /* return value from Duktape.Thread.resume() */
+	DUK_TVAL_SET_TVAL_UPDREF(thr, tv1, tv_val_unstable);  /* side effects */  /* XXX: avoid side effects */
 
-	duk_hthread_callstack_unwind(resumer, act_idx + 1);  /* unwind to 'resume' caller */
-
-	/* no need to unwind catchstack */
-	duk__reconfig_valstack_ecma_return(resumer, act_idx);
+	duk__reconfig_valstack_ecma_return(resumer);
 
 	/* caller must change active thread, and set thr->resumer to NULL */
 }
 #endif  /* DUK_USE_COROUTINE_SUPPORT */
 
-DUK_LOCAL
-duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
-                                     duk_hthread *entry_thread,
-                                     duk_size_t entry_callstack_top) {
-	duk_size_t entry_callstack_index;
+DUK_LOCAL duk_small_uint_t duk__handle_longjmp(duk_hthread *thr, duk_activation *entry_act) {
 	duk_small_uint_t retval = DUK__LONGJMP_RESTART;
 
 	DUK_ASSERT(thr != NULL);
-	DUK_ASSERT(entry_thread != NULL);
-	DUK_ASSERT(entry_callstack_top > 0);  /* guarantees entry_callstack_top - 1 >= 0 */
-
-	entry_callstack_index = entry_callstack_top - 1;
+	DUK_ASSERT(entry_act != NULL);
 
 	/* 'thr' is the current thread, as no-one resumes except us and we
 	 * switch 'thr' in that case.
@@ -1094,19 +1122,18 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 
 		duk_tval *tv;
 		duk_tval *tv2;
-		duk_size_t act_idx;
 		duk_hthread *resumee;
 
 		/* duk_bi_duk_object_yield() and duk_bi_duk_object_resume() ensure all of these are met */
 
 		DUK_ASSERT(thr->state == DUK_HTHREAD_STATE_RUNNING);                                                         /* unchanged by Duktape.Thread.resume() */
 		DUK_ASSERT(thr->callstack_top >= 2);                                                                         /* Ecmascript activation + Duktape.Thread.resume() activation */
-		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1) != NULL &&
-		           DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1)) &&
-		           ((duk_hnatfunc *) DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1))->func == duk_bi_thread_resume);
-		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 2) != NULL &&
-		           DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 2)));      /* an Ecmascript function */
-		DUK_ASSERT_DISABLE((thr->callstack + thr->callstack_top - 2)->idx_retval >= 0);                              /* unsigned */
+		DUK_ASSERT(thr->callstack_curr != NULL);
+		DUK_ASSERT(thr->callstack_curr->parent != NULL);
+		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack_curr) != NULL &&
+		           DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(thr->callstack_curr)) &&
+		           ((duk_hnatfunc *) DUK_ACT_GET_FUNC(thr->callstack_curr))->func == duk_bi_thread_resume);
+		DUK_ASSERT_DISABLE(thr->callstack_curr->parent->idx_retval >= 0);                                              /* unsigned */
 
 		tv = &thr->heap->lj.value2;  /* resumee */
 		DUK_ASSERT(DUK_TVAL_IS_OBJECT(tv));
@@ -1121,20 +1148,13 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 		DUK_ASSERT(resumee->state != DUK_HTHREAD_STATE_YIELDED ||
 		           resumee->callstack_top >= 2);                                                                     /* YIELDED: Ecmascript activation + Duktape.Thread.yield() activation */
 		DUK_ASSERT(resumee->state != DUK_HTHREAD_STATE_YIELDED ||
-		           (DUK_ACT_GET_FUNC(resumee->callstack + resumee->callstack_top - 1) != NULL &&
-		            DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(resumee->callstack + resumee->callstack_top - 1)) &&
-		            ((duk_hnatfunc *) DUK_ACT_GET_FUNC(resumee->callstack + resumee->callstack_top - 1))->func == duk_bi_thread_yield));
-		DUK_ASSERT(resumee->state != DUK_HTHREAD_STATE_YIELDED ||
-		           (DUK_ACT_GET_FUNC(resumee->callstack + resumee->callstack_top - 2) != NULL &&
-		            DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(resumee->callstack + resumee->callstack_top - 2))));      /* an Ecmascript function */
+		           (DUK_ACT_GET_FUNC(resumee->callstack_curr) != NULL &&
+		            DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(resumee->callstack_curr)) &&
+		            ((duk_hnatfunc *) DUK_ACT_GET_FUNC(resumee->callstack_curr))->func == duk_bi_thread_yield));
 		DUK_ASSERT_DISABLE(resumee->state != DUK_HTHREAD_STATE_YIELDED ||
-		           (resumee->callstack + resumee->callstack_top - 2)->idx_retval >= 0);                              /* idx_retval unsigned */
+		                   resumee->callstack_curr->parent->idx_retval >= 0);                                                  /* idx_retval unsigned */
 		DUK_ASSERT(resumee->state != DUK_HTHREAD_STATE_INACTIVE ||
 		           resumee->callstack_top == 0);                                                                     /* INACTIVE: no activation, single function value on valstack */
-		DUK_ASSERT(resumee->state != DUK_HTHREAD_STATE_INACTIVE ||
-		           (resumee->valstack_top == resumee->valstack + 1 &&
-		            DUK_TVAL_IS_OBJECT(resumee->valstack_top - 1) &&
-		            DUK_HOBJECT_IS_COMPFUNC(DUK_TVAL_GET_OBJECT(resumee->valstack_top - 1))));
 
 		if (thr->heap->lj.iserror) {
 			/*
@@ -1147,7 +1167,9 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 			 *  which we simply ignore.
 			 */
 
+			DUK_ASSERT(resumee->resumer == NULL);
 			resumee->resumer = thr;
+			DUK_HTHREAD_INCREF(thr, thr);
 			resumee->state = DUK_HTHREAD_STATE_RUNNING;
 			thr->state = DUK_HTHREAD_STATE_RESUMED;
 			DUK_HEAP_SWITCH_THREAD(thr->heap, resumee);
@@ -1163,21 +1185,33 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 			DUK_DD(DUK_DDPRINT("-> resume with an error, converted to a throw in the resumee, propagate"));
 			goto check_longjmp;
 		} else if (resumee->state == DUK_HTHREAD_STATE_YIELDED) {
-			act_idx = resumee->callstack_top - 2;  /* Ecmascript function */
-			DUK_ASSERT_DISABLE(resumee->callstack[act_idx].idx_retval >= 0);  /* unsigned */
+			/* Unwind previous Duktape.Thread.yield() call.  The
+			 * activation remaining must always be an Ecmascript
+			 * call now (yield() accepts calls from Ecmascript
+			 * only).
+			 */
+			duk_activation *act_resumee;
 
-			tv = resumee->valstack + resumee->callstack[act_idx].idx_retval;  /* return value from Duktape.Thread.yield() */
+			DUK_ASSERT(resumee->callstack_top >= 2);
+			act_resumee = resumee->callstack_curr;  /* Duktape.Thread.yield() */
+			DUK_ASSERT(act_resumee != NULL);
+			act_resumee = act_resumee->parent;      /* Ecmascript call site for yield() */
+			DUK_ASSERT(act_resumee != NULL);
+			DUK_ASSERT_DISABLE(act_resumee->idx_retval >= 0);  /* unsigned */
+
+			tv = resumee->valstack + act_resumee->idx_retval;  /* return value from Duktape.Thread.yield() */
 			DUK_ASSERT(tv >= resumee->valstack && tv < resumee->valstack_top);
 			tv2 = &thr->heap->lj.value1;
-			DUK_TVAL_SET_TVAL_UPDREF(thr, tv, tv2);  /* side effects */
+			DUK_TVAL_SET_TVAL_UPDREF(thr, tv, tv2);  /* side effects */  /* XXX: avoid side effects */
 
-			duk_hthread_callstack_unwind(resumee, act_idx + 1);  /* unwind to 'yield' caller */
+			duk_hthread_activation_unwind_norz(resumee);  /* unwind to 'yield' caller */
+			/* no need to unwind catch stack */
 
-			/* no need to unwind catchstack */
+			duk__reconfig_valstack_ecma_return(resumee);
 
-			duk__reconfig_valstack_ecma_return(resumee, act_idx);
-
+			DUK_ASSERT(resumee->resumer == NULL);
 			resumee->resumer = thr;
+			DUK_HTHREAD_INCREF(thr, thr);
 			resumee->state = DUK_HTHREAD_STATE_RUNNING;
 			thr->state = DUK_HTHREAD_STATE_RESUMED;
 			DUK_HEAP_SWITCH_THREAD(thr->heap, resumee);
@@ -1205,11 +1239,17 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 			                                      1,              /* num_stack_args */
 			                                      call_flags);    /* call_flags */
 			if (setup_rc == 0) {
-				/* Shouldn't happen but check anyway. */
+				/* This shouldn't happen; Duktape.Thread.resume()
+				 * should make sure of that.  If it does happen
+				 * this internal error will propagate out of the
+				 * executor which can be quite misleading.
+				 */
 				DUK_ERROR_INTERNAL(thr);
 			}
 
+			DUK_ASSERT(resumee->resumer == NULL);
 			resumee->resumer = thr;
+			DUK_HTHREAD_INCREF(thr, thr);
 			resumee->state = DUK_HTHREAD_STATE_RUNNING;
 			thr->state = DUK_HTHREAD_STATE_RESUMED;
 			DUK_HEAP_SWITCH_THREAD(thr->heap, resumee);
@@ -1239,31 +1279,38 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 
 		/* duk_bi_duk_object_yield() and duk_bi_duk_object_resume() ensure all of these are met */
 
+#if 0  /* entry_thread not available for assert */
 		DUK_ASSERT(thr != entry_thread);                                                                             /* Duktape.Thread.yield() should prevent */
+#endif
 		DUK_ASSERT(thr->state == DUK_HTHREAD_STATE_RUNNING);                                                         /* unchanged from Duktape.Thread.yield() */
 		DUK_ASSERT(thr->callstack_top >= 2);                                                                         /* Ecmascript activation + Duktape.Thread.yield() activation */
-		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1) != NULL &&
-		           DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1)) &&
-		           ((duk_hnatfunc *) DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1))->func == duk_bi_thread_yield);
-		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 2) != NULL &&
-		           DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 2)));      /* an Ecmascript function */
-		DUK_ASSERT_DISABLE((thr->callstack + thr->callstack_top - 2)->idx_retval >= 0);                              /* unsigned */
+		DUK_ASSERT(thr->callstack_curr != NULL);
+		DUK_ASSERT(thr->callstack_curr->parent != NULL);
+		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack_curr) != NULL &&
+		           DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(thr->callstack_curr)) &&
+		           ((duk_hnatfunc *) DUK_ACT_GET_FUNC(thr->callstack_curr))->func == duk_bi_thread_yield);
+		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack_curr->parent) != NULL &&
+		           DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack_curr->parent)));                              /* an Ecmascript function */
+		DUK_ASSERT_DISABLE(thr->callstack_curr->parent->idx_retval >= 0);                                              /* unsigned */
 
 		resumer = thr->resumer;
 
 		DUK_ASSERT(resumer != NULL);
 		DUK_ASSERT(resumer->state == DUK_HTHREAD_STATE_RESUMED);                                                     /* written by a previous RESUME handling */
 		DUK_ASSERT(resumer->callstack_top >= 2);                                                                     /* Ecmascript activation + Duktape.Thread.resume() activation */
-		DUK_ASSERT(DUK_ACT_GET_FUNC(resumer->callstack + resumer->callstack_top - 1) != NULL &&
-		           DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(resumer->callstack + resumer->callstack_top - 1)) &&
-		           ((duk_hnatfunc *) DUK_ACT_GET_FUNC(resumer->callstack + resumer->callstack_top - 1))->func == duk_bi_thread_resume);
-		DUK_ASSERT(DUK_ACT_GET_FUNC(resumer->callstack + resumer->callstack_top - 2) != NULL &&
-		           DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(resumer->callstack + resumer->callstack_top - 2)));        /* an Ecmascript function */
-		DUK_ASSERT_DISABLE((resumer->callstack + resumer->callstack_top - 2)->idx_retval >= 0);                      /* unsigned */
+		DUK_ASSERT(resumer->callstack_curr != NULL);
+		DUK_ASSERT(resumer->callstack_curr->parent != NULL);
+		DUK_ASSERT(DUK_ACT_GET_FUNC(resumer->callstack_curr) != NULL &&
+		           DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(resumer->callstack_curr)) &&
+		           ((duk_hnatfunc *) DUK_ACT_GET_FUNC(resumer->callstack_curr))->func == duk_bi_thread_resume);
+		DUK_ASSERT(DUK_ACT_GET_FUNC(resumer->callstack_curr->parent) != NULL &&
+		           DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(resumer->callstack_curr->parent)));                            /* an Ecmascript function */
+		DUK_ASSERT_DISABLE(resumer->callstack_curr->parent->idx_retval >= 0);                                            /* unsigned */
 
 		if (thr->heap->lj.iserror) {
 			thr->state = DUK_HTHREAD_STATE_YIELDED;
 			thr->resumer = NULL;
+			DUK_HTHREAD_DECREF_NORZ(thr, resumer);
 			resumer->state = DUK_HTHREAD_STATE_RUNNING;
 			DUK_HEAP_SWITCH_THREAD(thr->heap, resumer);
 			thr = resumer;
@@ -1275,10 +1322,12 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 			DUK_DD(DUK_DDPRINT("-> yield an error, converted to a throw in the resumer, propagate"));
 			goto check_longjmp;
 		} else {
-			duk__handle_yield(thr, resumer, resumer->callstack_top - 2, &thr->heap->lj.value1);
+			duk_hthread_activation_unwind_norz(resumer);
+			duk__handle_yield(thr, resumer, &thr->heap->lj.value1);
 
 			thr->state = DUK_HTHREAD_STATE_YIELDED;
 			thr->resumer = NULL;
+			DUK_HTHREAD_DECREF_NORZ(thr, resumer);
 			resumer->state = DUK_HTHREAD_STATE_RUNNING;
 			DUK_HEAP_SWITCH_THREAD(thr->heap, resumer);
 #if 0
@@ -1313,76 +1362,78 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 		 *  Ecmascript activations.
 		 */
 
+		duk_activation *act;
 		duk_catcher *cat;
 		duk_hthread *resumer;
 
-		cat = thr->catchstack + thr->catchstack_top - 1;
-		while (cat >= thr->catchstack) {
-			if (thr == entry_thread &&
-			    cat->callstack_index < entry_callstack_index) {
-				/* entry level reached */
+		for (;;) {
+			act = thr->callstack_curr;
+			if (act == NULL) {
 				break;
 			}
 
-			if (DUK_CAT_HAS_CATCH_ENABLED(cat)) {
-				DUK_ASSERT(DUK_CAT_GET_TYPE(cat) == DUK_CAT_TYPE_TCF);
+			for (;;) {
+				cat = act->cat;
+				if (cat == NULL) {
+					break;
+				}
 
-				duk__handle_catch(thr,
-				                  cat - thr->catchstack,
-				                  &thr->heap->lj.value1,
-				                  DUK_LJ_TYPE_THROW);
+				if (DUK_CAT_HAS_CATCH_ENABLED(cat)) {
+					DUK_ASSERT(DUK_CAT_GET_TYPE(cat) == DUK_CAT_TYPE_TCF);
 
-				DUK_DD(DUK_DDPRINT("-> throw caught by a 'catch' clause, restart execution"));
-				retval = DUK__LONGJMP_RESTART;
-				goto wipe_and_return;
+					duk__handle_catch(thr,
+					                  &thr->heap->lj.value1,
+					                  DUK_LJ_TYPE_THROW);
+
+					DUK_DD(DUK_DDPRINT("-> throw caught by a 'catch' clause, restart execution"));
+					retval = DUK__LONGJMP_RESTART;
+					goto wipe_and_return;
+				}
+
+				if (DUK_CAT_HAS_FINALLY_ENABLED(cat)) {
+					DUK_ASSERT(DUK_CAT_GET_TYPE(cat) == DUK_CAT_TYPE_TCF);
+					DUK_ASSERT(!DUK_CAT_HAS_CATCH_ENABLED(cat));
+
+					duk__handle_finally(thr,
+					                    &thr->heap->lj.value1,
+					                    DUK_LJ_TYPE_THROW);
+
+					DUK_DD(DUK_DDPRINT("-> throw caught by a 'finally' clause, restart execution"));
+					retval = DUK__LONGJMP_RESTART;
+					goto wipe_and_return;
+				}
+
+				duk_hthread_catcher_unwind_norz(thr, act);
 			}
 
-			if (DUK_CAT_HAS_FINALLY_ENABLED(cat)) {
-				DUK_ASSERT(DUK_CAT_GET_TYPE(cat) == DUK_CAT_TYPE_TCF);
-				DUK_ASSERT(!DUK_CAT_HAS_CATCH_ENABLED(cat));
-
-				duk__handle_finally(thr,
-				                    cat - thr->catchstack,
-				                    &thr->heap->lj.value1,
-				                    DUK_LJ_TYPE_THROW);
-
-				DUK_DD(DUK_DDPRINT("-> throw caught by a 'finally' clause, restart execution"));
-				retval = DUK__LONGJMP_RESTART;
-				goto wipe_and_return;
+			if (act == entry_act) {
+				/* Not caught by anything before entry level; rethrow and let the
+				 * final catcher finish unwinding (esp. value stack).
+				 */
+				DUK_D(DUK_DPRINT("-> throw propagated up to entry level, rethrow and exit bytecode executor"));
+				retval = DUK__LONGJMP_RETHROW;
+				goto just_return;
 			}
 
-			cat--;
-		}
-
-		if (thr == entry_thread) {
-			/* not caught by anything before entry level; rethrow and let the
-			 * final catcher unwind everything
-			 */
-#if 0
-			duk_hthread_catchstack_unwind(thr, (cat - thr->catchstack) + 1);  /* leave 'cat' as top catcher (also works if catchstack exhausted) */
-			duk_hthread_callstack_unwind(thr, entry_callstack_index + 1);
-
-#endif
-			DUK_D(DUK_DPRINT("-> throw propagated up to entry level, rethrow and exit bytecode executor"));
-			retval = DUK__LONGJMP_RETHROW;
-			goto just_return;
-			/* Note: MUST NOT wipe_and_return here, as heap->lj must remain intact */
+			duk_hthread_activation_unwind_norz(thr);
 		}
 
 		DUK_DD(DUK_DDPRINT("-> throw not caught by current thread, yield error to resumer and recheck longjmp"));
 
-		/* not caught by current thread, thread terminates (yield error to resumer);
+		/* Not caught by current thread, thread terminates (yield error to resumer);
 		 * note that this may cause a cascade if the resumer terminates with an uncaught
-		 * exception etc (this is OK, but needs careful testing)
+		 * exception etc (this is OK, but needs careful testing).
 		 */
 
 		DUK_ASSERT(thr->resumer != NULL);
 		DUK_ASSERT(thr->resumer->callstack_top >= 2);  /* Ecmascript activation + Duktape.Thread.resume() activation */
-		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 1) != NULL &&
-		           DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 1)) &&
-		           ((duk_hnatfunc *) DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 1))->func == duk_bi_thread_resume);  /* Duktape.Thread.resume() */
-		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 2) != NULL &&
-		           DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 2)));  /* an Ecmascript function */
+		DUK_ASSERT(thr->resumer->callstack_curr != NULL);
+		DUK_ASSERT(thr->resumer->callstack_curr->parent != NULL);
+		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->resumer->callstack_curr) != NULL &&
+		           DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(thr->resumer->callstack_curr)) &&
+		           ((duk_hnatfunc *) DUK_ACT_GET_FUNC(thr->resumer->callstack_curr))->func == duk_bi_thread_resume);  /* Duktape.Thread.resume() */
+		DUK_ASSERT(DUK_ACT_GET_FUNC(thr->resumer->callstack_curr->parent) != NULL &&
+		           DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->resumer->callstack_curr->parent)));  /* an Ecmascript function */
 
 		resumer = thr->resumer;
 
@@ -1395,6 +1446,7 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 		DUK_ASSERT(thr->state == DUK_HTHREAD_STATE_TERMINATED);
 
 		thr->resumer = NULL;
+		DUK_HTHREAD_DECREF_NORZ(thr, resumer);
 		resumer->state = DUK_HTHREAD_STATE_RUNNING;
 		DUK_HEAP_SWITCH_THREAD(thr->heap, resumer);
 		thr = resumer;
@@ -1423,6 +1475,8 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 	DUK_TVAL_SET_UNDEFINED_UPDREF(thr, &thr->heap->lj.value1);  /* side effects */
 	DUK_TVAL_SET_UNDEFINED_UPDREF(thr, &thr->heap->lj.value2);  /* side effects */
 
+	DUK_GC_TORTURE(thr->heap);
+
  just_return:
 	return retval;
 
@@ -1443,67 +1497,58 @@ duk_small_uint_t duk__handle_longjmp(duk_hthread *thr,
 DUK_LOCAL void duk__handle_break_or_continue(duk_hthread *thr,
                                              duk_uint_t label_id,
                                              duk_small_uint_t lj_type) {
+	duk_activation *act;
 	duk_catcher *cat;
-	duk_size_t orig_callstack_index;
 
 	DUK_ASSERT(thr != NULL);
 
-	/*
-	 *  Find a matching label catcher or 'finally' catcher in
-	 *  the same function.
+	/* Find a matching label catcher or 'finally' catcher in
+	 * the same function, unwinding catchers as we go.
 	 *
-	 *  A label catcher must always exist and will match unless
-	 *  a 'finally' captures the break/continue first.  It is the
-	 *  compiler's responsibility to ensure that labels are used
-	 *  correctly.
+	 * A label catcher must always exist and will match unless
+	 * a 'finally' captures the break/continue first.  It is the
+	 * compiler's responsibility to ensure that labels are used
+	 * correctly.
 	 */
 
-	/* Note: thr->catchstack_top may be 0, so that cat < thr->catchstack
-	 * initially.  This is OK and intended.
-	 */
-	cat = thr->catchstack + thr->catchstack_top - 1;
-	DUK_ASSERT(thr->callstack_top > 0);
-	orig_callstack_index = thr->callstack_top - 1;
+	act = thr->callstack_curr;
+	DUK_ASSERT(act != NULL);
 
-	DUK_DDD(DUK_DDDPRINT("handling break/continue with label=%ld, callstack index=%ld",
-	                     (long) label_id, (long) cat->callstack_index));
-
-	while (cat >= thr->catchstack) {
-		if (cat->callstack_index != orig_callstack_index) {
+	for (;;) {
+		cat = act->cat;
+		if (cat == NULL) {
 			break;
 		}
-		DUK_DDD(DUK_DDDPRINT("considering catcher %ld: type=%ld label=%ld",
-		                     (long) (cat - thr->catchstack),
+
+		DUK_DDD(DUK_DDDPRINT("considering catcher %p: type=%ld label=%ld",
+		                     (void *) cat,
 		                     (long) DUK_CAT_GET_TYPE(cat),
 		                     (long) DUK_CAT_GET_LABEL(cat)));
 
+		/* XXX: bit mask test; FINALLY <-> TCF, single bit mask would suffice? */
+
 		if (DUK_CAT_GET_TYPE(cat) == DUK_CAT_TYPE_TCF &&
 		    DUK_CAT_HAS_FINALLY_ENABLED(cat)) {
-			duk_size_t cat_idx;
 			duk_tval tv_tmp;
 
-			cat_idx = (duk_size_t) (cat - thr->catchstack);  /* get before side effects */
-
 			DUK_TVAL_SET_U32(&tv_tmp, (duk_uint32_t) label_id);
-			duk__handle_finally(thr, cat_idx, &tv_tmp, lj_type);
+			duk__handle_finally(thr, &tv_tmp, lj_type);
 
 			DUK_DD(DUK_DDPRINT("-> break/continue caught by 'finally', restart execution"));
 			return;
 		}
 		if (DUK_CAT_GET_TYPE(cat) == DUK_CAT_TYPE_LABEL &&
 		    (duk_uint_t) DUK_CAT_GET_LABEL(cat) == label_id) {
-			duk_size_t cat_idx;
-
-			cat_idx = (duk_size_t) (cat - thr->catchstack);
-			duk__handle_label(thr, cat_idx, lj_type);
+			duk__handle_label(thr, lj_type);
 
 			DUK_DD(DUK_DDPRINT("-> break/continue caught by a label catcher (in the same function), restart execution"));
 			return;
 		}
-		cat--;
+
+		duk_hthread_catcher_unwind_norz(thr, act);
 	}
 
-	/* should never happen, but be robust */
+	/* Should never happen, but be robust. */
 	DUK_D(DUK_DPRINT("-> break/continue not caught by anything in the current function (should never happen), throw internal error"));
 	DUK_ERROR_INTERNAL(thr);
 	return;
@@ -1513,22 +1558,19 @@ DUK_LOCAL void duk__handle_break_or_continue(duk_hthread *thr,
  * it has a measurable performance impact in ordinary environments and an extreme
  * impact in Emscripten (GH-342).  Return value is on value stack top.
  */
-DUK_LOCAL duk_small_uint_t duk__handle_return(duk_hthread *thr,
-                                              duk_hthread *entry_thread,
-                                              duk_size_t entry_callstack_top) {
+DUK_LOCAL duk_small_uint_t duk__handle_return(duk_hthread *thr, duk_activation *entry_act) {
 	duk_tval *tv1;
 	duk_tval *tv2;
 #if defined(DUK_USE_COROUTINE_SUPPORT)
 	duk_hthread *resumer;
 #endif
+	duk_activation *act;
 	duk_catcher *cat;
-	duk_size_t new_cat_top;
-	duk_size_t orig_callstack_index;
 
 	/* We can directly access value stack here. */
 
 	DUK_ASSERT(thr != NULL);
-	DUK_ASSERT(entry_thread != NULL);
+	DUK_ASSERT(entry_act != NULL);
 	DUK_ASSERT(thr->valstack_top - 1 >= thr->valstack_bottom);
 	tv1 = thr->valstack_top - 1;
 	DUK_TVAL_CHKFAST_INPLACE_FAST(tv1);  /* fastint downgrade check for return values */
@@ -1556,77 +1598,62 @@ DUK_LOCAL duk_small_uint_t duk__handle_return(duk_hthread *thr,
 
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(thr->callstack_top >= 1);
-	DUK_ASSERT(thr->catchstack != NULL);
 
-	/* XXX: does not work if thr->catchstack is NULL */
-	/* XXX: does not work if thr->catchstack is allocated but lowest pointer */
+	act = thr->callstack_curr;
+	DUK_ASSERT(act != NULL);
 
-	cat = thr->catchstack + thr->catchstack_top - 1;  /* may be < thr->catchstack initially */
-	DUK_ASSERT(thr->callstack_top > 0);  /* ensures callstack_top - 1 >= 0 */
-	orig_callstack_index = thr->callstack_top - 1;
-
-	while (cat >= thr->catchstack) {
-		if (cat->callstack_index != orig_callstack_index) {
+	for (;;) {
+		cat = act->cat;
+		if (cat == NULL) {
 			break;
 		}
+
 		if (DUK_CAT_GET_TYPE(cat) == DUK_CAT_TYPE_TCF &&
 		    DUK_CAT_HAS_FINALLY_ENABLED(cat)) {
-			duk_size_t cat_idx;
-
-			cat_idx = (duk_size_t) (cat - thr->catchstack);  /* get before side effects */
-
 			DUK_ASSERT(thr->valstack_top - 1 >= thr->valstack_bottom);
-			duk__handle_finally(thr, cat_idx, thr->valstack_top - 1, DUK_LJ_TYPE_RETURN);
+			duk__handle_finally(thr, thr->valstack_top - 1, DUK_LJ_TYPE_RETURN);
 
 			DUK_DD(DUK_DDPRINT("-> return caught by 'finally', restart execution"));
 			return DUK__RETHAND_RESTART;
 		}
-		cat--;
+
+		duk_hthread_catcher_unwind_norz(thr, act);
 	}
-	/* If out of catchstack, cat = thr->catchstack - 1;
-	 * new_cat_top will be 0 in that case.
-	 */
-	new_cat_top = (duk_size_t) ((cat + 1) - thr->catchstack);
-	cat = NULL;  /* avoid referencing, invalidated */
 
-	DUK_DDD(DUK_DDDPRINT("no catcher in catch stack, return to calling activation / yield"));
-
-	if (thr == entry_thread &&
-	    thr->callstack_top == entry_callstack_top) {
-		/* Return to the bytecode executor caller which will unwind stacks.
+	if (act == entry_act) {
+		/* Return to the bytecode executor caller who will unwind stacks.
 		 * Return value is already on the stack top: [ ... retval ].
 		 */
 
-		/* XXX: could unwind catchstack here, so that call handling
-		 * didn't need to do that?
-		 */
 		DUK_DDD(DUK_DDDPRINT("-> return propagated up to entry level, exit bytecode executor"));
 		return DUK__RETHAND_FINISHED;
 	}
 
 	if (thr->callstack_top >= 2) {
 		/* There is a caller; it MUST be an Ecmascript caller (otherwise it would
-		 * match entry level check)
+		 * match entry_act check).
 		 */
 
 		DUK_DDD(DUK_DDDPRINT("return to Ecmascript caller, idx_retval=%ld, lj_value1=%!T",
-		                     (long) (thr->callstack + thr->callstack_top - 2)->idx_retval,
-		                     (duk_tval *) &thr->heap->lj.value1));
+					(long) (thr->callstack_curr->parent->idx_retval),
+					(duk_tval *) &thr->heap->lj.value1));
 
-		DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 2)));   /* must be ecmascript */
+		DUK_ASSERT(thr->callstack_curr != NULL);
+		DUK_ASSERT(thr->callstack_curr->parent != NULL);
+		DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack_curr->parent)));   /* must be ecmascript */
 
-		tv1 = thr->valstack + (thr->callstack + thr->callstack_top - 2)->idx_retval;
+		tv1 = thr->valstack + thr->callstack_curr->parent->idx_retval;
 		DUK_ASSERT(thr->valstack_top - 1 >= thr->valstack_bottom);
 		tv2 = thr->valstack_top - 1;
 		DUK_TVAL_SET_TVAL_UPDREF(thr, tv1, tv2);  /* side effects */
 
 		DUK_DDD(DUK_DDDPRINT("return value at idx_retval=%ld is %!T",
-		                     (long) (thr->callstack + thr->callstack_top - 2)->idx_retval,
-		                     (duk_tval *) (thr->valstack + (thr->callstack + thr->callstack_top - 2)->idx_retval)));
+		                     (long) (thr->callstack_curr->parent->idx_retval),
+		                     (duk_tval *) (thr->valstack + thr->callstack_curr->parent->idx_retval)));
 
-		duk_hthread_catchstack_unwind(thr, new_cat_top);  /* leave 'cat' as top catcher (also works if catchstack exhausted) */
-		duk_hthread_callstack_unwind(thr, thr->callstack_top - 1);
-		duk__reconfig_valstack_ecma_return(thr, thr->callstack_top - 1);
+		/* Catch stack unwind happens inline in callstack unwind. */
+		duk_hthread_activation_unwind_norz(thr);
+		duk__reconfig_valstack_ecma_return(thr);
 
 		DUK_DD(DUK_DDPRINT("-> return not intercepted, restart execution in caller"));
 		return DUK__RETHAND_RESTART;
@@ -1637,12 +1664,14 @@ DUK_LOCAL duk_small_uint_t duk__handle_return(duk_hthread *thr,
 
 	DUK_ASSERT(thr->resumer != NULL);
 	DUK_ASSERT(thr->resumer->callstack_top >= 2);  /* Ecmascript activation + Duktape.Thread.resume() activation */
-	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 1) != NULL &&
-	           DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 1)) &&
-	           ((duk_hnatfunc *) DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 1))->func == duk_bi_thread_resume);  /* Duktape.Thread.resume() */
-	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 2) != NULL &&
-	           DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->resumer->callstack + thr->resumer->callstack_top - 2)));  /* an Ecmascript function */
-	DUK_ASSERT_DISABLE((thr->resumer->callstack + thr->resumer->callstack_top - 2)->idx_retval >= 0);                /* unsigned */
+	DUK_ASSERT(thr->resumer->callstack_curr != NULL);
+	DUK_ASSERT(thr->resumer->callstack_curr->parent != NULL);
+	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->resumer->callstack_curr) != NULL &&
+			DUK_HOBJECT_IS_NATFUNC(DUK_ACT_GET_FUNC(thr->resumer->callstack_curr)) &&
+			((duk_hnatfunc *) DUK_ACT_GET_FUNC(thr->resumer->callstack_curr))->func == duk_bi_thread_resume);  /* Duktape.Thread.resume() */
+	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->resumer->callstack_curr->parent) != NULL &&
+			DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->resumer->callstack_curr->parent)));  /* an Ecmascript function */
+	DUK_ASSERT_DISABLE(thr->resumer->callstack_curr->parent->idx_retval >= 0);                  /* unsigned */
 	DUK_ASSERT(thr->state == DUK_HTHREAD_STATE_RUNNING);
 	DUK_ASSERT(thr->resumer->state == DUK_HTHREAD_STATE_RESUMED);
 
@@ -1650,12 +1679,14 @@ DUK_LOCAL duk_small_uint_t duk__handle_return(duk_hthread *thr,
 
 	/* Share yield longjmp handler. */
 	DUK_ASSERT(thr->valstack_top - 1 >= thr->valstack_bottom);
-	duk__handle_yield(thr, resumer, resumer->callstack_top - 2, thr->valstack_top - 1);
+	duk_hthread_activation_unwind_norz(resumer);
+	duk__handle_yield(thr, resumer, thr->valstack_top - 1);
 
 	duk_hthread_terminate(thr);  /* updates thread state, minimizes its allocations */
 	DUK_ASSERT(thr->state == DUK_HTHREAD_STATE_TERMINATED);
 
 	thr->resumer = NULL;
+	DUK_HTHREAD_DECREF(thr, resumer);
 	resumer->state = DUK_HTHREAD_STATE_RUNNING;
 	DUK_HEAP_SWITCH_THREAD(thr->heap, resumer);
 #if 0
@@ -1714,7 +1745,8 @@ DUK_LOCAL void duk__interrupt_handle_debugger(duk_hthread *thr, duk_bool_t *out_
 	DUK_ASSERT(thr->heap->dbg_processing == 0);  /* don't re-enter e.g. during Eval */
 
 	ctx = (duk_context *) thr;
-	act = thr->callstack + thr->callstack_top - 1;
+	act = thr->callstack_curr;
+	DUK_ASSERT(act != NULL);
 
 	/* It might seem that replacing 'thr->heap' with just 'heap' below
 	 * might be a good idea, but it increases code size slightly
@@ -1726,21 +1758,18 @@ DUK_LOCAL void duk__interrupt_handle_debugger(duk_hthread *thr, duk_bool_t *out_
 	 */
 
 	if (act->flags & DUK_ACT_FLAG_BREAKPOINT_ACTIVE ||
-	    (thr->heap->dbg_step_thread == thr &&
-	     thr->heap->dbg_step_csindex == thr->callstack_top - 1)) {
+	    (thr->heap->dbg_step_act == thr->callstack_curr)) {
 		line = duk_debug_curr_line(thr);
 
 		if (act->prev_line != line) {
 			/* Stepped?  Step out is handled by callstack unwind. */
 			if ((thr->heap->dbg_step_type == DUK_STEP_TYPE_INTO ||
 			     thr->heap->dbg_step_type == DUK_STEP_TYPE_OVER) &&
-			    (thr->heap->dbg_step_thread == thr) &&
-			    (thr->heap->dbg_step_csindex == thr->callstack_top - 1) &&
+			    (thr->heap->dbg_step_act == thr->callstack_curr) &&
 			    (line != thr->heap->dbg_step_startline)) {
 				DUK_D(DUK_DPRINT("STEP STATE TRIGGERED PAUSE at line %ld",
 				                 (long) line));
-
-				DUK_HEAP_SET_PAUSED(thr->heap);
+				duk_debug_set_paused(thr->heap);
 			}
 
 			/* Check for breakpoints only on line transition.
@@ -1766,8 +1795,7 @@ DUK_LOCAL void duk__interrupt_handle_debugger(duk_hthread *thr, duk_bool_t *out_
 				if (act->prev_line != bp->line && line == bp->line) {
 					DUK_D(DUK_DPRINT("BREAKPOINT TRIGGERED at %!O:%ld",
 					                 (duk_heaphdr *) bp->filename, (long) bp->line));
-
-					DUK_HEAP_SET_PAUSED(thr->heap);
+					duk_debug_set_paused(thr->heap);
 				}
 			}
 		} else {
@@ -1839,7 +1867,6 @@ DUK_LOCAL void duk__interrupt_handle_debugger(duk_hthread *thr, duk_bool_t *out_
 	 *  detaching.
 	 */
 
-	act = NULL;  /* may be changed */
 	if (process_messages) {
 		DUK_ASSERT(thr->heap->dbg_processing == 0);
 		processed_messages = duk_debug_process_messages(thr, 0 /*no_block*/);
@@ -1854,13 +1881,13 @@ DUK_LOCAL void duk__interrupt_handle_debugger(duk_hthread *thr, duk_bool_t *out_
 	 * above, so we must recheck attach status.
 	 */
 
-	if (DUK_HEAP_IS_DEBUGGER_ATTACHED(thr->heap)) {
-		act = thr->callstack + thr->callstack_top - 1;  /* relookup, may have changed */
+	if (duk_debug_is_attached(thr->heap)) {
+		DUK_ASSERT(act == thr->callstack_curr);
+		DUK_ASSERT(act != NULL);
 		if (act->flags & DUK_ACT_FLAG_BREAKPOINT_ACTIVE ||
 		    ((thr->heap->dbg_step_type == DUK_STEP_TYPE_INTO ||
 		      thr->heap->dbg_step_type == DUK_STEP_TYPE_OVER) &&
-		     thr->heap->dbg_step_thread == thr &&
-		     thr->heap->dbg_step_csindex == thr->callstack_top - 1) ||
+		     thr->heap->dbg_step_act == thr->callstack_curr) ||
 		     DUK_HEAP_HAS_DEBUGGER_PAUSED(thr->heap)) {
 			*out_immediate = 1;
 		}
@@ -1878,7 +1905,7 @@ DUK_LOCAL void duk__interrupt_handle_debugger(duk_hthread *thr, duk_bool_t *out_
 }
 #endif  /* DUK_USE_DEBUGGER_SUPPORT */
 
-DUK_LOCAL duk_small_uint_t duk__executor_interrupt(duk_hthread *thr) {
+DUK_LOCAL DUK_NOINLINE DUK_COLD duk_small_uint_t duk__executor_interrupt(duk_hthread *thr) {
 	duk_int_t ctr;
 	duk_activation *act;
 	duk_hcompfunc *fun;
@@ -1887,7 +1914,6 @@ DUK_LOCAL duk_small_uint_t duk__executor_interrupt(duk_hthread *thr) {
 
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(thr->heap != NULL);
-	DUK_ASSERT(thr->callstack != NULL);
 	DUK_ASSERT(thr->callstack_top > 0);
 
 #if defined(DUK_USE_DEBUG)
@@ -1928,7 +1954,8 @@ DUK_LOCAL duk_small_uint_t duk__executor_interrupt(duk_hthread *thr) {
 	}
 	DUK_HEAP_SET_INTERRUPT_RUNNING(thr->heap);
 
-	act = thr->callstack + thr->callstack_top - 1;
+	act = thr->callstack_curr;
+	DUK_ASSERT(act != NULL);
 
 	fun = (duk_hcompfunc *) DUK_ACT_GET_FUNC(act);
 	DUK_ASSERT(DUK_HOBJECT_HAS_COMPFUNC((duk_hobject *) fun));
@@ -1964,8 +1991,7 @@ DUK_LOCAL duk_small_uint_t duk__executor_interrupt(duk_hthread *thr) {
 		 * detaching (to finish off the pending detach).
 		 */
 		duk__interrupt_handle_debugger(thr, &immediate, &retval);
-		act = thr->callstack + thr->callstack_top - 1;  /* relookup if changed */
-		DUK_UNREF(act);  /* 'act' is no longer accessed, scanbuild fix */
+		DUK_ASSERT(act == thr->callstack_curr);
 	}
 #endif  /* DUK_USE_DEBUGGER_SUPPORT */
 
@@ -2101,12 +2127,10 @@ DUK_LOCAL void duk__executor_recheck_debugger(duk_hthread *thr, duk_activation *
 	DUK_DD(DUK_DDPRINT("ACTIVE BREAKPOINTS: %ld", (long) (bp_active - thr->heap->dbg_breakpoints_active)));
 
 	/* Force pause if we were doing "step into" in another activation. */
-	if (thr->heap->dbg_step_thread != NULL &&
-	    thr->heap->dbg_step_type == DUK_STEP_TYPE_INTO &&
-	    (thr->heap->dbg_step_thread != thr ||
-	     thr->heap->dbg_step_csindex != thr->callstack_top - 1)) {
+	if (thr->heap->dbg_step_type == DUK_STEP_TYPE_INTO &&
+	    thr->heap->dbg_step_act != thr->callstack_curr) {
 		DUK_D(DUK_DPRINT("STEP INTO ACTIVE, FORCE PAUSED"));
-		DUK_HEAP_SET_PAUSED(thr->heap);
+		duk_debug_set_paused(thr->heap);
 	}
 
 	/* Force interrupt right away if we're paused or in "checked mode".
@@ -2115,7 +2139,7 @@ DUK_LOCAL void duk__executor_recheck_debugger(duk_hthread *thr, duk_activation *
 	if (act->flags & (DUK_ACT_FLAG_BREAKPOINT_ACTIVE) ||
 	    DUK_HEAP_HAS_DEBUGGER_PAUSED(thr->heap) ||
 	    (thr->heap->dbg_step_type != DUK_STEP_TYPE_OUT &&
-	     thr->heap->dbg_step_csindex == thr->callstack_top - 1)) {
+	     thr->heap->dbg_step_act == thr->callstack_curr)) {
 		/* We'll need to interrupt early so recompute the init
 		 * counter to reflect the number of bytecode instructions
 		 * executed so that step counts for e.g. debugger rate
@@ -2161,7 +2185,7 @@ DUK_LOCAL void duk__executor_recheck_debugger(duk_hthread *thr, duk_activation *
 #if defined(DUK_USE_EXEC_FUN_LOCAL)
 #define DUK__FUN()          fun
 #else
-#define DUK__FUN()          ((duk_hcompfunc *) DUK_ACT_GET_FUNC((thr)->callstack + (thr)->callstack_top - 1))
+#define DUK__FUN()          ((duk_hcompfunc *) DUK_ACT_GET_FUNC((thr)->callstack_curr))
 #endif
 #define DUK__STRICT()       (DUK_HOBJECT_HAS_STRICT((duk_hobject *) DUK__FUN()))
 
@@ -2226,7 +2250,7 @@ DUK_LOCAL void duk__executor_recheck_debugger(duk_hthread *thr, duk_activation *
 #define DUK__REGCONSTP_C(ins)  ((((ins) & DUK__RCBIT_C) ? consts : thr->valstack_bottom) + DUK_DEC_C((ins)))
 #endif  /* DUK_USE_EXEC_REGCONST_OPTIMIZE */
 
-#ifdef DUK_USE_VERBOSE_EXECUTOR_ERRORS
+#if defined(DUK_USE_VERBOSE_EXECUTOR_ERRORS)
 #define DUK__INTERNAL_ERROR(msg)  do { \
 		DUK_ERROR_ERROR(thr, (msg)); \
 	} while (0)
@@ -2237,14 +2261,14 @@ DUK_LOCAL void duk__executor_recheck_debugger(duk_hthread *thr, duk_activation *
 #endif
 
 #define DUK__SYNC_CURR_PC()  do { \
-		duk_activation *act; \
-		act = thr->callstack + thr->callstack_top - 1; \
-		act->curr_pc = curr_pc; \
+		duk_activation *duk__act; \
+		duk__act = thr->callstack_curr; \
+		duk__act->curr_pc = curr_pc; \
 	} while (0)
 #define DUK__SYNC_AND_NULL_CURR_PC()  do { \
-		duk_activation *act; \
-		act = thr->callstack + thr->callstack_top - 1; \
-		act->curr_pc = curr_pc; \
+		duk_activation *duk__act; \
+		duk__act = thr->callstack_curr; \
+		duk__act->curr_pc = curr_pc; \
 		thr->ptr_curr_pc = NULL; \
 	} while (0)
 
@@ -2270,8 +2294,7 @@ DUK_LOCAL void duk__executor_recheck_debugger(duk_hthread *thr, duk_activation *
 #endif
 
 DUK_LOCAL void duk__handle_executor_error(duk_heap *heap,
-                                          duk_hthread *entry_thread,
-                                          duk_size_t entry_callstack_top,
+                                          duk_activation *entry_act,
                                           duk_int_t entry_call_recursion_depth,
                                           duk_jmpbuf *entry_jmpbuf_ptr) {
 	duk_small_uint_t lj_ret;
@@ -2293,17 +2316,29 @@ DUK_LOCAL void duk__handle_executor_error(duk_heap *heap,
 	 */
 	heap->lj.jmpbuf_ptr = (duk_jmpbuf *) entry_jmpbuf_ptr;
 
-	lj_ret = duk__handle_longjmp(heap->curr_thread, entry_thread, entry_callstack_top);
+	lj_ret = duk__handle_longjmp(heap->curr_thread, entry_act);
+
+	/* Error handling complete, remove side effect protections.
+	 */
+#if defined(DUK_USE_ASSERTIONS)
+	DUK_ASSERT(heap->error_not_allowed == 1);
+	heap->error_not_allowed = 0;
+#endif
+	DUK_ASSERT(heap->pf_prevent_count > 0);
+	heap->pf_prevent_count--;
+	DUK_DD(DUK_DDPRINT("executor error handled, pf_prevent_count updated to %ld", (long) heap->pf_prevent_count));
 
 	if (lj_ret == DUK__LONGJMP_RESTART) {
 		/* Restart bytecode execution, possibly with a changed thread. */
-		;
+		DUK_REFZERO_CHECK_SLOW(heap->curr_thread);
 	} else {
-		/* Rethrow error to calling state. */
-		DUK_ASSERT(lj_ret == DUK__LONGJMP_RETHROW);
+		/* If an error is propagated, don't run refzero checks here.
+		 * The next catcher will deal with that.  Pf_prevent_count
+		 * will be re-bumped by the longjmp.
+		 */
 
-		/* Longjmp handling has restored jmpbuf_ptr. */
-		DUK_ASSERT(heap->lj.jmpbuf_ptr == entry_jmpbuf_ptr);
+		DUK_ASSERT(lj_ret == DUK__LONGJMP_RETHROW);  /* Rethrow error to calling state. */
+		DUK_ASSERT(heap->lj.jmpbuf_ptr == entry_jmpbuf_ptr);  /* Longjmp handling has restored jmpbuf_ptr. */
 
 		/* Thread may have changed, e.g. YIELD converted to THROW. */
 		duk_err_longjmp(heap->curr_thread);
@@ -2315,7 +2350,7 @@ DUK_LOCAL void duk__handle_executor_error(duk_heap *heap,
 DUK_INTERNAL void duk_js_execute_bytecode(duk_hthread *exec_thr) {
 	/* Entry level info. */
 	duk_hthread *entry_thread;
-	duk_size_t entry_callstack_top;
+	duk_activation *entry_act;
 	duk_int_t entry_call_recursion_depth;
 	duk_jmpbuf *entry_jmpbuf_ptr;
 	duk_jmpbuf our_jmpbuf;
@@ -2326,12 +2361,16 @@ DUK_INTERNAL void duk_js_execute_bytecode(duk_hthread *exec_thr) {
 	DUK_ASSERT(exec_thr->heap->curr_thread != NULL);
 	DUK_ASSERT_REFCOUNT_NONZERO_HEAPHDR((duk_heaphdr *) exec_thr);
 	DUK_ASSERT(exec_thr->callstack_top >= 1);  /* at least one activation, ours */
-	DUK_ASSERT(DUK_ACT_GET_FUNC(exec_thr->callstack + exec_thr->callstack_top - 1) != NULL);
-	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(exec_thr->callstack + exec_thr->callstack_top - 1)));
+	DUK_ASSERT(exec_thr->callstack_curr != NULL);
+	DUK_ASSERT(DUK_ACT_GET_FUNC(exec_thr->callstack_curr) != NULL);
+	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(exec_thr->callstack_curr)));
+
+	DUK_GC_TORTURE(exec_thr->heap);
 
 	entry_thread = exec_thr;
 	heap = entry_thread->heap;
-	entry_callstack_top = entry_thread->callstack_top;
+	entry_act = entry_thread->callstack_curr;
+	DUK_ASSERT(entry_act != NULL);
 	entry_call_recursion_depth = entry_thread->heap->call_recursion_depth;
 	entry_jmpbuf_ptr = entry_thread->heap->lj.jmpbuf_ptr;
 
@@ -2355,7 +2394,7 @@ DUK_INTERNAL void duk_js_execute_bytecode(duk_hthread *exec_thr) {
 		if (DUK_SETJMP(our_jmpbuf.jb) == 0) {
 #endif
 			/* Execute bytecode until returned or longjmp(). */
-			duk__js_execute_bytecode_inner(entry_thread, entry_callstack_top);
+			duk__js_execute_bytecode_inner(entry_thread, entry_act);
 
 			/* Successful return: restore jmpbuf and return to caller. */
 			heap->lj.jmpbuf_ptr = entry_jmpbuf_ptr;
@@ -2372,8 +2411,7 @@ DUK_INTERNAL void duk_js_execute_bytecode(duk_hthread *exec_thr) {
 			DUK_DDD(DUK_DDDPRINT("longjmp caught by bytecode executor"));
 
 			duk__handle_executor_error(heap,
-			                           entry_thread,
-			                           entry_callstack_top,
+			                           entry_act,
 			                           entry_call_recursion_depth,
 			                           entry_jmpbuf_ptr);
 		}
@@ -2391,8 +2429,7 @@ DUK_INTERNAL void duk_js_execute_bytecode(duk_hthread *exec_thr) {
 				DUK_D(DUK_DPRINT("caught api error thrown from unexpected c++ std::exception"));
 				DUK_UNREF(exc);
 				duk__handle_executor_error(heap,
-				                           entry_thread,
-				                           entry_callstack_top,
+				                           entry_act,
 				                           entry_call_recursion_depth,
 				                           entry_jmpbuf_ptr);
 			}
@@ -2405,8 +2442,7 @@ DUK_INTERNAL void duk_js_execute_bytecode(duk_hthread *exec_thr) {
 				DUK_D(DUK_DPRINT("caught api error thrown from unexpected c++ exception"));
 				DUK_UNREF(exc);
 				duk__handle_executor_error(heap,
-				                           entry_thread,
-				                           entry_callstack_top,
+				                           entry_act,
 				                           entry_call_recursion_depth,
 				                           entry_jmpbuf_ptr);
 			}
@@ -2418,7 +2454,7 @@ DUK_INTERNAL void duk_js_execute_bytecode(duk_hthread *exec_thr) {
 }
 
 /* Inner executor, performance critical. */
-DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_thread, duk_size_t entry_callstack_top) {
+DUK_LOCAL DUK_NOINLINE DUK_HOT void duk__js_execute_bytecode_inner(duk_hthread *entry_thread, duk_activation *entry_act) {
 	/* Current PC, accessed by other functions through thr->ptr_to_curr_pc.
 	 * Critical for performance.  It would be safest to make this volatile,
 	 * but that eliminates performance benefits; aliasing guarantees
@@ -2439,11 +2475,11 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 	/* 'fun' is quite rarely used, so no local for it */
 #endif
 
-#ifdef DUK_USE_INTERRUPT_COUNTER
+#if defined(DUK_USE_INTERRUPT_COUNTER)
 	duk_int_t int_ctr;
 #endif
 
-#ifdef DUK_USE_ASSERTIONS
+#if defined(DUK_USE_ASSERTIONS)
 	duk_size_t valstack_top_base;    /* valstack top, should match before interpreting each op (no leftovers) */
 #endif
 
@@ -2458,6 +2494,8 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 	DUK_ASSERT(sizeof(duk_tval) == 16);
 #endif
 #endif
+
+	DUK_GC_TORTURE(entry_thread->heap);
 
 	/*
 	 *  Restart execution by reloading thread state.
@@ -2494,7 +2532,6 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 	 *
 	 *  The following are not assumed to have stable pointers at all:
 	 *    - the value stack (registers) of the current thread
-	 *    - the catch stack of the current thread
 	 *
 	 *  See execution.rst for discussion.
 	 */
@@ -2508,8 +2545,11 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 	thr = entry_thread->heap->curr_thread;
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(thr->callstack_top >= 1);
-	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1) != NULL);
-	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack + thr->callstack_top - 1)));
+	DUK_ASSERT(thr->callstack_curr != NULL);
+	DUK_ASSERT(DUK_ACT_GET_FUNC(thr->callstack_curr) != NULL);
+	DUK_ASSERT(DUK_HOBJECT_IS_COMPFUNC(DUK_ACT_GET_FUNC(thr->callstack_curr)));
+
+	DUK_GC_TORTURE(thr->heap);
 
 	thr->ptr_curr_pc = &curr_pc;
 
@@ -2523,7 +2563,8 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 		/* Assume interrupt init/counter are properly initialized here. */
 		/* Assume that thr->valstack_bottom has been set-up before getting here. */
 
-		act = thr->callstack + thr->callstack_top - 1;
+		act = thr->callstack_curr;
+		DUK_ASSERT(act != NULL);
 		fun = (duk_hcompfunc *) DUK_ACT_GET_FUNC(act);
 		DUK_ASSERT(fun != NULL);
 		DUK_ASSERT(thr->valstack_top - thr->valstack_bottom == fun->nregs);
@@ -2531,13 +2572,14 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 		DUK_ASSERT(consts != NULL);
 
 #if defined(DUK_USE_DEBUGGER_SUPPORT)
-		if (DUK_HEAP_IS_DEBUGGER_ATTACHED(thr->heap) && !thr->heap->dbg_processing) {
+		if (duk_debug_is_attached(thr->heap) && !thr->heap->dbg_processing) {
 			duk__executor_recheck_debugger(thr, act, fun);
-			act = thr->callstack + thr->callstack_top - 1;  /* relookup after side effects (no side effects currently however) */
+			DUK_ASSERT(act == thr->callstack_curr);
+			DUK_ASSERT(act != NULL);
 		}
 #endif  /* DUK_USE_DEBUGGER_SUPPORT */
 
-#ifdef DUK_USE_ASSERTIONS
+#if defined(DUK_USE_ASSERTIONS)
 		valstack_top_base = (duk_size_t) (thr->valstack_top - thr->valstack);
 #endif
 
@@ -2546,7 +2588,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 	}
 
 	DUK_DD(DUK_DDPRINT("restarting execution, thr %p, act idx %ld, fun %p,"
-	                   "consts %p, funcs %p, lev %ld, regbot %ld, regtop %ld, catchstack_top=%ld, "
+	                   "consts %p, funcs %p, lev %ld, regbot %ld, regtop %ld, "
 	                   "preventcount=%ld",
 	                   (void *) thr,
 	                   (long) (thr->callstack_top - 1),
@@ -2556,7 +2598,6 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 	                   (long) (thr->callstack_top - 1),
 	                   (long) (thr->valstack_bottom - thr->valstack),
 	                   (long) (thr->valstack_top - thr->valstack),
-	                   (long) thr->catchstack_top,
 	                   (long) thr->callstack_preventcount));
 
 	/* Dispatch loop. */
@@ -2583,10 +2624,11 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			duk_small_uint_t exec_int_ret;
 
 			/* Write curr_pc back for the debugger. */
-			DUK_ASSERT(thr->callstack_top > 0);
 			{
 				duk_activation *act;
-				act = thr->callstack + thr->callstack_top - 1;
+				DUK_ASSERT(thr->callstack_top > 0);
+				act = thr->callstack_curr;
+				DUK_ASSERT(act != NULL);
 				act->curr_pc = (duk_instr_t *) curr_pc;
 			}
 
@@ -2620,7 +2662,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 #if defined(DUK_USE_ASSERTIONS) || defined(DUK_USE_DEBUG)
 		{
 			duk_activation *act;
-			act = thr->callstack + thr->callstack_top - 1;
+			act = thr->callstack_curr;
 			DUK_ASSERT(curr_pc >= DUK_HCOMPFUNC_GET_CODE_BASE(thr->heap, DUK__FUN()));
 			DUK_ASSERT(curr_pc < DUK_HCOMPFUNC_GET_CODE_END(thr->heap, DUK__FUN()));
 			DUK_UNREF(act);  /* if debugging disabled */
@@ -2886,7 +2928,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 
 			tv = DUK__REGP_BC(ins);
 			stridx = duk_js_typeof_stridx(tv);
-			DUK_ASSERT(stridx >= 0 && stridx < DUK_HEAP_NUM_STRINGS);
+			DUK_ASSERT_STRIDX_VALID(stridx);
 			h_str = DUK_HTHREAD_GET_STRING(thr, stridx);
 			tv = DUK__REGP_A(ins);
 			DUK_TVAL_SET_STRING_UPDREF(thr, tv, h_str);
@@ -2912,7 +2954,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			DUK_ASSERT(DUK_TVAL_IS_STRING(tv));
 			name = DUK_TVAL_GET_STRING(tv);
 			tv = NULL;  /* lookup has side effects */
-			act = thr->callstack + thr->callstack_top - 1;
+			act = thr->callstack_curr;
 			if (duk_js_getvar_activation(thr, act, name, 0 /*throw*/)) {
 				/* -> [... val this] */
 				tv = DUK_GET_TVAL_NEGIDX(ctx, -2);
@@ -2923,7 +2965,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 				/* unresolvable, no stack changes */
 				stridx = DUK_STRIDX_LC_UNDEFINED;
 			}
-			DUK_ASSERT(stridx >= 0 && stridx < DUK_HEAP_NUM_STRINGS);
+			DUK_ASSERT_STRIDX_VALID(stridx);
 #if defined(DUK_USE_EXEC_PREFER_SIZE)
 			duk_push_hstring_stridx(ctx, stridx);
 			DUK__REPLACE_TOP_A_BREAK();
@@ -3528,7 +3570,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			 * not intuitive.
 			 */
 
-			x = duk_to_number(ctx, -1);
+			x = duk_to_number_m1(ctx);
 			duk_pop(ctx);
 			if (ins & DUK_BC_INCDECP_FLAG_DEC) {
 				y = x - 1.0;
@@ -3640,14 +3682,12 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			duk_hstring *name;
 			duk_small_uint_t prop_flags;
 			duk_bool_t is_func_decl;
-			duk_bool_t is_undef_value;
 
 			tv1 = DUK__REGCONSTP_B(ins);
 			DUK_ASSERT(DUK_TVAL_IS_STRING(tv1));
 			name = DUK_TVAL_GET_STRING(tv1);
 			DUK_ASSERT(name != NULL);
 
-			is_undef_value = ((a & DUK_BC_DECLVAR_FLAG_UNDEF_VALUE) != 0);
 			is_func_decl = ((a & DUK_BC_DECLVAR_FLAG_FUNC_DECL) != 0);
 
 			/* XXX: declvar takes an duk_tval pointer, which is awkward and
@@ -3659,19 +3699,25 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			 */
 			prop_flags = a & DUK_PROPDESC_FLAGS_MASK;
 
-			if (is_undef_value) {
+			if (is_func_decl) {
+				duk_push_tval(ctx, DUK__REGCONSTP_C(ins));
+			} else {
 				DUK_ASSERT(DUK_TVAL_IS_UNDEFINED(thr->valstack_top));  /* valstack policy */
 				thr->valstack_top++;
-			} else {
-				duk_push_tval(ctx, DUK__REGCONSTP_C(ins));
 			}
 			tv1 = DUK_GET_TVAL_NEGIDX(ctx, -1);
 
-			act = thr->callstack + thr->callstack_top - 1;
+			act = thr->callstack_curr;
 			if (duk_js_declvar_activation(thr, act, name, tv1, prop_flags, is_func_decl)) {
-				/* already declared, must update binding value */
-				tv1 = DUK_GET_TVAL_NEGIDX(ctx, -1);
-				duk_js_putvar_activation(thr, act, name, tv1, DUK__STRICT());
+				if (is_func_decl) {
+					/* Already declared, update value. */
+					tv1 = DUK_GET_TVAL_NEGIDX(ctx, -1);
+					duk_js_putvar_activation(thr, act, name, tv1, DUK__STRICT());
+				} else {
+					/* Already declared but no initializer value
+					 * (e.g. 'var xyz;'), no-op.
+					 */
+				}
 			}
 
 			duk_pop(ctx);
@@ -3725,7 +3771,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			DUK_ASSERT(DUK_TVAL_IS_STRING(tv1));
 			name = DUK_TVAL_GET_STRING(tv1);
 			DUK_ASSERT(name != NULL);
-			act = thr->callstack + thr->callstack_top - 1;
+			act = thr->callstack_curr;
 			(void) duk_js_getvar_activation(thr, act, name, 1 /*throw*/);  /* -> [... val this] */
 
 			idx = (duk_uint_fast_t) DUK_DEC_A(ins);
@@ -3752,7 +3798,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			DUK_ASSERT_DISABLE(bc >= 0); /* unsigned */
 			DUK_ASSERT((duk_uint_t) bc < (duk_uint_t) DUK_HCOMPFUNC_GET_FUNCS_COUNT(thr->heap, DUK__FUN()));
 
-			act = thr->callstack + thr->callstack_top - 1;
+			act = thr->callstack_curr;
 			fun_act = (duk_hcompfunc *) DUK_ACT_GET_FUNC(act);
 			fun_temp = DUK_HCOMPFUNC_GET_FUNCS_BASE(thr->heap, fun_act)[bc];
 			DUK_ASSERT(fun_temp != NULL);
@@ -3764,6 +3810,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			if (act->lex_env == NULL) {
 				DUK_ASSERT(act->var_env == NULL);
 				duk_js_init_activation_environment_records_delayed(thr, act);
+				act = thr->callstack_curr;
 			}
 			DUK_ASSERT(act->lex_env != NULL);
 			DUK_ASSERT(act->var_env != NULL);
@@ -3790,7 +3837,8 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			DUK_ASSERT(DUK_TVAL_IS_STRING(tv1));
 			name = DUK_TVAL_GET_STRING(tv1);
 			DUK_ASSERT(name != NULL);
-			act = thr->callstack + thr->callstack_top - 1;
+			act = thr->callstack_curr;
+			DUK_ASSERT(act != NULL);
 			(void) duk_js_getvar_activation(thr, act, name, 1 /*throw*/);  /* -> [... val this] */
 			duk_pop(ctx);  /* 'this' binding is not needed here */
 			DUK__REPLACE_TOP_A_BREAK();
@@ -3811,7 +3859,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			 */
 
 			tv1 = DUK__REGP_A(ins);  /* val */
-			act = thr->callstack + thr->callstack_top - 1;
+			act = thr->callstack_curr;
 			duk_js_putvar_activation(thr, act, name, tv1, DUK__STRICT());
 			break;
 		}
@@ -3826,7 +3874,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			DUK_ASSERT(DUK_TVAL_IS_STRING(tv1));
 			name = DUK_TVAL_GET_STRING(tv1);
 			DUK_ASSERT(name != NULL);
-			act = thr->callstack + thr->callstack_top - 1;
+			act = thr->callstack_curr;
 			rc = duk_js_delvar_activation(thr, act, name);
 			DUK__REPLACE_BOOL_A_BREAK(rc);
 		}
@@ -3846,9 +3894,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 		 * for potential out-of-memory situations which will then \
 		 * propagate out of the executor longjmp handler. \
 		 */ \
-		ret_result = duk__handle_return(thr, \
-			                        entry_thread, \
-			                        entry_callstack_top); \
+		ret_result = duk__handle_return(thr, entry_act); \
 		if (ret_result == DUK__RETHAND_RESTART) { \
 			goto restart_execution; \
 		} \
@@ -3887,6 +3933,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			thr->valstack_top++;
 			DUK__RETURN_SHARED();
 		}
+		/* This will be unused without refcounting. */
 		case DUK_OP_RETCONST: {
 			duk_tval *tv;
 
@@ -3903,7 +3950,10 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			DUK__SYNC_AND_NULL_CURR_PC();
 			tv = DUK__CONSTP_BC(ins);
 			DUK_TVAL_SET_TVAL(thr->valstack_top, tv);
+#if defined(DUK_USE_REFERENCE_COUNTING)
+			/* Without refcounting only RETCONSTN is used. */
 			DUK_ASSERT(!DUK_TVAL_IS_HEAP_ALLOCATED(tv));  /* no INCREF for this constant */
+#endif
 			thr->valstack_top++;
 			DUK__RETURN_SHARED();
 		}
@@ -3916,24 +3966,28 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 #endif  /* DUK_USE_EXEC_PREFER_SIZE */
 
 		case DUK_OP_LABEL: {
+			duk_activation *act;
 			duk_catcher *cat;
 			duk_small_uint_fast_t bc = DUK_DEC_BC(ins);
 
-			/* allocate catcher and populate it (should be atomic) */
+			/* Allocate catcher and populate it (must be atomic). */
 
-			duk_hthread_catchstack_grow(thr);
-			cat = thr->catchstack + thr->catchstack_top;
-			thr->catchstack_top++;
+			cat = duk_hthread_catcher_alloc(thr);
+			DUK_ASSERT(cat != NULL);
 
 			cat->flags = DUK_CAT_TYPE_LABEL | (bc << DUK_CAT_LABEL_SHIFT);
-			cat->callstack_index = thr->callstack_top - 1;
 			cat->pc_base = (duk_instr_t *) curr_pc;  /* pre-incremented, points to first jump slot */
 			cat->idx_base = 0;  /* unused for label */
 			cat->h_varname = NULL;
 
-			DUK_DDD(DUK_DDDPRINT("LABEL catcher: flags=0x%08lx, callstack_index=%ld, pc_base=%ld, "
+			act = thr->callstack_curr;
+			DUK_ASSERT(act != NULL);
+			cat->parent = act->cat;
+			act->cat = cat;
+
+			DUK_DDD(DUK_DDDPRINT("LABEL catcher: flags=0x%08lx, pc_base=%ld, "
 			                     "idx_base=%ld, h_varname=%!O, label_id=%ld",
-			                     (long) cat->flags, (long) cat->callstack_index, (long) cat->pc_base,
+			                     (long) cat->flags, (long) cat->pc_base,
 			                     (long) cat->idx_base, (duk_heaphdr *) cat->h_varname, (long) DUK_CAT_GET_LABEL(cat)));
 
 			curr_pc += 2;  /* skip jump slots */
@@ -3941,7 +3995,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 		}
 
 		case DUK_OP_ENDLABEL: {
-			duk_catcher *cat;
+			duk_activation *act;
 #if (defined(DUK_USE_DEBUG_LEVEL) && (DUK_USE_DEBUG_LEVEL >= 2)) || defined(DUK_USE_ASSERTIONS)
 			duk_small_uint_fast_t bc = DUK_DEC_BC(ins);
 #endif
@@ -3949,14 +4003,12 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			DUK_DDD(DUK_DDDPRINT("ENDLABEL %ld", (long) bc));
 #endif
 
-			DUK_ASSERT(thr->catchstack_top >= 1);
+			act = thr->callstack_curr;
+			DUK_ASSERT(act->cat != NULL);
+			DUK_ASSERT(DUK_CAT_GET_TYPE(act->cat) == DUK_CAT_TYPE_LABEL);
+			DUK_ASSERT((duk_uint_fast_t) DUK_CAT_GET_LABEL(act->cat) == bc);
+			duk_hthread_catcher_unwind_nolexenv_norz(thr, act);
 
-			cat = thr->catchstack + thr->catchstack_top - 1;
-			DUK_UNREF(cat);
-			DUK_ASSERT(DUK_CAT_GET_TYPE(cat) == DUK_CAT_TYPE_LABEL);
-			DUK_ASSERT((duk_uint_fast_t) DUK_CAT_GET_LABEL(cat) == bc);
-
-			duk_hthread_catchstack_unwind(thr, thr->catchstack_top - 1);
 			/* no need to unwind callstack */
 			break;
 		}
@@ -4027,99 +4079,6 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			a = DUK_DEC_A(ins);
 			bc = DUK_DEC_BC(ins);
 
-			act = thr->callstack + thr->callstack_top - 1;
-			DUK_ASSERT(thr->callstack_top >= 1);
-
-			/* 'with' target must be created first, in case we run out of memory */
-			/* XXX: refactor out? */
-
-			if (a & DUK_BC_TRYCATCH_FLAG_WITH_BINDING) {
-				DUK_DDD(DUK_DDDPRINT("need to initialize a with binding object"));
-
-				if (act->lex_env == NULL) {
-					DUK_ASSERT(act->var_env == NULL);
-					DUK_DDD(DUK_DDDPRINT("delayed environment initialization"));
-
-					/* must relookup act in case of side effects */
-					duk_js_init_activation_environment_records_delayed(thr, act);
-					act = thr->callstack + thr->callstack_top - 1;
-					DUK_UNREF(act);  /* 'act' is no longer accessed, scanbuild fix */
-				}
-				DUK_ASSERT(act->lex_env != NULL);
-				DUK_ASSERT(act->var_env != NULL);
-
-				(void) duk_push_object_helper(ctx,
-				                              DUK_HOBJECT_FLAG_EXTENSIBLE |
-				                              DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_OBJENV),
-				                              -1);  /* no prototype, updated below */
-
-				duk_push_tval(ctx, DUK__REGP(bc));
-				duk_to_object(ctx, -1);
-				duk_dup_top(ctx);
-
-				/* [ ... env target ] */
-				/* [ ... env target target ] */
-
-				duk_xdef_prop_stridx(thr, -3, DUK_STRIDX_INT_TARGET, DUK_PROPDESC_FLAGS_NONE);
-				duk_xdef_prop_stridx(thr, -2, DUK_STRIDX_INT_THIS, DUK_PROPDESC_FLAGS_NONE);  /* always provideThis=true */
-
-				/* [ ... env ] */
-
-				DUK_DDD(DUK_DDDPRINT("environment for with binding: %!iT",
-				                     (duk_tval *) duk_get_tval(ctx, -1)));
-			}
-
-			/* allocate catcher and populate it (should be atomic) */
-
-			duk_hthread_catchstack_grow(thr);
-			cat = thr->catchstack + thr->catchstack_top;
-			DUK_ASSERT(thr->catchstack_top + 1 <= thr->catchstack_size);
-			thr->catchstack_top++;
-
-			cat->flags = DUK_CAT_TYPE_TCF;
-			cat->h_varname = NULL;
-
-			if (a & DUK_BC_TRYCATCH_FLAG_HAVE_CATCH) {
-				cat->flags |= DUK_CAT_FLAG_CATCH_ENABLED;
-			}
-			if (a & DUK_BC_TRYCATCH_FLAG_HAVE_FINALLY) {
-				cat->flags |= DUK_CAT_FLAG_FINALLY_ENABLED;
-			}
-			if (a & DUK_BC_TRYCATCH_FLAG_CATCH_BINDING) {
-				DUK_DDD(DUK_DDDPRINT("catch binding flag set to catcher"));
-				cat->flags |= DUK_CAT_FLAG_CATCH_BINDING_ENABLED;
-				tv1 = DUK__REGP(bc);
-				DUK_ASSERT(DUK_TVAL_IS_STRING(tv1));
-
-				/* borrowed reference; although 'tv1' comes from a register,
-				 * its value was loaded using LDCONST so the constant will
-				 * also exist and be reachable.
-				 */
-				cat->h_varname = DUK_TVAL_GET_STRING(tv1);
-			} else if (a & DUK_BC_TRYCATCH_FLAG_WITH_BINDING) {
-				/* env created above to stack top */
-				duk_hobject *new_env;
-
-				DUK_DDD(DUK_DDDPRINT("lexenv active flag set to catcher"));
-				cat->flags |= DUK_CAT_FLAG_LEXENV_ACTIVE;
-
-				DUK_DDD(DUK_DDDPRINT("activating object env: %!iT",
-				                     (duk_tval *) duk_get_tval(ctx, -1)));
-				DUK_ASSERT(act->lex_env != NULL);
-				new_env = DUK_GET_HOBJECT_NEGIDX(ctx, -1);
-				DUK_ASSERT(new_env != NULL);
-
-				act = thr->callstack + thr->callstack_top - 1;  /* relookup (side effects) */
-				DUK_HOBJECT_SET_PROTOTYPE_UPDREF(thr, new_env, act->lex_env);  /* side effects */
-
-				act = thr->callstack + thr->callstack_top - 1;  /* relookup (side effects) */
-				act->lex_env = new_env;
-				DUK_HOBJECT_INCREF(thr, new_env);
-				duk_pop(ctx);
-			} else {
-				;
-			}
-
 			/* Registers 'bc' and 'bc + 1' are written in longjmp handling
 			 * and if their previous values (which are temporaries) become
 			 * unreachable -and- have a finalizer, there'll be a function
@@ -4132,35 +4091,131 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			 * error handling, so there's no side effect problem even if the
 			 * error value has a finalizer.
 			 */
+			duk_dup(ctx, bc);  /* Stabilize value. */
 			duk_to_undefined(ctx, bc);
 			duk_to_undefined(ctx, bc + 1);
 
-			cat = thr->catchstack + thr->catchstack_top - 1;  /* relookup (side effects) */
-			cat->callstack_index = thr->callstack_top - 1;
+			/* Allocate catcher and populate it.  Doesn't have to
+			 * be fully atomic, but the catcher must be in a
+			 * consistent state if side effects (such as finalizer
+			 * calls) occur.
+			 */
+
+			cat = duk_hthread_catcher_alloc(thr);
+			DUK_ASSERT(cat != NULL);
+
+			cat->flags = DUK_CAT_TYPE_TCF;
+			cat->h_varname = NULL;
 			cat->pc_base = (duk_instr_t *) curr_pc;  /* pre-incremented, points to first jump slot */
 			cat->idx_base = (duk_size_t) (thr->valstack_bottom - thr->valstack) + bc;
 
-			DUK_DDD(DUK_DDDPRINT("TRYCATCH catcher: flags=0x%08lx, callstack_index=%ld, pc_base=%ld, "
+			act = thr->callstack_curr;
+			DUK_ASSERT(act != NULL);
+			cat->parent = act->cat;
+			act->cat = cat;
+
+			if (a & DUK_BC_TRYCATCH_FLAG_HAVE_CATCH) {
+				cat->flags |= DUK_CAT_FLAG_CATCH_ENABLED;
+			}
+			if (a & DUK_BC_TRYCATCH_FLAG_HAVE_FINALLY) {
+				cat->flags |= DUK_CAT_FLAG_FINALLY_ENABLED;
+			}
+			if (a & DUK_BC_TRYCATCH_FLAG_CATCH_BINDING) {
+				DUK_DDD(DUK_DDDPRINT("catch binding flag set to catcher"));
+				cat->flags |= DUK_CAT_FLAG_CATCH_BINDING_ENABLED;
+				tv1 = DUK_GET_TVAL_NEGIDX(thr, -1);
+				DUK_ASSERT(DUK_TVAL_IS_STRING(tv1));
+
+				/* borrowed reference; although 'tv1' comes from a register,
+				 * its value was loaded using LDCONST so the constant will
+				 * also exist and be reachable.
+				 */
+				cat->h_varname = DUK_TVAL_GET_STRING(tv1);
+			} else if (a & DUK_BC_TRYCATCH_FLAG_WITH_BINDING) {
+				duk_hobjenv *env;
+				duk_hobject *target;
+
+				/* Delayed env initialization for activation (if needed). */
+				DUK_ASSERT(thr->callstack_top >= 1);
+				DUK_ASSERT(act == thr->callstack_curr);
+				DUK_ASSERT(act != NULL);
+				if (act->lex_env == NULL) {
+					DUK_DDD(DUK_DDDPRINT("delayed environment initialization"));
+					DUK_ASSERT(act->var_env == NULL);
+
+					duk_js_init_activation_environment_records_delayed(thr, act);
+					DUK_ASSERT(act == thr->callstack_curr);
+					DUK_UNREF(act);  /* 'act' is no longer accessed, scanbuild fix */
+				}
+				DUK_ASSERT(act->lex_env != NULL);
+				DUK_ASSERT(act->var_env != NULL);
+
+				/* Coerce 'with' target. */
+				target = duk_to_hobject(ctx, -1);
+				DUK_ASSERT(target != NULL);
+
+				/* Create an object environment; it is not pushed
+				 * so avoid side effects very carefully until it is
+				 * referenced.
+				 */
+				env = duk_hobjenv_alloc(thr,
+				                        DUK_HOBJECT_FLAG_EXTENSIBLE |
+				                        DUK_HOBJECT_CLASS_AS_FLAGS(DUK_HOBJECT_CLASS_OBJENV));
+				DUK_ASSERT(env != NULL);
+				DUK_ASSERT(DUK_HOBJECT_GET_PROTOTYPE(thr->heap, (duk_hobject *) env) == NULL);
+				env->target = target;  /* always provideThis=true */
+				DUK_HOBJECT_INCREF(thr, target);
+				env->has_this = 1;
+				DUK_ASSERT_HOBJENV_VALID(env);
+				DUK_DDD(DUK_DDDPRINT("environment for with binding: %!iO", env));
+
+				DUK_ASSERT(act == thr->callstack_curr);
+				DUK_ASSERT(DUK_HOBJECT_GET_PROTOTYPE(thr->heap, (duk_hobject *) env) == NULL);
+				DUK_ASSERT(act->lex_env != NULL);
+				DUK_HOBJECT_SET_PROTOTYPE(thr->heap, (duk_hobject *) env, act->lex_env);
+				act->lex_env = (duk_hobject *) env;  /* Now reachable. */
+				DUK_HOBJECT_INCREF(thr, (duk_hobject *) env);
+				/* Net refcount change to act->lex_env is 0: incref for env's
+				 * prototype, decref for act->lex_env overwrite.
+				 */
+
+				/* Set catcher lex_env active (affects unwind)
+				 * only when the whole setup is complete.
+				 */
+				cat = act->cat;  /* XXX: better to relookup? not mandatory because 'cat' is stable */
+				cat->flags |= DUK_CAT_FLAG_LEXENV_ACTIVE;
+			} else {
+				;
+			}
+
+			DUK_DDD(DUK_DDDPRINT("TRYCATCH catcher: flags=0x%08lx, pc_base=%ld, "
 			                     "idx_base=%ld, h_varname=%!O",
-			                     (unsigned long) cat->flags, (long) cat->callstack_index,
+			                     (unsigned long) cat->flags,
 			                     (long) cat->pc_base, (long) cat->idx_base, (duk_heaphdr *) cat->h_varname));
+
+			duk_pop(ctx);
 
 			curr_pc += 2;  /* skip jump slots */
 			break;
 		}
 
 		case DUK_OP_ENDTRY: {
+			duk_activation *act;
 			duk_catcher *cat;
 			duk_tval *tv1;
+			duk_instr_t *pc_base;
 
-			DUK_ASSERT(thr->catchstack_top >= 1);
 			DUK_ASSERT(thr->callstack_top >= 1);
-			DUK_ASSERT(thr->catchstack[thr->catchstack_top - 1].callstack_index == thr->callstack_top - 1);
-
-			cat = thr->catchstack + thr->catchstack_top - 1;
+			act = thr->callstack_curr;
+			DUK_ASSERT(act != NULL);
+			cat = act->cat;
+			DUK_ASSERT(cat != NULL);
+			DUK_ASSERT(DUK_CAT_GET_TYPE(act->cat) == DUK_CAT_TYPE_TCF);
 
 			DUK_DDD(DUK_DDDPRINT("ENDTRY: clearing catch active flag (regardless of whether it was set or not)"));
 			DUK_CAT_CLEAR_CATCH_ENABLED(cat);
+
+			pc_base = cat->pc_base;
 
 			if (DUK_CAT_HAS_FINALLY_ENABLED(cat)) {
 				DUK_DDD(DUK_DDDPRINT("ENDTRY: finally part is active, jump through 2nd jump slot with 'normal continuation'"));
@@ -4178,11 +4233,12 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 				DUK_CAT_CLEAR_FINALLY_ENABLED(cat);
 			} else {
 				DUK_DDD(DUK_DDDPRINT("ENDTRY: no finally part, dismantle catcher, jump through 2nd jump slot (to end of statement)"));
-				duk_hthread_catchstack_unwind(thr, thr->catchstack_top - 1);
+
+				duk_hthread_catcher_unwind_norz(thr, act);  /* lexenv may be set for 'with' binding */
 				/* no need to unwind callstack */
 			}
 
-			curr_pc = cat->pc_base + 1;
+			curr_pc = pc_base + 1;
 			break;
 		}
 
@@ -4190,15 +4246,14 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			duk_activation *act;
 			duk_catcher *cat;
 			duk_tval *tv1;
+			duk_instr_t *pc_base;
 
-			DUK_ASSERT(thr->catchstack_top >= 1);
 			DUK_ASSERT(thr->callstack_top >= 1);
-			DUK_ASSERT(thr->catchstack[thr->catchstack_top - 1].callstack_index == thr->callstack_top - 1);
-
-			cat = thr->catchstack + thr->catchstack_top - 1;
+			act = thr->callstack_curr;
+			DUK_ASSERT(act != NULL);
+			cat = act->cat;
+			DUK_ASSERT(cat != NULL);
 			DUK_ASSERT(!DUK_CAT_HAS_CATCH_ENABLED(cat));  /* cleared before entering catch part */
-
-			act = thr->callstack + thr->callstack_top - 1;
 
 			if (DUK_CAT_HAS_LEXENV_ACTIVE(cat)) {
 				duk_hobject *prev_env;
@@ -4213,8 +4268,14 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 				DUK_ASSERT(prev_env != NULL);
 				act->lex_env = DUK_HOBJECT_GET_PROTOTYPE(thr->heap, prev_env);
 				DUK_CAT_CLEAR_LEXENV_ACTIVE(cat);
+				DUK_HOBJECT_INCREF(thr, act->lex_env);
 				DUK_HOBJECT_DECREF(thr, prev_env);  /* side effects */
+
+				DUK_ASSERT(act == thr->callstack_curr);
+				DUK_ASSERT(act != NULL);
 			}
+
+			pc_base = cat->pc_base;
 
 			if (DUK_CAT_HAS_FINALLY_ENABLED(cat)) {
 				DUK_DDD(DUK_DDDPRINT("ENDCATCH: finally part is active, jump through 2nd jump slot with 'normal continuation'"));
@@ -4232,16 +4293,18 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 				DUK_CAT_CLEAR_FINALLY_ENABLED(cat);
 			} else {
 				DUK_DDD(DUK_DDDPRINT("ENDCATCH: no finally part, dismantle catcher, jump through 2nd jump slot (to end of statement)"));
-				duk_hthread_catchstack_unwind(thr, thr->catchstack_top - 1);
+
+				duk_hthread_catcher_unwind_norz(thr, act);
 				/* no need to unwind callstack */
 			}
 
-			curr_pc = cat->pc_base + 1;
+			curr_pc = pc_base + 1;
 			break;
 		}
 
 		case DUK_OP_ENDFIN: {
 			duk_context *ctx = (duk_context *) thr;
+			duk_activation *act;
 			duk_catcher *cat;
 			duk_tval *tv1;
 			duk_small_uint_t cont_type;
@@ -4250,11 +4313,11 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			/* Sync and NULL early. */
 			DUK__SYNC_AND_NULL_CURR_PC();
 
-			DUK_ASSERT(thr->catchstack_top >= 1);
 			DUK_ASSERT(thr->callstack_top >= 1);
-			DUK_ASSERT(thr->catchstack[thr->catchstack_top - 1].callstack_index == thr->callstack_top - 1);
-
-			cat = thr->catchstack + thr->catchstack_top - 1;
+			act = thr->callstack_curr;
+			DUK_ASSERT(act != NULL);
+			cat = act->cat;
+			DUK_ASSERT(cat != NULL);
 
 			/* CATCH flag may be enabled or disabled here; it may be enabled if
 			 * the statement has a catch block but the try block does not throw
@@ -4269,13 +4332,19 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 
 			tv1 = thr->valstack + cat->idx_base + 1;  /* type */
 			DUK_ASSERT(DUK_TVAL_IS_NUMBER(tv1));
+#if defined(DUK_USE_FASTINT)
+			DUK_ASSERT(DUK_TVAL_IS_FASTINT(tv1));
+			cont_type = (duk_small_uint_t) DUK_TVAL_GET_FASTINT_U32(tv1);
+#else
 			cont_type = (duk_small_uint_t) DUK_TVAL_GET_NUMBER(tv1);
+#endif
 
 			switch (cont_type) {
 			case DUK_LJ_TYPE_NORMAL: {
 				DUK_DDD(DUK_DDDPRINT("ENDFIN: finally part finishing with 'normal' (non-abrupt) completion -> "
 				                     "dismantle catcher, resume execution after ENDFIN"));
-				duk_hthread_catchstack_unwind(thr, thr->catchstack_top - 1);
+
+				duk_hthread_catcher_unwind_norz(thr, act);
 				/* no need to unwind callstack */
 				goto restart_execution;
 			}
@@ -4283,19 +4352,14 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 				DUK_DDD(DUK_DDDPRINT("ENDFIN: finally part finishing with 'return' complation -> dismantle "
 				                     "catcher, handle return, lj.value1=%!T", thr->valstack + cat->idx_base));
 
-				/* Not necessary to unwind catchstack: return handling will
+				/* Not necessary to unwind catch stack: return handling will
 				 * do it.  The finally flag of 'cat' is no longer set.  The
 				 * catch flag may be set, but it's not checked by return handling.
 				 */
 				DUK_ASSERT(!DUK_CAT_HAS_FINALLY_ENABLED(cat));  /* cleared before entering finally */
-#if 0
-				duk_hthread_catchstack_unwind(thr, thr->catchstack_top - 1);
-#endif
 
 				duk_push_tval(ctx, thr->valstack + cat->idx_base);
-				ret_result = duk__handle_return(thr,
-					                        entry_thread,
-					                        entry_callstack_top);
+				ret_result = duk__handle_return(thr, entry_act);
 				if (ret_result == DUK__RETHAND_RESTART) {
 					goto restart_execution;
 				}
@@ -4309,14 +4373,11 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 				duk_uint_t label_id;
 				duk_small_uint_t lj_type;
 
-				/* Not necessary to unwind catchstack: break/continue
+				/* Not necessary to unwind catch stack: break/continue
 				 * handling will do it.  The finally flag of 'cat' is
 				 * no longer set.  The catch flag may be set, but it's
 				 * not checked by break/continue handling.
 				 */
-#if 0
-				duk_hthread_catchstack_unwind(thr, thr->catchstack_top - 1);
-#endif
 
 				tv1 = thr->valstack + cat->idx_base;
 				DUK_ASSERT(DUK_TVAL_IS_NUMBER(tv1));
@@ -4337,7 +4398,8 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 
 				duk_push_tval(ctx, thr->valstack + cat->idx_base);
 
-				duk_err_setup_heap_ljstate(thr, (duk_small_int_t) cont_type);
+				duk_err_setup_ljstate1(thr, (duk_small_int_t) cont_type, thr->valstack + cat->idx_base);
+				/* No debugger Throw notify check on purpose (rethrow). */
 
 				DUK_ASSERT(thr->heap->lj.jmpbuf_ptr != NULL);  /* always in executor */
 				duk_err_longjmp(thr);
@@ -4374,7 +4436,10 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			                     (duk_tval *) duk_get_tval(ctx, -1)));
 #endif
 
-			duk_err_setup_heap_ljstate(thr, DUK_LJ_TYPE_THROW);
+			duk_err_setup_ljstate1(thr, DUK_LJ_TYPE_THROW, DUK_GET_TVAL_NEGIDX(ctx, -1));
+#if defined(DUK_USE_DEBUGGER_SUPPORT)
+			duk_err_check_debugger_integration(thr);
+#endif
 
 			DUK_ASSERT(thr->heap->lj.jmpbuf_ptr != NULL);  /* always in executor */
 			duk_err_longjmp(thr);
@@ -4673,12 +4738,12 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			}
 #endif
 
-			/* It would be tempting to use duk_def_prop() here, but
-			 * it would not work correctly if there are inherited
-			 * properties in Object.prototype which might e.g.
-			 * prevent a key from being added.
+			/* Use 'force' flag to duk_def_prop() to ensure that any
+			 * inherited properties don't prevent the operation.
+			 * With ES2015 duplicate properties are allowed, so that we
+			 * must overwrite any previous data or accessor property.
 			 *
-			 * With ES6 computed property names the literal keys
+			 * With ES2015 computed property names the literal keys
 			 * may be arbitrary values and need to be ToPropertyKey()
 			 * coerced at runtime.
 			 */
@@ -4686,7 +4751,11 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 				/* XXX: faster initialization (direct access or better primitives) */
 				duk_dup(ctx, idx);
 				duk_dup(ctx, idx + 1);
-				duk_xdef_prop_wec(ctx, obj_idx);
+				duk_def_prop(ctx, obj_idx, DUK_DEFPROP_HAVE_VALUE |
+				                           DUK_DEFPROP_FORCE |
+				                           DUK_DEFPROP_SET_WRITABLE |
+				                           DUK_DEFPROP_SET_ENUMERABLE |
+				                           DUK_DEFPROP_SET_CONFIGURABLE);
 				idx += 2;
 			} while (idx < idx_end);
 			break;
@@ -4704,9 +4773,8 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			 */
 
 			/* INITSET/INITGET are only used to initialize object literal keys.
-			 * The compiler ensures that there cannot be a previous data property
-			 * of the same name.  It also ensures that setter and getter can only
-			 * be initialized once (or not at all).
+			 * There may be a previous propery in ES2015 because duplicate property
+			 * names are allowed.
 			 */
 
 			/* This could be made more optimal by accessing internals directly. */
@@ -4716,10 +4784,12 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			duk_dup(ctx, (duk_idx_t) (idx + 1));  /* getter/setter */
 			if (is_set) {
 				defprop_flags = DUK_DEFPROP_HAVE_SETTER |
+				                DUK_DEFPROP_FORCE |
 				                DUK_DEFPROP_SET_ENUMERABLE |
 				                DUK_DEFPROP_SET_CONFIGURABLE;
 			} else {
 				defprop_flags = DUK_DEFPROP_HAVE_GETTER |
+				                DUK_DEFPROP_FORCE |
 				                DUK_DEFPROP_SET_ENUMERABLE |
 				                DUK_DEFPROP_SET_CONFIGURABLE;
 			}
@@ -4796,7 +4866,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			 * ToUint32() which is odd but happens now as a side effect of
 			 * 'arr_idx' type.
 			 */
-			duk_hobject_set_length(thr, duk_known_hobject(ctx, obj_idx), (duk_uint32_t) arr_idx);
+			duk_set_length(thr, obj_idx, (duk_size_t) (duk_uarridx_t) arr_idx);
 			break;
 		}
 
@@ -4906,7 +4976,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 			 * from precompiled bytecode.
 			 */
 #if defined(DUK_USE_DEBUGGER_SUPPORT)
-			if (DUK_HEAP_IS_DEBUGGER_ATTACHED(thr->heap)) {
+			if (duk_debug_is_attached(thr->heap)) {
 				DUK_D(DUK_DPRINT("DEBUGGER statement encountered, halt execution"));
 				DUK__SYNC_AND_NULL_CURR_PC();
 				duk_debug_halt_execution(thr, 1 /*use_prev_pc*/);
@@ -4999,22 +5069,18 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 		case DUK_OP_UNUSED252:
 		case DUK_OP_UNUSED253:
 		case DUK_OP_UNUSED254:
-		case DUK_OP_UNUSED255: {
-			/* Force all case clauses to map to an actual handler
-			 * so that the compiler can emit a jump without a bounds
-			 * check: the switch argument is a duk_uint8_t so that
-			 * the compiler may be able to figure it out.  This is
-			 * a small detail and obviously compiler dependent.
-			 */
-			volatile duk_small_int_t dummy_volatile;
-			dummy_volatile = 0;
-			DUK_UNREF(dummy_volatile);
-			DUK_D(DUK_DPRINT("invalid opcode: %ld - %!I", (long) op, ins));
-			DUK__INTERNAL_ERROR("invalid opcode");
-			break;
-		}
+		case DUK_OP_UNUSED255:
+		/* Force all case clauses to map to an actual handler
+		 * so that the compiler can emit a jump without a bounds
+		 * check: the switch argument is a duk_uint8_t so that
+		 * the compiler may be able to figure it out.  This is
+		 * a small detail and obviously compiler dependent.
+		 */
+		/* default: clause omitted on purpose */
+#else
+		default:
 #endif  /* DUK_USE_EXEC_PREFER_SIZE */
-		default: {
+		{
 			/* Default case catches invalid/unsupported opcodes. */
 			DUK_D(DUK_DPRINT("invalid opcode: %ld - %!I", (long) op, ins));
 			DUK__INTERNAL_ERROR("invalid opcode");
@@ -5042,7 +5108,7 @@ DUK_LOCAL DUK_NOINLINE void duk__js_execute_bytecode_inner(duk_hthread *entry_th
 	}
 	DUK_UNREACHABLE();
 
-#ifndef DUK_USE_VERBOSE_EXECUTOR_ERRORS
+#if !defined(DUK_USE_VERBOSE_EXECUTOR_ERRORS)
  internal_error:
 	DUK_ERROR_INTERNAL(thr);
 #endif

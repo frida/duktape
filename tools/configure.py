@@ -130,7 +130,7 @@ def create_targz(dstfile, filelist):
 def cstring(x):
     return '"' + x + '"'  # good enough for now
 
-# DUK_VERSION is grepped from duk_api_public.h.in: it is needed for the
+# DUK_VERSION is grepped from duktape.h.in: it is needed for the
 # public API and we want to avoid defining it in two places.
 def get_duk_version(apiheader_filename):
     r = re.compile(r'^#define\s+DUK_VERSION\s+(.*?)L?\s*$')
@@ -255,6 +255,8 @@ def main():
     parser.add_option('--verbose', dest='verbose', action='store_true', default=False, help='Show verbose debug messages')
 
     (opts, args) = parser.parse_args()
+    if len(args) > 0:
+        raise Exception('unexpected arguments: %r' % args)
 
     if opts.obsolete_builtin_metadata is not None:
         raise Exception('--user-builtin-metadata has been removed, use --builtin-file instead')
@@ -310,7 +312,7 @@ def main():
             duk_dist_meta = json.loads(f.read())
 
     duk_version, duk_major, duk_minor, duk_patch, duk_version_formatted = \
-        get_duk_version(os.path.join(srcdir, 'duk_api_public.h.in'))
+        get_duk_version(os.path.join(srcdir, 'duktape.h.in'))
 
     git_commit = None
     git_branch = None
@@ -400,6 +402,7 @@ def main():
         'duk_api_codec.c',
         'duk_api_compile.c',
         'duk_api_bytecode.c',
+        'duk_api_inspect.c',
         'duk_api_memory.c',
         'duk_api_object.c',
         'duk_api_string.c',
@@ -426,12 +429,16 @@ def main():
         'duk_bi_regexp.c',
         'duk_bi_string.c',
         'duk_bi_proxy.c',
+        'duk_bi_symbol.c',
         'duk_bi_thread.c',
         'duk_bi_thrower.c',
+        'duk_dblunion.h',
         'duk_debug_fixedbuffer.c',
         'duk_debug.h',
         'duk_debug_macros.c',
         'duk_debug_vsnprintf.c',
+        'duk_debugger.c',
+        'duk_debugger.h',
         'duk_error_augment.c',
         'duk_error.h',
         'duk_error_longjmp.c',
@@ -440,14 +447,18 @@ def main():
         'duk_error_throw.c',
         'duk_forwdecl.h',
         'duk_harray.h',
+        'duk_hboundfunc.h',
         'duk_hbuffer_alloc.c',
         'duk_hbuffer.h',
         'duk_hbuffer_ops.c',
+        'duk_hbufobj.h',
+        'duk_hbufobj_misc.c',
         'duk_hcompfunc.h',
         'duk_heap_alloc.c',
         'duk_heap.h',
         'duk_heap_hashstring.c',
         'duk_heaphdr.h',
+        'duk_heap_finalize.c',
         'duk_heap_markandsweep.c',
         'duk_heap_memory.c',
         'duk_heap_misc.c',
@@ -458,11 +469,11 @@ def main():
         'duk_hobject_alloc.c',
         'duk_hobject_class.c',
         'duk_hobject_enum.c',
-        'duk_hobject_finalizer.c',
         'duk_hobject.h',
         'duk_hobject_misc.c',
         'duk_hobject_pc2line.c',
         'duk_hobject_props.c',
+        'duk_hproxy.h',
         'duk_hstring.h',
         'duk_hstring_misc.c',
         'duk_hthread_alloc.c',
@@ -470,10 +481,7 @@ def main():
         'duk_hthread.h',
         'duk_hthread_misc.c',
         'duk_hthread_stacks.c',
-        'duk_hbufobj.h',
-        'duk_hbufobj_misc.c',
-        'duk_debugger.c',
-        'duk_debugger.h',
+        'duk_henv.h',
         'duk_internal.h',
         'duk_jmpbuf.h',
         'duk_exception.h',
@@ -491,6 +499,7 @@ def main():
         'duk_lexer.h',
         'duk_numconv.c',
         'duk_numconv.h',
+        'duk_refcount.h',
         'duk_regexp_compiler.c',
         'duk_regexp_executor.c',
         'duk_regexp.h',
@@ -503,7 +512,6 @@ def main():
         'duk_util_bitencoder.c',
         'duk_util.h',
         'duk_util_hashbytes.c',
-        'duk_util_hashprime.c',
         'duk_util_misc.c',
         'duk_util_tinyrandom.c',
         'duk_util_bufwriter.c',
@@ -519,6 +527,18 @@ def main():
 
     copy_and_cquote(license_file, os.path.join(tempdir, 'LICENSE.txt.tmp'))
     copy_and_cquote(authors_file, os.path.join(tempdir, 'AUTHORS.rst.tmp'))
+
+    # Scan used stridx, bidx, config options, etc.
+
+    res = exec_get_stdout([
+        sys.executable,
+        os.path.join(script_path, 'scan_used_stridx_bidx.py')
+    ] + glob.glob(os.path.join(srcdir, '*.c')) \
+      + glob.glob(os.path.join(srcdir, '*.h')) \
+      + glob.glob(os.path.join(srcdir, '*.h.in'))
+    )
+    with open(os.path.join(tempdir, 'duk_used_stridx_bidx_defs.json.tmp'), 'wb') as f:
+        f.write(res)
 
     # Create a duk_config.h.
     # XXX: might be easier to invoke genconfig directly, but there are a few
@@ -572,7 +592,8 @@ def main():
         sys.executable, os.path.join(script_path, 'genconfig.py'),
         '--output', os.path.join(tempdir, 'duk_config.h.tmp'),
         '--output-active-options', os.path.join(tempdir, 'duk_config_active_options.json'),
-        '--git-commit', git_commit, '--git-describe', git_describe, '--git-branch', git_branch
+        '--git-commit', git_commit, '--git-describe', git_describe, '--git-branch', git_branch,
+        '--used-stridx-metadata', os.path.join(tempdir, 'duk_used_stridx_bidx_defs.json.tmp')
     ]
     cmd += forward_genconfig_options()
     cmd += [
@@ -593,8 +614,6 @@ def main():
         '@DUK_SINGLE_FILE@': '#define DUK_SINGLE_FILE',
         '@LICENSE_TXT@': read_file(os.path.join(tempdir, 'LICENSE.txt.tmp'), strip_last_nl=True),
         '@AUTHORS_RST@': read_file(os.path.join(tempdir, 'AUTHORS.rst.tmp'), strip_last_nl=True),
-        '@DUK_API_PUBLIC_H@': read_file(os.path.join(srcdir, 'duk_api_public.h.in'), strip_last_nl=True),
-        '@DUK_DBLUNION_H@': read_file(os.path.join(srcdir, 'duk_dblunion.h.in'), strip_last_nl=True),
         '@DUK_VERSION_FORMATTED@': duk_version_formatted,
         '@GIT_COMMIT@': git_commit,
         '@GIT_COMMIT_CSTRING@': git_commit_cstring,
@@ -616,16 +635,6 @@ def main():
     #
     # There are currently no profile specific variants of strings/builtins, but
     # this will probably change when functions are added/removed based on profile.
-
-    res = exec_get_stdout([
-        sys.executable,
-        os.path.join(script_path, 'scan_used_stridx_bidx.py')
-    ] + glob.glob(os.path.join(srcdir, '*.c')) \
-      + glob.glob(os.path.join(srcdir, '*.h')) \
-      + glob.glob(os.path.join(srcdir, '*.h.in'))
-    )
-    with open(os.path.join(tempdir, 'duk_used_stridx_bidx_defs.json.tmp'), 'wb') as f:
-        f.write(res)
 
     cmd = [
         sys.executable,
@@ -891,7 +900,6 @@ def main():
             'duk_error_macros.c',
             'duk_unicode_support.c',
             'duk_util_misc.c',
-            'duk_util_hashprime.c',
             'duk_hobject_class.c'
         ]
 

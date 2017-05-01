@@ -95,6 +95,7 @@ def delete_matching_files(dirpath, cb):
         if os.path.isfile(os.path.join(dirpath, fn)) and cb(fn):
             logger.debug('Deleting %r' % os.path.join(dirpath, fn))
             os.unlink(os.path.join(dirpath, fn))
+            #print('Deleting matching file: %r' % fn)
 
 def glob_files(pattern):
     return glob.glob(pattern)
@@ -103,11 +104,11 @@ def cstring(x):
     return '"' + x + '"'  # good enough for now
 
 # Get Duktape version number as an integer.  DUK_VERSION is grepped from
-# duk_api_public.h.in: it is needed for the public API and we want to avoid
+# duktape.h.in: it is needed for the public API and we want to avoid
 # defining it in multiple places.
 def get_duk_version():
     r = re.compile(r'^#define\s+DUK_VERSION\s+(.*?)L?\s*$')
-    with open(os.path.join('src-input', 'duk_api_public.h.in'), 'rb') as f:
+    with open(os.path.join('src-input', 'duktape.h.in'), 'rb') as f:
         for line in f:
             m = r.match(line)
             if m is not None:
@@ -163,7 +164,7 @@ def create_dist_directories(dist):
 # works from there.
 
 def check_cwd_duktape_repo_root():
-    if not (os.path.isfile(os.path.join('src-input', 'duk_api_public.h.in')) and \
+    if not (os.path.isfile(os.path.join('src-input', 'duktape.h.in')) and \
             os.path.isfile(os.path.join('config', 'platforms.yaml'))):
         sys.stderr.write('\n')
         sys.stderr.write('*** Working directory must be Duktape repo checkout root!\n')
@@ -308,9 +309,9 @@ def main():
         'duk_api_debug.c',
         'duk_api_heap.c',
         'duk_api_internal.h',
+        'duk_api_inspect.c',
         'duk_api_memory.c',
         'duk_api_object.c',
-        'duk_api_public.h.in',
         'duk_api_stack.c',
         'duk_api_string.c',
         'duk_api_time.c',
@@ -335,9 +336,10 @@ def main():
         'duk_bi_reflect.c',
         'duk_bi_regexp.c',
         'duk_bi_string.c',
+        'duk_bi_symbol.c',
         'duk_bi_thread.c',
         'duk_bi_thrower.c',
-        'duk_dblunion.h.in',
+        'duk_dblunion.h',
         'duk_debug_fixedbuffer.c',
         'duk_debugger.c',
         'duk_debugger.h',
@@ -353,6 +355,7 @@ def main():
         'duk_exception.h',
         'duk_forwdecl.h',
         'duk_harray.h',
+        'duk_hboundfunc.h',
         'duk_hbuffer_alloc.c',
         'duk_hbuffer.h',
         'duk_hbuffer_ops.c',
@@ -363,21 +366,23 @@ def main():
         'duk_heap.h',
         'duk_heap_hashstring.c',
         'duk_heaphdr.h',
+        'duk_heap_finalize.c',
         'duk_heap_markandsweep.c',
         'duk_heap_memory.c',
         'duk_heap_misc.c',
         'duk_heap_refcount.c',
         'duk_heap_stringcache.c',
         'duk_heap_stringtable.c',
+        'duk_henv.h',
         'duk_hnatfunc.h',
         'duk_hobject_alloc.c',
         'duk_hobject_class.c',
         'duk_hobject_enum.c',
-        'duk_hobject_finalizer.c',
         'duk_hobject.h',
         'duk_hobject_misc.c',
         'duk_hobject_pc2line.c',
         'duk_hobject_props.c',
+        'duk_hproxy.h',
         'duk_hstring.h',
         'duk_hstring_misc.c',
         'duk_hthread_alloc.c',
@@ -401,6 +406,7 @@ def main():
         'duk_lexer.h',
         'duk_numconv.c',
         'duk_numconv.h',
+        'duk_refcount.h',
         'duk_regexp_compiler.c',
         'duk_regexp_executor.c',
         'duk_regexp.h',
@@ -420,7 +426,6 @@ def main():
         'duk_util_bufwriter.c',
         'duk_util.h',
         'duk_util_hashbytes.c',
-        'duk_util_hashprime.c',
         'duk_util_misc.c',
         'duk_util_tinyrandom.c',
         'strings.yaml',
@@ -496,6 +501,7 @@ def main():
 
     copy_files([
         'console-minimal.js',
+        'global.js',
         'object-prototype-definegetter.js',
         'object-prototype-definesetter.js',
         'object-assign.js',
@@ -793,6 +799,7 @@ def main():
     # Clean up remaining temp files.
 
     delete_matching_files(dist, lambda x: x[-4:] == '.tmp')
+    delete_matching_files(os.path.join(dist, 'tools'), lambda x: x[-4:] == '.pyc')
 
     # Create SPDX license once all other files are in place (and cleaned).
 

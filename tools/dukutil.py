@@ -10,9 +10,17 @@ class BitEncoder:
     "Bitstream encoder."
 
     _bits = None
+    _varuint_dist = None
+    _varuint_cats = None
+    _varuint_count = None
+    _varuint_bits = None
 
     def __init__(self):
         self._bits = []
+        self._varuint_dist = [ 0 ] * 65536
+        self._varuint_cats = [0] * 5
+        self._varuint_count = 0
+        self._varuint_bits = 0
 
     def bits(self, x, nbits):
         if (x >> nbits) != 0:
@@ -25,6 +33,39 @@ class BitEncoder:
             ch = ord(x[i])
             for shift in xrange(7, -1, -1):  # 7, 6, ..., 0
                 self._bits.append((ch >> shift) & 0x01)
+
+    # Shared varint encoding.
+    def varuint(self, x):
+        assert(x >= 0)
+        if x <= 0xffff:
+            self._varuint_dist[x] += 1
+        self._varuint_count += 1
+
+        if x == 0:
+            self.bits(0, 2)
+            self._varuint_bits += 2
+            self._varuint_cats[0] += 1
+        elif x <= 4:
+            self.bits(1, 2)
+            self.bits(x - 1, 2)
+            self._varuint_bits += 2 + 2
+            self._varuint_cats[1] += 1
+        elif x <= 36:
+            self.bits(2, 2)
+            self.bits(x - 5, 5)
+            self._varuint_bits += 2 + 5
+            self._varuint_cats[2] += 1
+        elif x <= 163:
+            self.bits(3, 2)
+            self.bits(x - 37 + 1, 7)
+            self._varuint_bits += 2 + 7
+            self._varuint_cats[3] += 1
+        else:
+            self.bits(3, 2)
+            self.bits(0, 7)
+            self.bits(x, 20)
+            self._varuint_bits += 2 + 7 + 20
+            self._varuint_cats[4] += 1
 
     def getNumBits(self):
         "Get current number of encoded bits."

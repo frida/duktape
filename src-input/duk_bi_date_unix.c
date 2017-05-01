@@ -44,14 +44,14 @@ DUK_INTERNAL duk_double_t duk_bi_date_get_now_time(duk_context *ctx) {
 }
 #endif  /* DUK_USE_DATE_NOW_TIME */
 
-#if defined(DUK_USE_DATE_TZO_GMTIME) || defined(DUK_USE_DATE_TZO_GMTIME_R)
+#if defined(DUK_USE_DATE_TZO_GMTIME) || defined(DUK_USE_DATE_TZO_GMTIME_R) || defined(DUK_USE_DATE_TZO_GMTIME_S)
 /* Get local time offset (in seconds) for a certain (UTC) instant 'd'. */
 DUK_INTERNAL duk_int_t duk_bi_date_get_local_tzoffset_gmtime(duk_double_t d) {
 	time_t t, t1, t2;
 	duk_int_t parts[DUK_DATE_IDX_NUM_PARTS];
 	duk_double_t dparts[DUK_DATE_IDX_NUM_PARTS];
 	struct tm tms[2];
-#ifdef DUK_USE_DATE_TZO_GMTIME
+#if defined(DUK_USE_DATE_TZO_GMTIME)
 	struct tm *tm_ptr;
 #endif
 
@@ -134,6 +134,9 @@ DUK_INTERNAL duk_int_t duk_bi_date_get_local_tzoffset_gmtime(duk_double_t d) {
 #if defined(DUK_USE_DATE_TZO_GMTIME_R)
 	(void) gmtime_r(&t, &tms[0]);
 	(void) localtime_r(&t, &tms[1]);
+#elif defined(DUK_USE_DATE_TZO_GMTIME_S)
+	(void) gmtime_s(&t, &tms[0]);
+	(void) localtime_s(&t, &tms[1]);
 #elif defined(DUK_USE_DATE_TZO_GMTIME)
 	tm_ptr = gmtime(&t);
 	DUK_MEMCPY((void *) &tms[0], tm_ptr, sizeof(struct tm));
@@ -168,7 +171,7 @@ DUK_INTERNAL duk_int_t duk_bi_date_get_local_tzoffset_gmtime(duk_double_t d) {
 		 * an mktime() error return is the cast above.  See e.g.:
 		 * http://pubs.opengroup.org/onlinepubs/009695299/functions/mktime.html
 		 */
-		goto error;
+		goto mktime_error;
 	}
 	DUK_DDD(DUK_DDDPRINT("t1=%ld (utc), t2=%ld (local)", (long) t1, (long) t2));
 
@@ -184,7 +187,7 @@ DUK_INTERNAL duk_int_t duk_bi_date_get_local_tzoffset_gmtime(duk_double_t d) {
 #endif
 	return (duk_int_t) difftime(t2, t1);
 
- error:
+ mktime_error:
 	/* XXX: return something more useful, so that caller can throw? */
 	DUK_D(DUK_DPRINT("mktime() failed, d=%lf", (double) d));
 	return 0;
@@ -273,7 +276,7 @@ DUK_INTERNAL duk_bool_t duk_bi_date_format_parts_strftime(duk_context *ctx, duk_
 	 * supporting a large time range (the full Ecmascript range).
 	 */
 	if (sizeof(time_t) < 8 &&
-	   (parts[DUK_DATE_IDX_YEAR] < 1970 || parts[DUK_DATE_IDX_YEAR] > 2037)) {
+	    (parts[DUK_DATE_IDX_YEAR] < 1970 || parts[DUK_DATE_IDX_YEAR] > 2037)) {
 		/* be paranoid for 32-bit time values (even avoiding negative ones) */
 		return 0;
 	}

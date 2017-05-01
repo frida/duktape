@@ -13,7 +13,7 @@
  *  avoid fatal errors without context in non-debug builds.
  */
 
-#ifndef DUK_ERROR_H_INCLUDED
+#if !defined(DUK_ERROR_H_INCLUDED)
 #define DUK_ERROR_H_INCLUDED
 
 /*
@@ -171,6 +171,10 @@
 #define DUK_ERROR_INTERNAL(thr) do { \
 		duk_err_error_internal((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
 	} while (0)
+#define DUK_DCERROR_INTERNAL(thr) do { \
+		DUK_ERROR_INTERNAL((thr)); \
+		return 0; \
+	} while (0)
 #define DUK_ERROR_ALLOC_FAILED(thr) do { \
 		duk_err_error_alloc_failed((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
 	} while (0)
@@ -195,6 +199,10 @@
 	} while (0)
 #define DUK_ERROR_RANGE_INVALID_COUNT(thr) do { \
 		DUK_ERROR_RANGE((thr), DUK_STR_INVALID_COUNT); \
+	} while (0)
+#define DUK_DCERROR_RANGE_INVALID_COUNT(thr) do { \
+		DUK_ERROR_RANGE_INVALID_COUNT((thr)); \
+		return 0; \
 	} while (0)
 #define DUK_ERROR_RANGE_INVALID_LENGTH(thr) do { \
 		DUK_ERROR_RANGE((thr), DUK_STR_INVALID_LENGTH); \
@@ -222,6 +230,19 @@
 		DUK_ERROR_TYPE_INVALID_ARGS((thr)); \
 		return 0; \
 	} while (0)
+#define DUK_ERROR_TYPE_INVALID_STATE(thr) do { \
+		duk_err_type_invalid_state((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
+	} while (0)
+#define DUK_DCERROR_TYPE_INVALID_STATE(thr) do { \
+		DUK_ERROR_TYPE_INVALID_STATE((thr)); \
+		return 0; \
+	} while (0)
+#define DUK_ERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
+		duk_err_type_invalid_trap_result((thr), DUK_FILE_MACRO, (duk_int_t) DUK_LINE_MACRO); \
+	} while (0)
+#define DUK_DCERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
+		DUK_ERROR_TYPE((thr), DUK_STR_INVALID_TRAP_RESULT); \
+	} while (0)
 #define DUK_ERROR_TYPE(thr,msg) do { \
 		DUK_ERROR((thr), DUK_ERR_TYPE_ERROR, (msg)); \
 	} while (0)
@@ -237,6 +258,10 @@
 
 #define DUK_ERROR_INTERNAL(thr) do { \
 		duk_err_error((thr)); \
+	} while (0)
+#define DUK_DCERROR_INTERNAL(thr) do { \
+		DUK_UNREF((thr)); \
+		return DUK_RET_ERROR; \
 	} while (0)
 #define DUK_ERROR_ALLOC_FAILED(thr) do { \
 		duk_err_error((thr)); \
@@ -263,6 +288,10 @@
 #define DUK_ERROR_RANGE_INVALID_COUNT(thr) do { \
 		duk_err_range((thr)); \
 	} while (0)
+#define DUK_DCERROR_RANGE_INVALID_COUNT(thr) do { \
+		DUK_UNREF((thr)); \
+		return DUK_RET_RANGE_ERROR; \
+	} while (0)
 #define DUK_ERROR_RANGE_INVALID_LENGTH(thr) do { \
 		duk_err_range((thr)); \
 	} while (0)
@@ -288,6 +317,22 @@
 #define DUK_DCERROR_TYPE_INVALID_ARGS(thr) do { \
 		DUK_UNREF((thr)); \
 		return DUK_RET_TYPE_ERROR; \
+	} while (0)
+#define DUK_ERROR_TYPE_INVALID_STATE(thr) do { \
+		duk_err_type((thr)); \
+	} while (0)
+#define DUK_DCERROR_TYPE_INVALID_STATE(thr) do { \
+		duk_err_type((thr)); \
+	} while (0)
+#define DUK_ERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
+		duk_err_type((thr)); \
+	} while (0)
+#define DUK_DCERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
+		DUK_UNREF((thr)); \
+		return DUK_RET_TYPE_ERROR; \
+	} while (0)
+#define DUK_ERROR_TYPE_INVALID_TRAP_RESULT(thr) do { \
+		duk_err_type((thr)); \
 	} while (0)
 #define DUK_ERROR_TYPE(thr,msg) do { \
 		duk_err_type((thr)); \
@@ -430,6 +475,8 @@ DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_range_index(duk_hthread *thr, const 
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_range_push_beyond(duk_hthread *thr, const char *filename, duk_int_t linenumber));
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_range(duk_hthread *thr, const char *filename, duk_int_t linenumber, const char *message));
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_type_invalid_args(duk_hthread *thr, const char *filename, duk_int_t linenumber));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_type_invalid_state(duk_hthread *thr, const char *filename, duk_int_t linenumber));
+DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_type_invalid_trap_result(duk_hthread *thr, const char *filename, duk_int_t linenumber));
 #else  /* DUK_VERBOSE_ERRORS */
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_error(duk_hthread *thr));
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_range(duk_hthread *thr));
@@ -444,7 +491,10 @@ DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_longjmp(duk_hthread *thr));
 
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_default_fatal_handler(void *udata, const char *msg));
 
-DUK_INTERNAL_DECL void duk_err_setup_heap_ljstate(duk_hthread *thr, duk_small_int_t lj_type);
+DUK_INTERNAL_DECL void duk_err_setup_ljstate1(duk_hthread *thr, duk_small_uint_t lj_type, duk_tval *tv_val);
+#if defined(DUK_USE_DEBUGGER_SUPPORT)
+DUK_INTERNAL_DECL void duk_err_check_debugger_integration(duk_hthread *thr);
+#endif
 
 DUK_INTERNAL_DECL duk_hobject *duk_error_prototype_from_code(duk_hthread *thr, duk_errcode_t err_code);
 

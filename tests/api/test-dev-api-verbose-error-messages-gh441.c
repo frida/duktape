@@ -120,14 +120,14 @@ TypeError: buffer required, found [object Function] (stack index -3)
 TypeError: pointer required, found [object Function] (stack index -3)
 test__c_function ok
 top: 1
-TypeError: undefined required, found function LFUNC() {"light"} (stack index -3)
-TypeError: null required, found function LFUNC() {"light"} (stack index -3)
-TypeError: boolean required, found function LFUNC() {"light"} (stack index -3)
-TypeError: number required, found function LFUNC() {"light"} (stack index -3)
-TypeError: string required, found function LFUNC() {"light"} (stack index -3)
-TypeError: buffer required, found function LFUNC() {"light"} (stack index -3)
-TypeError: pointer required, found function LFUNC() {"light"} (stack index -3)
-TypeError: nativefunction required, found function LFUNC() {"light"} (stack index -3)
+TypeError: undefined required, found function LFUNC() { [lightfunc code] } (stack index -3)
+TypeError: null required, found function LFUNC() { [lightfunc code] } (stack index -3)
+TypeError: boolean required, found function LFUNC() { [lightfunc code] } (stack index -3)
+TypeError: number required, found function LFUNC() { [lightfunc code] } (stack index -3)
+TypeError: string required, found function LFUNC() { [lightfunc code] } (stack index -3)
+TypeError: buffer required, found function LFUNC() { [lightfunc code] } (stack index -3)
+TypeError: pointer required, found function LFUNC() { [lightfunc code] } (stack index -3)
+TypeError: nativefunction required, found function LFUNC() { [lightfunc code] } (stack index -3)
 top: 1
 TypeError: undefined required, found [object Function] (stack index -3)
 TypeError: null required, found [object Function] (stack index -3)
@@ -276,7 +276,7 @@ static duk_ret_t test_2a(duk_context *ctx, void *udata) {
 	duk_set_top(ctx, 0); duk_push_string(ctx, "foo\x00" "bar"); test__require_calls(ctx);
 	duk_set_top(ctx, 0); duk_push_fixed_buffer(ctx, 16); test__require_calls(ctx);
 	duk_set_top(ctx, 0); duk_push_pointer(ctx, NULL); test__require_calls(ctx);
-	duk_set_top(ctx, 0); duk_push_pointer(ctx, (void *) 0xdeadbeef); test__require_calls(ctx);
+	duk_set_top(ctx, 0); duk_push_pointer(ctx, (void *) 0xdeadbeefUL); test__require_calls(ctx);
 	duk_set_top(ctx, 0); duk_push_object(ctx); test__require_calls(ctx);
 	duk_set_top(ctx, 0); duk_push_array(ctx); test__require_calls(ctx);
 	duk_set_top(ctx, 0); duk_push_c_function(ctx, dummy_func, 0); test__require_calls(ctx);

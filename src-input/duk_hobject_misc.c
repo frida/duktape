@@ -8,8 +8,13 @@ DUK_INTERNAL duk_bool_t duk_hobject_prototype_chain_contains(duk_hthread *thr, d
 	duk_uint_t sanity;
 
 	DUK_ASSERT(thr != NULL);
-	DUK_ASSERT(h != NULL);
-	/* allow 'p' to be NULL; then the result is always false */
+
+	/* False if the object is NULL or the prototype 'p' is NULL.
+	 * In particular, false if both are NULL (don't compare equal).
+	 */
+	if (h == NULL || p == NULL) {
+		return 0;
+	}
 
 	sanity = DUK_HOBJECT_PROTOTYPE_CHAIN_SANITY;
 	do {
@@ -31,7 +36,7 @@ DUK_INTERNAL duk_bool_t duk_hobject_prototype_chain_contains(duk_hthread *thr, d
 }
 
 DUK_INTERNAL void duk_hobject_set_prototype_updref(duk_hthread *thr, duk_hobject *h, duk_hobject *p) {
-#ifdef DUK_USE_REFERENCE_COUNTING
+#if defined(DUK_USE_REFERENCE_COUNTING)
 	duk_hobject *tmp;
 
 	DUK_ASSERT(h);

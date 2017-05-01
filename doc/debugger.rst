@@ -819,6 +819,17 @@ types in the text)::
     <obj: field name>      e.g. <obj: target>
     <heapptr: field name>  e.g. <heapptr: target>
 
+These additional notations are used::
+
+    # Alternatives, e.g. one integer or two strings:
+    (<int: foo> | <str: bar> <str: quux>)
+
+    # Repetition, e.g. 0-N integers:
+    [<int: foo>]*
+
+    # Repetition, e.g. 1-N values, each string or integer:
+    [<str: foo> | <int: bar>]+
+
 When a field does not relate to an Ecmascript value exactly, e.g. the field
 is a debugger control field, typing can be loose.  For example, a boolean
 field can be represented sometimes as integer dvalue and an arbitrary binary
@@ -1689,12 +1700,12 @@ GetVar request (0x1a)
 
 Format::
 
-    REQ <int: 0x1a> <str: varname> [<int: level>] EOM
+    REQ <int: 0x1a> <int: level> <str: varname> EOM
     REP <int: 0/1, found> <tval: value> EOM
 
 Example::
 
-    REQ 26 "testVar" EOM
+    REQ 26 -1 "testVar" EOM
     REP 1 "myValue" EOM
 
 Level specifies the callstack depth, where -1 is the topmost (current) function,
@@ -1706,12 +1717,12 @@ PutVar request (0x1b)
 
 Format::
 
-    REQ <int: 0x1b> <str: varname> <tval: value> [<int: level>] EOM
+    REQ <int: 0x1b> <int: level> <str: varname> <tval: value> EOM
     REP EOM
 
 Example::
 
-    REQ 27 "testVar" "newValue" EOM
+    REQ 27 -1 "testVar" "newValue" EOM
     REP EOM
 
 Level specifies the callstack depth, where -1 is the topmost (current) function,
@@ -1738,18 +1749,17 @@ GetLocals request (0x1d)
 
 Format::
 
-    REQ <int: 0x1d> [<int: level>] EOM
+    REQ <int: 0x1d> <int: level> EOM
     REP [ <str: varName> <tval: varValue> ]* EOM
 
 Example::
 
-    REQ 29 EOM
+    REQ 29 -1 EOM
     REP "x" "1" "y" "3.1415" "foo" "bar" EOM
 
 List local variable names from specified activation (the internal ``_Varmap``).
 Level specifies the callstack depth, where -1 is the topmost (current) function,
--2 is the calling function, etc.  If not provided, the topmost function will be
-used.
+-2 is the calling function, etc.
 
 The result includes only local variables declared with ``var`` and locally
 declared functions.  Variables outside the current function scope, including
@@ -1765,25 +1775,26 @@ Eval request (0x1e)
 
 Format::
 
-    REQ <int: 0x1e> <str: expression> [<int: level>] EOM
+    REQ <int: 0x1e> (<int: level> | <null>) <str: expression> EOM
     REP <int: 0=success, 1=error> <tval: value> EOM
 
 Example::
 
-    REQ 30 "1+2" EOM
+    REQ 30 null "1+2" EOM
     REP 0 3 EOM
 
 Level specifies the callstack depth, where -1 is the topmost (current) function,
 -2 is the calling function, etc.  If not provided, the topmost function will be
 used (as with a real ``eval()``).  The level affects only the lexical scope of
 the code evaluated.  The callstack will be intact, and will be visible in e.g.
-stack traces and ``Duktape.act()``.
+stack traces and ``Duktape.act()``.  The level can also be null to perform an
+indirect Eval.
 
-The eval expression is evaluated as if a "direct call" to eval was executed
-in the position where execution has paused, in the lexical scope specified by
-the provided callstack index.  A direct eval call shares the same lexical scope
-as the function it is called from (an indirect eval call does not).  For
-instance, suppose we're executing::
+If a valid callstack level is given, the eval expression is evaluated as if a
+"direct call" to eval was executed in the position where execution has paused,
+in the lexical scope specified by the provided callstack level.  A direct eval
+call shares the same lexical scope as the function it is called from (an
+indirect eval call does not).  For instance, suppose we're executing::
 
     function foo(x, y) {
         print(x);  // (A)
@@ -1818,7 +1829,8 @@ so that the Eval statement would:
 When Eval is requested from outside any Duktape activation, e.g. while doing
 a duk_debugger_cooperate() call, there is no active Ecmascript activation so
 that a "direct" Eval is not possible.  Eval will then be executed as an
-indirect Eval instead.
+indirect Eval instead.  As noted above, you can request an indirect Eval
+explicitly by sending null for the callstack level.
 
 Current limitations:
 
@@ -1875,7 +1887,7 @@ GetBytecode request (0x21)
 
 Format::
 
-    REQ <int: 0x21> [<int: level> OR <obj: target> OR <heapptr: target>] EOM
+    REQ <int: 0x21> (<int: level> | <obj: target> | <heapptr: target>) EOM
     REP <int: numconsts> (<tval: const>){numconsts}
         <int: numfuncs> (<tval: func>){numfuncs}
         <str: bytecode> EOM
@@ -1954,8 +1966,8 @@ GetHeapObjInfo (0x23)
 
 Format::
 
-    REQ <int: 0x23> <tval: heapptr|object|pointer> EOM
-    REP [int: flags> <str/int: key> [<tval: value> OR <obj: getter> <obj: setter>]]* EOM
+    REQ <int: 0x23> (<heapptr: target> | <object: target> | <pointer: target>) EOM
+    REP [<int: flags> <str/int: key> [<tval: value> | <obj: getter> <obj: setter>]]* EOM
 
 Example::
 
@@ -2000,7 +2012,7 @@ GetObjPropDesc (0x24)
 Format::
 
     REQ <int: 0x24> <obj: target> <str: key> EOM
-    REP <int: flags> <str/int: key> [<tval: value> OR <obj: getter> <obj: setter>] EOM
+    REP <int: flags> (<str: key> | <int: key>) (<tval: value> | <obj: getter> <obj: setter>) EOM
 
 Example::
 
@@ -2079,7 +2091,7 @@ GetObjPropDescRange (0x25)
 Format::
 
     REQ <int: 0x25> <obj: target> <int: idx_start> <int: idx_end> EOM
-    REP [int: flags> <str/int: key> [<tval: value> OR <obj: getter> <obj: setter>]]* EOM
+    REP [<int: flags> (<str: key> | <int: key>) (<tval: value> | <obj: getter> <obj: setter>)]* EOM
 
 Example::
 
@@ -2364,7 +2376,7 @@ The following list describes artificial keys included in Duktape 1.5.0, see
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``bufobj``                      | ``duk_hobject``           | DUK_HOBJECT_FLAG_BUFOBJ                                 |
 +---------------------------------+---------------------------+---------------------------------------------------------+
-| ``thread``                      | ``duk_hobject``           | DUK_HOBJECT_FLAG_THREAD                                 |
+| ``fastrefs``                    | ``duk_hobject``           | DUK_HOBJECT_FLAG_FASTREFS                               |
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``array_part``                  | ``duk_hobject``           | DUK_HOBJECT_FLAG_ARRAY_PART                             |
 +---------------------------------+---------------------------+---------------------------------------------------------+
@@ -2378,7 +2390,7 @@ The following list describes artificial keys included in Duktape 1.5.0, see
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``createargs``                  | ``duk_hobject``           | DUK_HOBJECT_FLAG_CREATEARGS                             |
 +---------------------------------+---------------------------+---------------------------------------------------------+
-| ``envrecclosed``                | ``duk_hobject``           | DUK_HOBJECT_FLAG_ENVRECCLOSED                           |
+| ``have_finalizer``              | ``duk_hobject``           | DUK_HOBJECT_FLAG_HAVE_FINALIZER                         |
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``exotic_array``                | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXOTIC_ARRAY                           |
 +---------------------------------+---------------------------+---------------------------------------------------------+
@@ -2411,6 +2423,16 @@ The following list describes artificial keys included in Duktape 1.5.0, see
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``length_nonwritable``          | ``duk_harray``            | Array .length writable (false) or non-writable (true).  |
 +---------------------------------+---------------------------+---------------------------------------------------------+
+| ``thread``                      | ``duk_hdecenv``           | Thread for open declarative environment.                |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``varmap``                      | ``duk_hdecenv``           | Varmap for open declarative environment.                |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``regbase``                     | ``duk_hdecenv``           | Regbase for open declarative environment.               |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``target``                      | ``duk_hobjenv``           | Target object for object environment.                   |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``has_this``                    | ``duk_hobjenv``           | True if object environment provides a 'this' binding.   |
++---------------------------------+---------------------------+---------------------------------------------------------+
 | (not present yet)               | ``duk_hnatfunc``          | Native function pointer.                                |
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``nargs``                       | ``duk_hnatfunc``          | Number of stack arguments.                              |
@@ -2420,6 +2442,10 @@ The following list describes artificial keys included in Duktape 1.5.0, see
 | ``varargs``                     | ``duk_hnatfunc``          | True if function has variable arguments.                |
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | (not present yet)               | ``duk_hcompfunc``         | Ecmascript function data area, including bytecode.      |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``lex_env``                     | ``duk_hcompfunc``         | Function lexical environment.                           |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``var_env``                     | ``duk_hcompfunc``         | Function variable environment.                          |
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``nregs``                       | ``duk_hcompfunc``         | Number of bytecode executor registers.                  |
 +---------------------------------+---------------------------+---------------------------------------------------------+
@@ -2441,7 +2467,7 @@ The following list describes artificial keys included in Duktape 1.5.0, see
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``elem_type``                   | ``duk_hbufobj``           | DUK_HBUFOBJ_ELEM_xxx                                    |
 +---------------------------------+---------------------------+---------------------------------------------------------+
-| ``is_view``                     | ``duk_hbufobj``           | True if bufferobject is a view (e.g. Uint8Array).       |
+| ``is_typedarray``               | ``duk_hbufobj``           | True if bufferobject is a typed array (e.g. Uint8Array).|
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``extdata``                     | ``duk_hstring``           | DUK_HSTRING_FLAG_EXTDATA                                |
 +---------------------------------+---------------------------+---------------------------------------------------------+
@@ -2484,7 +2510,10 @@ These are disabled (``if #0``'d out) in code, and may be added back if useful:
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``arridx``                      | ``duk_hstring``           | DUK_HSTRING_FLAG_ARRIDX                                 |
 +---------------------------------+---------------------------+---------------------------------------------------------+
-| ``internal``                    | ``duk_hstring``           | DUK_HSTRING_FLAG_INTERNAL                               |
+| ``symbol``                      | ``duk_hstring``           | DUK_HSTRING_FLAG_SYMBOL                                 |
+|                                 |                           | (DUK_HSTRING_FLAG_INTERNAL in Duktape 1.x)              |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``hidden``                      | ``duk_hstring``           | DUK_HSTRING_FLAG_HIDDEN                                 |
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``reserved_word``               | ``duk_hstring``           | DUK_HSTRING_FLAG_RESERVED_WORD                          |
 +---------------------------------+---------------------------+---------------------------------------------------------+
@@ -3696,9 +3725,7 @@ Improve garbage collection behavior during paused state
 
 Current behavior: garbage generated during paused state (refzero or objects
 in reference loops) will both be left in the heap and collected eventually
-by mark-and-sweep.  When mark-and-sweep is disabled such garbage will remain
-until heap destruction (so the debugger paused state works quite poorly when
-mark-and-sweep is entirely left out of config).
+by mark-and-sweep.
 
 Various improvements are possible, see discussion in
 https://github.com/svaarala/duktape/pull/617.

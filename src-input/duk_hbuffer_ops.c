@@ -39,7 +39,7 @@ DUK_INTERNAL void duk_hbuffer_resize(duk_hthread *thr, duk_hbuffer_dynamic *buf,
 	 */
 
 	res = DUK_REALLOC_INDIRECT(thr->heap, duk_hbuffer_get_dynalloc_ptr, (void *) buf, new_size);
-	if (res != NULL || new_size == 0) {
+	if (DUK_LIKELY(res != NULL || new_size == 0)) {
 		/* 'res' may be NULL if new allocation size is 0. */
 
 		DUK_DDD(DUK_DDDPRINT("resized dynamic buffer %p:%ld -> %p:%ld",
@@ -57,7 +57,7 @@ DUK_INTERNAL void duk_hbuffer_resize(duk_hthread *thr, duk_hbuffer_dynamic *buf,
 		prev_size = DUK_HBUFFER_DYNAMIC_GET_SIZE(buf);
 		if (new_size > prev_size) {
 			DUK_ASSERT(new_size - prev_size > 0);
-#ifdef DUK_USE_ZERO_BUFFER_DATA
+#if defined(DUK_USE_ZERO_BUFFER_DATA)
 			DUK_MEMZERO((void *) ((char *) res + prev_size),
 			            (duk_size_t) (new_size - prev_size));
 #endif

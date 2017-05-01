@@ -30,7 +30,7 @@
 
 DUK_LOCAL_DECL void duk__dec_syntax_error(duk_json_dec_ctx *js_ctx);
 DUK_LOCAL_DECL void duk__dec_eat_white(duk_json_dec_ctx *js_ctx);
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 DUK_LOCAL_DECL duk_uint8_t duk__dec_peek(duk_json_dec_ctx *js_ctx);
 #endif
 DUK_LOCAL_DECL duk_uint8_t duk__dec_get(duk_json_dec_ctx *js_ctx);
@@ -38,7 +38,7 @@ DUK_LOCAL_DECL duk_uint8_t duk__dec_get_nonwhite(duk_json_dec_ctx *js_ctx);
 DUK_LOCAL_DECL duk_uint_fast32_t duk__dec_decode_hex_escape(duk_json_dec_ctx *js_ctx, duk_small_uint_t n);
 DUK_LOCAL_DECL void duk__dec_req_stridx(duk_json_dec_ctx *js_ctx, duk_small_uint_t stridx);
 DUK_LOCAL_DECL void duk__dec_string(duk_json_dec_ctx *js_ctx);
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 DUK_LOCAL_DECL void duk__dec_plain_string(duk_json_dec_ctx *js_ctx);
 DUK_LOCAL_DECL void duk__dec_pointer(duk_json_dec_ctx *js_ctx);
 DUK_LOCAL_DECL void duk__dec_buffer(duk_json_dec_ctx *js_ctx);
@@ -73,11 +73,14 @@ DUK_LOCAL_DECL void duk__enc_double(duk_json_enc_ctx *js_ctx);
 DUK_LOCAL_DECL void duk__enc_fastint_tval(duk_json_enc_ctx *js_ctx, duk_tval *tv);
 #endif
 #if defined(DUK_USE_JX) || defined(DUK_USE_JC)
-DUK_LOCAL_DECL void duk__enc_buffer(duk_json_enc_ctx *js_ctx, duk_hbuffer *h);
+DUK_LOCAL_DECL void duk__enc_buffer_jx_jc(duk_json_enc_ctx *js_ctx, duk_hbuffer *h);
 DUK_LOCAL_DECL void duk__enc_pointer(duk_json_enc_ctx *js_ctx, void *ptr);
 #if defined(DUK_USE_BUFFEROBJECT_SUPPORT)
 DUK_LOCAL_DECL void duk__enc_bufobj(duk_json_enc_ctx *js_ctx, duk_hbufobj *h_bufobj);
 #endif
+#endif
+#if defined(DUK_USE_JSON_STRINGIFY_FASTPATH)
+DUK_LOCAL_DECL void duk__enc_buffer_json_fastpath(duk_json_enc_ctx *js_ctx, duk_hbuffer *h);
 #endif
 DUK_LOCAL_DECL void duk__enc_newline_indent(duk_json_enc_ctx *js_ctx, duk_int_t depth);
 
@@ -243,7 +246,7 @@ DUK_LOCAL void duk__dec_eat_white(duk_json_dec_ctx *js_ctx) {
 	js_ctx->p = p;
 }
 
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 DUK_LOCAL duk_uint8_t duk__dec_peek(duk_json_dec_ctx *js_ctx) {
 	DUK_ASSERT(js_ctx->p <= js_ctx->p_end);
 	return *js_ctx->p;
@@ -304,8 +307,7 @@ DUK_LOCAL void duk__dec_req_stridx(duk_json_dec_ctx *js_ctx, duk_small_uint_t st
 	 * have internal NULs.
 	 */
 
-	DUK_ASSERT_DISABLE(stridx >= 0);  /* unsigned */
-	DUK_ASSERT(stridx < DUK_HEAP_NUM_STRINGS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
 	h = DUK_HTHREAD_GET_STRING(js_ctx->thr, stridx);
 	DUK_ASSERT(h != NULL);
 
@@ -353,7 +355,7 @@ DUK_LOCAL duk_small_int_t duk__dec_string_escape(duk_json_dec_ctx *js_ctx, duk_u
 		cp = duk__dec_decode_hex_escape(js_ctx, 4);
 		break;
 	}
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 	case DUK_ASC_UC_U: {
 		if (js_ctx->flag_ext_custom) {
 			cp = duk__dec_decode_hex_escape(js_ctx, 8);
@@ -476,7 +478,7 @@ DUK_LOCAL void duk__dec_string(duk_json_dec_ctx *js_ctx) {
 #endif  /* DUK_USE_JSON_DECSTRING_FASTPATH */
 
 	DUK_BW_SETPTR_AND_COMPACT(js_ctx->thr, bw, q);
-	(void) duk_buffer_to_string(ctx, -1);
+	(void) duk_buffer_to_string(ctx, -1);  /* Safe if input string is safe. */
 
 	/* [ ... str ] */
 
@@ -487,7 +489,7 @@ DUK_LOCAL void duk__dec_string(duk_json_dec_ctx *js_ctx) {
 	DUK_UNREACHABLE();
 }
 
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 /* Decode a plain string consisting entirely of identifier characters.
  * Used to parse plain keys (e.g. "foo: 123").
  */
@@ -533,7 +535,7 @@ DUK_LOCAL void duk__dec_plain_string(duk_json_dec_ctx *js_ctx) {
 }
 #endif  /* DUK_USE_JX */
 
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 DUK_LOCAL void duk__dec_pointer(duk_json_dec_ctx *js_ctx) {
 	duk_hthread *thr = js_ctx->thr;
 	duk_context *ctx = (duk_context *) thr;
@@ -587,7 +589,7 @@ DUK_LOCAL void duk__dec_pointer(duk_json_dec_ctx *js_ctx) {
 }
 #endif  /* DUK_USE_JX */
 
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 DUK_LOCAL void duk__dec_buffer(duk_json_dec_ctx *js_ctx) {
 	duk_hthread *thr = js_ctx->thr;
 	duk_context *ctx = (duk_context *) thr;
@@ -777,7 +779,7 @@ DUK_LOCAL void duk__dec_object(duk_json_dec_ctx *js_ctx) {
 
 		if (x == DUK_ASC_DOUBLEQUOTE) {
 			duk__dec_string(js_ctx);
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 		} else if (js_ctx->flag_ext_custom &&
 		           duk_unicode_is_identifier_start((duk_codepoint_t) x)) {
 			duk__dec_plain_string(js_ctx);
@@ -898,7 +900,7 @@ DUK_LOCAL void duk__dec_value(duk_json_dec_ctx *js_ctx) {
 	if (x == DUK_ASC_DOUBLEQUOTE) {
 		duk__dec_string(js_ctx);
 	} else if ((x >= DUK_ASC_0 && x <= DUK_ASC_9) || (x == DUK_ASC_MINUS)) {
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 		if (js_ctx->flag_ext_custom && x == DUK_ASC_MINUS && duk__dec_peek(js_ctx) == DUK_ASC_UC_I) {
 			duk__dec_req_stridx(js_ctx, DUK_STRIDX_MINUS_INFINITY);  /* "-Infinity", '-' has been eaten */
 			duk_push_number(ctx, -DUK_DOUBLE_INFINITY);
@@ -919,7 +921,7 @@ DUK_LOCAL void duk__dec_value(duk_json_dec_ctx *js_ctx) {
 	} else if (x == DUK_ASC_LC_N) {
 		duk__dec_req_stridx(js_ctx, DUK_STRIDX_LC_NULL);
 		duk_push_null(ctx);
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 	} else if (js_ctx->flag_ext_custom && x == DUK_ASC_LC_U) {
 		duk__dec_req_stridx(js_ctx, DUK_STRIDX_LC_UNDEFINED);
 		duk_push_undefined(ctx);
@@ -1078,8 +1080,7 @@ DUK_LOCAL void duk__emit_cstring(duk_json_enc_ctx *js_ctx, const char *str) {
 DUK_LOCAL void duk__emit_stridx(duk_json_enc_ctx *js_ctx, duk_small_uint_t stridx) {
 	duk_hstring *h;
 
-	DUK_ASSERT_DISABLE(stridx >= 0);  /* unsigned */
-	DUK_ASSERT(stridx < DUK_HEAP_NUM_STRINGS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
 	h = DUK_HTHREAD_GET_STRING(js_ctx->thr, stridx);
 	DUK_ASSERT(h != NULL);
 
@@ -1110,7 +1111,7 @@ DUK_LOCAL duk_uint8_t *duk__emit_esc_auto_fast(duk_json_enc_ctx *js_ctx, duk_uin
 	 *   (nybble_count << 16) | (escape_char1) | (escape_char2)
 	 */
 
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 	if (DUK_LIKELY(cp < 0x100UL)) {
 		if (DUK_UNLIKELY(js_ctx->flag_ext_custom)) {
 			tmp = DUK__MKESC(2, DUK_ASC_BACKSLASH, DUK_ASC_LC_X);
@@ -1122,7 +1123,7 @@ DUK_LOCAL duk_uint8_t *duk__emit_esc_auto_fast(duk_json_enc_ctx *js_ctx, duk_uin
 	if (DUK_LIKELY(cp < 0x10000UL)) {
 		tmp = DUK__MKESC(4, DUK_ASC_BACKSLASH, DUK_ASC_LC_U);
 	} else {
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 		if (DUK_LIKELY(js_ctx->flag_ext_custom)) {
 			tmp = DUK__MKESC(8, DUK_ASC_BACKSLASH, DUK_ASC_UC_U);
 		} else
@@ -1316,7 +1317,7 @@ DUK_LOCAL void duk__enc_quote_string(duk_json_enc_ctx *js_ctx, duk_hstring *h_st
 					p = p_tmp + 1;
 				}
 
-#ifdef DUK_USE_NONSTD_JSON_ESC_U2028_U2029
+#if defined(DUK_USE_NONSTD_JSON_ESC_U2028_U2029)
 				if (js_ctx->flag_ascii_only || cp == 0x2028 || cp == 0x2029) {
 #else
 				if (js_ctx->flag_ascii_only) {
@@ -1522,8 +1523,8 @@ DUK_LOCAL void duk__enc_buffer_data(duk_json_enc_ctx *js_ctx, duk_uint8_t *buf_d
 	 * variants is to be as useful to a programmer as possible.
 	 */
 
-	/* The #ifdef clutter here needs to handle the three cases:
-	 * (1) JX+JC, (2) JX only, (3) JC only.
+	/* The #if defined() clutter here needs to handle the three
+	 * cases: (1) JX+JC, (2) JX only, (3) JC only.
 	 */
 
 	/* Note: space must cater for both JX and JC. */
@@ -1560,12 +1561,59 @@ DUK_LOCAL void duk__enc_buffer_data(duk_json_enc_ctx *js_ctx, duk_uint8_t *buf_d
 	DUK_BW_SET_PTR(thr, &js_ctx->bw, q);
 }
 
-DUK_LOCAL void duk__enc_buffer(duk_json_enc_ctx *js_ctx, duk_hbuffer *h) {
+DUK_LOCAL void duk__enc_buffer_jx_jc(duk_json_enc_ctx *js_ctx, duk_hbuffer *h) {
 	duk__enc_buffer_data(js_ctx,
 	                     (duk_uint8_t *) DUK_HBUFFER_GET_DATA_PTR(js_ctx->thr->heap, h),
 	                     (duk_size_t) DUK_HBUFFER_GET_SIZE(h));
 }
 #endif  /* DUK_USE_JX || DUK_USE_JC */
+
+#if defined(DUK_USE_JSON_STRINGIFY_FASTPATH)
+DUK_LOCAL void duk__enc_buffer_json_fastpath(duk_json_enc_ctx *js_ctx, duk_hbuffer *h) {
+	duk_size_t i, n;
+	const duk_uint8_t *buf;
+	duk_uint8_t *q;
+
+	n = DUK_HBUFFER_GET_SIZE(h);
+	if (n == 0) {
+		DUK__EMIT_2(js_ctx, DUK_ASC_LCURLY, DUK_ASC_RCURLY);
+		return;
+	}
+
+	DUK__EMIT_1(js_ctx, DUK_ASC_LCURLY);
+
+	/* Maximum encoded length with 32-bit index: 1 + 10 + 2 + 3 + 1 + 1 = 18,
+	 * with 64-bit index: 1 + 20 + 2 + 3 + 1 + 1 = 28.  32 has some spare.
+	 *
+	 * Note that because the output buffer is reallocated from time to time,
+	 * side effects (such as finalizers) affecting the buffer 'h' must be
+	 * disabled.  This is the case in the JSON.stringify() fast path.
+	 */
+
+	buf = (const duk_uint8_t *) DUK_HBUFFER_GET_DATA_PTR(js_ctx->thr->heap, h);
+	if (DUK_UNLIKELY(js_ctx->h_gap != NULL)) {
+		for (i = 0; i < n; i++) {
+			duk__enc_newline_indent(js_ctx, js_ctx->recursion_depth + 1);
+			q = DUK_BW_ENSURE_GETPTR(js_ctx->thr, &js_ctx->bw, 32);
+			q += DUK_SPRINTF((char *) q, "\"%lu\": %u,", (unsigned long) i, (unsigned int) buf[i]);
+			DUK_BW_SET_PTR(js_ctx->thr, &js_ctx->bw, q);
+		}
+	} else {
+		q = DUK_BW_GET_PTR(js_ctx->thr, &js_ctx->bw);
+		for (i = 0; i < n; i++) {
+			q = DUK_BW_ENSURE_RAW(js_ctx->thr, &js_ctx->bw, 32, q);
+			q += DUK_SPRINTF((char *) q, "\"%lu\":%u,", (unsigned long) i, (unsigned int) buf[i]);
+		}
+		DUK_BW_SET_PTR(js_ctx->thr, &js_ctx->bw, q);
+	}
+	DUK__UNEMIT_1(js_ctx);  /* eat trailing comma */
+
+	if (DUK_UNLIKELY(js_ctx->h_gap != NULL)) {
+		duk__enc_newline_indent(js_ctx, js_ctx->recursion_depth);
+	}
+	DUK__EMIT_1(js_ctx, DUK_ASC_RCURLY);
+}
+#endif  /* DUK_USE_JSON_STRINGIFY_FASTPATH */
 
 #if defined(DUK_USE_JX) || defined(DUK_USE_JC)
 DUK_LOCAL void duk__enc_pointer(duk_json_enc_ctx *js_ctx, void *ptr) {
@@ -1577,8 +1625,8 @@ DUK_LOCAL void duk__enc_pointer(duk_json_enc_ctx *js_ctx, void *ptr) {
 
 	DUK_MEMZERO(buf, sizeof(buf));
 
-	/* The #ifdef clutter here needs to handle the three cases:
-	 * (1) JX+JC, (2) JX only, (3) JC only.
+	/* The #if defined() clutter here needs to handle the three
+	 * cases: (1) JX+JC, (2) JX only, (3) JC only.
 	 */
 #if defined(DUK_USE_JX) && defined(DUK_USE_JC)
 	if (js_ctx->flag_ext_custom)
@@ -1820,6 +1868,8 @@ DUK_LOCAL void duk__enc_object(duk_json_enc_ctx *js_ctx) {
 		                     (duk_tval *) duk_get_tval(ctx, -1)));
 
 		h_key = duk_known_hstring(ctx, -1);
+		DUK_ASSERT(h_key != NULL);
+		DUK_ASSERT(!DUK_HSTRING_HAS_SYMBOL(h_key));  /* proplist filtering; enum options */
 
 		prev_size = DUK_BW_GET_SIZE(js_ctx->thr, &js_ctx->bw);
 		if (DUK_UNLIKELY(js_ctx->h_gap != NULL)) {
@@ -1949,6 +1999,7 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 	DUK_ASSERT(DUK_TVAL_IS_OBJECT(tv_holder));
 	tv_key = DUK_GET_TVAL_NEGIDX(ctx, -1);
 	DUK_ASSERT(DUK_TVAL_IS_STRING(tv_key));
+	DUK_ASSERT(!DUK_HSTRING_HAS_SYMBOL(DUK_TVAL_GET_STRING(tv_key)));  /* Caller responsible. */
 	(void) duk_hobject_getprop(thr, tv_holder, tv_key);
 
 	/* -> [ ... key val ] */
@@ -1963,14 +2014,14 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 	if (duk_check_type_mask(ctx, -1, DUK_TYPE_MASK_OBJECT |
 	                                 DUK_TYPE_MASK_LIGHTFUNC |
 	                                 DUK_TYPE_MASK_BUFFER)) {
-		duk_get_prop_stridx(ctx, -1, DUK_STRIDX_TO_JSON);
+		duk_get_prop_stridx_short(ctx, -1, DUK_STRIDX_TO_JSON);
 		if (duk_is_callable(ctx, -1)) {  /* toJSON() can also be a lightfunc */
 			DUK_DDD(DUK_DDDPRINT("value is object, has callable toJSON() -> call it"));
 			/* XXX: duk_dup_unvalidated(ctx, -2) etc. */
 			duk_dup_m2(ctx);          /* -> [ ... key val toJSON val ] */
 			duk_dup_m4(ctx);          /* -> [ ... key val toJSON val key ] */
 			duk_call_method(ctx, 1);  /* -> [ ... key val val' ] */
-			duk_remove(ctx, -2);      /* -> [ ... key val' ] */
+			duk_remove_m2(ctx);       /* -> [ ... key val' ] */
 		} else {
 			duk_pop(ctx);             /* -> [ ... key val ] */
 		}
@@ -1988,7 +2039,7 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 		duk_dup_m4(ctx);                            /* -> [ ... key val replacer holder key ] */
 		duk_dup_m4(ctx);                            /* -> [ ... key val replacer holder key val ] */
 		duk_call_method(ctx, 2);                    /* -> [ ... key val val' ] */
-		duk_remove(ctx, -2);                        /* -> [ ... key val' ] */
+		duk_remove_m2(ctx);                         /* -> [ ... key val' ] */
 	}
 
 	/* [ ... key val ] */
@@ -2020,7 +2071,7 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 		switch (c) {
 		case DUK_HOBJECT_CLASS_NUMBER: {
 			DUK_DDD(DUK_DDDPRINT("value is a Number object -> coerce with ToNumber()"));
-			duk_to_number(ctx, -1);
+			duk_to_number_m1(ctx);
 			/* The coercion potentially invokes user .valueOf() and .toString()
 			 * but can't result in a function value because ToPrimitive() would
 			 * reject such a result: test-dev-json-stringify-coercion-1.js.
@@ -2040,8 +2091,8 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 #endif
 		case DUK_HOBJECT_CLASS_BOOLEAN: {
 			DUK_DDD(DUK_DDDPRINT("value is a Boolean/Buffer/Pointer object -> get internal value"));
-			duk_get_prop_stridx(ctx, -1, DUK_STRIDX_INT_VALUE);
-			duk_remove(ctx, -2);
+			duk_get_prop_stridx_short(ctx, -1, DUK_STRIDX_INT_VALUE);
+			duk_remove_m2(ctx);
 			break;
 		}
 		default: {
@@ -2049,6 +2100,8 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 			 * primitive value.  Functions are checked for specially.  The
 			 * primitive value coercions for Number, String, Pointer, and
 			 * Boolean can't result in functions so suffices to check here.
+			 * Symbol objects are handled like plain objects (their primitive
+			 * value is NOT looked up like for e.g. String objects).
 			 */
 			DUK_ASSERT(h != NULL);
 			if (DUK_HOBJECT_IS_CALLABLE(h)) {
@@ -2111,7 +2164,9 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 	case DUK_TAG_STRING: {
 		duk_hstring *h = DUK_TVAL_GET_STRING(tv);
 		DUK_ASSERT(h != NULL);
-
+		if (DUK_UNLIKELY(DUK_HSTRING_HAS_SYMBOL(h))) {
+			goto pop2_undef;
+		}
 		duk__enc_quote_string(js_ctx, h);
 		break;
 	}
@@ -2131,21 +2186,25 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 		}
 		break;
 	}
-	/* Because plain buffers mimic ArrayBuffers, they are supported even
-	 * without JX/JX support enabled.  Because JSON only serializes
+	/* Because plain buffers mimics Uint8Array, they have enumerable
+	 * index properties [0,byteLength[.  Because JSON only serializes
 	 * enumerable own properties, no properties can be serialized for
 	 * plain buffers (all virtual properties are non-enumerable).  However,
 	 * there may be a .toJSON() method which was already handled above.
-	 * Thus, we serialize to '{}' here.
 	 */
 	case DUK_TAG_BUFFER: {
 #if defined(DUK_USE_JX) || defined(DUK_USE_JC)
 		if (js_ctx->flag_ext_custom_or_compatible) {
-			duk__enc_buffer(js_ctx, DUK_TVAL_GET_BUFFER(tv));
+			duk__enc_buffer_jx_jc(js_ctx, DUK_TVAL_GET_BUFFER(tv));
 			break;
 		}
 #endif
-		DUK__EMIT_2(js_ctx, DUK_ASC_LCURLY, DUK_ASC_RCURLY);
+
+		/* Could implement a fastpath, but the fast path would need
+		 * to handle realloc side effects correctly.
+		 */
+		duk_to_object(ctx, -1);
+		duk__enc_object(js_ctx);
 		break;
 	}
 	case DUK_TAG_LIGHTFUNC: {
@@ -2192,13 +2251,24 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 
 /* E5 Section 15.12.3, main algorithm, step 4.b.ii steps 1-4. */
 DUK_LOCAL duk_bool_t duk__enc_allow_into_proplist(duk_tval *tv) {
-	duk_hobject *h;
 	duk_small_int_t c;
 
+	/* XXX: some kind of external internal type checker?
+	 * - type mask; symbol flag; class mask
+	 */
 	DUK_ASSERT(tv != NULL);
-	if (DUK_TVAL_IS_STRING(tv) || DUK_TVAL_IS_NUMBER(tv)) {
+	if (DUK_TVAL_IS_STRING(tv)) {
+		duk_hstring *h;
+		h = DUK_TVAL_GET_STRING(tv);
+		DUK_ASSERT(h != NULL);
+		if (DUK_UNLIKELY(DUK_HSTRING_HAS_SYMBOL(h))) {
+			return 0;
+		}
+		return 1;
+	} else if (DUK_TVAL_IS_NUMBER(tv)) {
 		return 1;
 	} else if (DUK_TVAL_IS_OBJECT(tv)) {
+		duk_hobject *h;
 		h = DUK_TVAL_GET_OBJECT(tv);
 		DUK_ASSERT(h != NULL);
 		c = (duk_small_int_t) DUK_HOBJECT_GET_CLASS_NUMBER(h);
@@ -2258,9 +2328,11 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 	}
 	case DUK_TAG_STRING: {
 		duk_hstring *h;
-
 		h = DUK_TVAL_GET_STRING(tv);
 		DUK_ASSERT(h != NULL);
+		if (DUK_UNLIKELY(DUK_HSTRING_HAS_SYMBOL(h))) {
+			goto emit_undefined;
+		}
 		duk__enc_quote_string(js_ctx, h);
 		break;
 	}
@@ -2334,7 +2406,7 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 		 * but does at the moment, probably not worth fixing.
 		 */
 		if (duk_hobject_hasprop_raw(js_ctx->thr, obj, DUK_HTHREAD_STRING_TO_JSON(js_ctx->thr)) ||
-		    DUK_HOBJECT_HAS_EXOTIC_PROXYOBJ(obj)) {
+		    DUK_HOBJECT_IS_PROXY(obj)) {
 			DUK_DD(DUK_DDPRINT("object has a .toJSON property or object is a Proxy, abort fast path"));
 			goto abort_fastpath;
 		}
@@ -2355,7 +2427,7 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 			c_unbox = DUK_HOBJECT_CMASK_NUMBER |
 			          DUK_HOBJECT_CMASK_STRING |
 			          DUK_HOBJECT_CMASK_BOOLEAN |
-			          DUK_HOBJECT_CMASK_POINTER;
+			          DUK_HOBJECT_CMASK_POINTER;  /* Symbols are not unboxed. */
 			c_func = DUK_HOBJECT_CMASK_FUNCTION;
 			c_bufobj = DUK_HOBJECT_CMASK_ALL_BUFOBJS;
 			c_undef = 0;
@@ -2369,7 +2441,7 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 			c_array = DUK_HOBJECT_CMASK_ARRAY;
 			c_unbox = DUK_HOBJECT_CMASK_NUMBER |
 			          DUK_HOBJECT_CMASK_STRING |
-			          DUK_HOBJECT_CMASK_BOOLEAN;
+			          DUK_HOBJECT_CMASK_BOOLEAN;  /* Symbols are not unboxed. */
 			c_func = 0;
 			c_bufobj = 0;
 			c_undef = DUK_HOBJECT_CMASK_FUNCTION |
@@ -2404,6 +2476,15 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 				if (!k) {
 					continue;
 				}
+				if (DUK_HSTRING_HAS_ARRIDX(k)) {
+					/* If an object has array index keys we would need
+					 * to sort them into the ES2015 enumeration order to
+					 * be consistent with the slow path.  Abort the fast
+					 * path and handle in the slow path for now.
+					 */
+					DUK_DD(DUK_DDPRINT("property key is an array index, abort fast path"));
+					goto abort_fastpath;
+				}
 				if (!DUK_HOBJECT_E_SLOT_IS_ENUMERABLE(js_ctx->thr->heap, obj, i)) {
 					continue;
 				}
@@ -2414,7 +2495,7 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 					DUK_DD(DUK_DDPRINT("property is an accessor, abort fast path"));
 					goto abort_fastpath;
 				}
-				if (DUK_HSTRING_HAS_INTERNAL(k)) {
+				if (DUK_UNLIKELY(DUK_HSTRING_HAS_SYMBOL(k))) {
 					continue;
 				}
 
@@ -2465,7 +2546,7 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 				goto abort_fastpath;
 			}
 
-			arr_len = (duk_uint_fast32_t) duk_hobject_get_length(js_ctx->thr, obj);
+			arr_len = (duk_uint_fast32_t) ((duk_harray *) obj)->length;
 			asize = (duk_uint_fast32_t) DUK_HOBJECT_GET_ASIZE(obj);
 			/* Array part may be larger than 'length'; if so, iterate
 			 * only up to array 'length'.  Array part may also be smaller
@@ -2505,10 +2586,15 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 				}
 
 				/* Ordinary gap, undefined encodes to 'null' in
-				 * standard JSON (and no JX/JC support here now).
+				 * standard JSON, but JX/JC use their form for
+				 * undefined to better preserve the typing.
 				 */
 				DUK_D(DUK_DPRINT("gap in array, no conflicting inherited property, remain on fast path"));
+#if defined(DUK_USE_JX)
+				DUK__EMIT_STRIDX(js_ctx, js_ctx->stridx_custom_undefined);
+#else
 				DUK__EMIT_STRIDX(js_ctx, DUK_STRIDX_LC_NULL);
+#endif
 				/* fall through */
 
 			 elem_done:
@@ -2530,6 +2616,8 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 			 * automatic unboxing.  Rely on internal value being
 			 * sane (to avoid infinite recursion).
 			 */
+			DUK_ASSERT((c_bit & DUK_HOBJECT_CMASK_SYMBOL) == 0);  /* Symbols are not unboxed. */
+
 #if 1
 			/* The code below is incorrect if .toString() or .valueOf() have
 			 * have been overridden.  The correct approach would be to look up
@@ -2583,16 +2671,16 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 		break;
 	}
 	case DUK_TAG_BUFFER: {
-		/* Plain buffers are treated like ArrayBuffers: because they
-		 * have no enumerable own properties they normally serialize
-		 * to '{}'.  However, there can be a replacer (not relevant
-		 * here) or a .toJSON() method (which we need to check for
-		 * explicitly).
+		/* Plain buffers are treated like Uint8Arrays: they have
+		 * enumerable indices.  Other virtual properties are not
+		 * enumerable, and inherited properties are not serialized.
+		 * However, there can be a replacer (not relevant here) or
+		 * a .toJSON() method (which we need to check for explicitly).
 		 */
 
 #if defined(DUK_USE_BUFFEROBJECT_SUPPORT)
 		if (duk_hobject_hasprop_raw(js_ctx->thr,
-		                            js_ctx->thr->builtins[DUK_BIDX_ARRAYBUFFER_PROTOTYPE],
+		                            js_ctx->thr->builtins[DUK_BIDX_UINT8ARRAY_PROTOTYPE],
 		                            DUK_HTHREAD_STRING_TO_JSON(js_ctx->thr))) {
 			DUK_DD(DUK_DDPRINT("value is a plain buffer and there's an inherited .toJSON, abort fast path"));
 			goto abort_fastpath;
@@ -2601,11 +2689,15 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 
 #if defined(DUK_USE_JX) || defined(DUK_USE_JC)
 		if (js_ctx->flag_ext_custom_or_compatible) {
-			duk__enc_buffer(js_ctx, DUK_TVAL_GET_BUFFER(tv));
+			duk__enc_buffer_jx_jc(js_ctx, DUK_TVAL_GET_BUFFER(tv));
 			break;
 		}
 #endif
-		DUK__EMIT_2(js_ctx, DUK_ASC_LCURLY, DUK_ASC_RCURLY);
+
+		/* Plain buffers mimic Uint8Arrays, and have enumerable index
+		 * properties.
+		 */
+		duk__enc_buffer_json_fastpath(js_ctx, DUK_TVAL_GET_BUFFER(tv));
 		break;
 	}
 	case DUK_TAG_POINTER: {
@@ -2709,7 +2801,7 @@ void duk_bi_json_parse_helper(duk_context *ctx,
 	duk_json_dec_ctx js_ctx_alloc;
 	duk_json_dec_ctx *js_ctx = &js_ctx_alloc;
 	duk_hstring *h_text;
-#ifdef DUK_USE_ASSERTIONS
+#if defined(DUK_USE_ASSERTIONS)
 	duk_idx_t entry_top = duk_get_top(ctx);
 #endif
 
@@ -2725,7 +2817,7 @@ void duk_bi_json_parse_helper(duk_context *ctx,
 
 	DUK_MEMZERO(&js_ctx_alloc, sizeof(js_ctx_alloc));
 	js_ctx->thr = thr;
-#ifdef DUK_USE_EXPLICIT_NULL_INIT
+#if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	/* nothing now */
 #endif
 	js_ctx->recursion_limit = DUK_USE_JSON_DEC_RECLIMIT;
@@ -2746,7 +2838,7 @@ void duk_bi_json_parse_helper(duk_context *ctx,
 	js_ctx->flag_ext_custom_or_compatible = flags & (DUK_JSON_FLAG_EXT_CUSTOM | DUK_JSON_FLAG_EXT_COMPATIBLE);
 #endif
 
-	h_text = duk_to_hstring(ctx, idx_value);  /* coerce in-place */
+	h_text = duk_to_hstring(ctx, idx_value);  /* coerce in-place; rejects Symbols */
 	DUK_ASSERT(h_text != NULL);
 
 	/* JSON parsing code is allowed to read [p_start,p_end]: p_end is
@@ -2777,7 +2869,7 @@ void duk_bi_json_parse_helper(duk_context *ctx,
 
 		duk_push_object(ctx);
 		duk_dup_m2(ctx);  /* -> [ ... val root val ] */
-		duk_put_prop_stridx(ctx, -2, DUK_STRIDX_EMPTY_STRING);  /* default attrs ok */
+		duk_put_prop_stridx_short(ctx, -2, DUK_STRIDX_EMPTY_STRING);  /* default attrs ok */
 		duk_push_hstring_stridx(ctx, DUK_STRIDX_EMPTY_STRING);  /* -> [ ... val root "" ] */
 
 		DUK_DDD(DUK_DDDPRINT("start reviver walk, root=%!T, name=%!T",
@@ -2785,7 +2877,7 @@ void duk_bi_json_parse_helper(duk_context *ctx,
 		                     (duk_tval *) duk_get_tval(ctx, -1)));
 
 		duk__dec_reviver_walk(js_ctx);  /* [ ... val root "" ] -> [ ... val val' ] */
-		duk_remove(ctx, -2);            /* -> [ ... val' ] */
+		duk_remove_m2(ctx);             /* -> [ ... val' ] */
 	} else {
 		DUK_DDD(DUK_DDDPRINT("reviver does not exist or is not callable: %!T",
 		                     (duk_tval *) duk_get_tval(ctx, idx_reviver)));
@@ -2836,7 +2928,7 @@ void duk_bi_json_stringify_helper(duk_context *ctx,
 
 	DUK_MEMZERO(&js_ctx_alloc, sizeof(js_ctx_alloc));
 	js_ctx->thr = thr;
-#ifdef DUK_USE_EXPLICIT_NULL_INIT
+#if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	js_ctx->h_replacer = NULL;
 	js_ctx->h_gap = NULL;
 #endif
@@ -2849,20 +2941,21 @@ void duk_bi_json_stringify_helper(duk_context *ctx,
 	js_ctx->flags = flags;
 	js_ctx->flag_ascii_only = flags & DUK_JSON_FLAG_ASCII_ONLY;
 	js_ctx->flag_avoid_key_quotes = flags & DUK_JSON_FLAG_AVOID_KEY_QUOTES;
-#ifdef DUK_USE_JX
+#if defined(DUK_USE_JX)
 	js_ctx->flag_ext_custom = flags & DUK_JSON_FLAG_EXT_CUSTOM;
 #endif
-#ifdef DUK_USE_JC
+#if defined(DUK_USE_JC)
 	js_ctx->flag_ext_compatible = flags & DUK_JSON_FLAG_EXT_COMPATIBLE;
 #endif
 #if defined(DUK_USE_JX) || defined(DUK_USE_JC)
 	js_ctx->flag_ext_custom_or_compatible = flags & (DUK_JSON_FLAG_EXT_CUSTOM | DUK_JSON_FLAG_EXT_COMPATIBLE);
 #endif
 
-	/* The #ifdef clutter here handles the JX/JC enable/disable
+	/* The #if defined() clutter here handles the JX/JC enable/disable
 	 * combinations properly.
 	 */
 #if defined(DUK_USE_JX) || defined(DUK_USE_JC)
+	js_ctx->stridx_custom_undefined = DUK_STRIDX_LC_NULL;  /* standard JSON; array gaps */
 #if defined(DUK_USE_JX)
 	if (flags & DUK_JSON_FLAG_EXT_CUSTOM) {
 		js_ctx->stridx_custom_undefined = DUK_STRIDX_LC_UNDEFINED;
@@ -2909,7 +3002,7 @@ void duk_bi_json_stringify_helper(duk_context *ctx,
 
 	DUK_BW_INIT_PUSHBUF(thr, &js_ctx->bw, DUK__JSON_STRINGIFY_BUFSIZE);
 
-	js_ctx->idx_loop = duk_push_object_internal(ctx);
+	js_ctx->idx_loop = duk_push_bare_object(ctx);
 	DUK_ASSERT(js_ctx->idx_loop >= 0);
 
 	/* [ ... buf loop ] */
@@ -2992,8 +3085,8 @@ void duk_bi_json_stringify_helper(duk_context *ctx,
 
 		duk_push_lstring(ctx, spaces, (duk_size_t) nspace);
 		js_ctx->h_gap = duk_known_hstring(ctx, -1);
-	} else if (duk_is_string(ctx, idx_space)) {
-		/* XXX: substring in-place at idx_place? */
+		DUK_ASSERT(js_ctx->h_gap != NULL);
+	} else if (duk_is_string_notsymbol(ctx, idx_space)) {
 		duk_dup(ctx, idx_space);
 		duk_substring(ctx, -1, 0, 10);  /* clamp to 10 chars */
 		js_ctx->h_gap = duk_known_hstring(ctx, -1);
@@ -3002,8 +3095,11 @@ void duk_bi_json_stringify_helper(duk_context *ctx,
 	}
 
 	if (js_ctx->h_gap != NULL) {
-		/* if gap is empty, behave as if not given at all */
-		if (DUK_HSTRING_GET_CHARLEN(js_ctx->h_gap) == 0) {
+		/* If gap is empty, behave as if not given at all.  Check
+		 * against byte length because character length is more
+		 * expensive.
+		 */
+		if (DUK_HSTRING_GET_BYTELEN(js_ctx->h_gap) == 0) {
 			js_ctx->h_gap = NULL;
 		}
 	}
@@ -3019,9 +3115,7 @@ void duk_bi_json_stringify_helper(duk_context *ctx,
 	if (js_ctx->h_replacer == NULL &&  /* replacer is a mutation risk */
 	    js_ctx->idx_proplist == -1) {  /* proplist is very rare */
 		duk_int_t pcall_rc;
-#ifdef DUK_USE_MARK_AND_SWEEP
-		duk_small_uint_t prev_mark_and_sweep_base_flags;
-#endif
+		duk_small_uint_t prev_ms_base_flags;
 
 		DUK_DD(DUK_DDPRINT("try JSON.stringify() fast path"));
 
@@ -3042,19 +3136,19 @@ void duk_bi_json_stringify_helper(duk_context *ctx,
 
 		duk_dup(ctx, idx_value);
 
-#if defined(DUK_USE_MARK_AND_SWEEP)
 		/* Must prevent finalizers which may have arbitrary side effects. */
-		prev_mark_and_sweep_base_flags = thr->heap->mark_and_sweep_base_flags;
-		thr->heap->mark_and_sweep_base_flags |=
-			DUK_MS_FLAG_NO_FINALIZERS |         /* avoid attempts to add/remove object keys */
-		        DUK_MS_FLAG_NO_OBJECT_COMPACTION;   /* avoid attempt to compact any objects */
-#endif
+		prev_ms_base_flags = thr->heap->ms_base_flags;
+		thr->heap->ms_base_flags |=
+		        DUK_MS_FLAG_NO_OBJECT_COMPACTION;      /* Avoid attempt to compact any objects. */
+		thr->heap->pf_prevent_count++;                 /* Prevent finalizers. */
+		DUK_ASSERT(thr->heap->pf_prevent_count != 0);  /* Wrap. */
 
 		pcall_rc = duk_safe_call(ctx, duk__json_stringify_fast, (void *) js_ctx /*udata*/, 1 /*nargs*/, 0 /*nret*/);
 
-#if defined(DUK_USE_MARK_AND_SWEEP)
-		thr->heap->mark_and_sweep_base_flags = prev_mark_and_sweep_base_flags;
-#endif
+		DUK_ASSERT(thr->heap->pf_prevent_count > 0);
+		thr->heap->pf_prevent_count--;
+		thr->heap->ms_base_flags = prev_ms_base_flags;
+
 		if (pcall_rc == DUK_EXEC_SUCCESS) {
 			DUK_DD(DUK_DDPRINT("fast path successful"));
 			DUK_BW_PUSH_AS_STRING(thr, &js_ctx->bw);
@@ -3078,7 +3172,7 @@ void duk_bi_json_stringify_helper(duk_context *ctx,
 
 	idx_holder = duk_push_object(ctx);
 	duk_dup(ctx, idx_value);
-	duk_put_prop_stridx(ctx, -2, DUK_STRIDX_EMPTY_STRING);
+	duk_put_prop_stridx_short(ctx, -2, DUK_STRIDX_EMPTY_STRING);
 
 	DUK_DDD(DUK_DDDPRINT("before: flags=0x%08lx, loop=%!T, replacer=%!O, "
 	                     "proplist=%!T, gap=%!O, holder=%!T",
@@ -3091,7 +3185,7 @@ void duk_bi_json_stringify_helper(duk_context *ctx,
 
 	/* serialize the wrapper with empty string key */
 
-	duk_push_hstring_stridx(ctx, DUK_STRIDX_EMPTY_STRING);
+	duk_push_hstring_empty(ctx);
 
 	/* [ ... buf loop (proplist) (gap) holder "" ] */
 

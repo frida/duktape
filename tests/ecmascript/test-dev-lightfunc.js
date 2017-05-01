@@ -15,6 +15,8 @@
  */
 
 /*@include util-buffer.js@*/
+/*@include util-string.js@*/
+/*@include util-object.js@*/
 
 /*---
 {
@@ -67,7 +69,7 @@ function sanitizeLfunc(x) {
 }
 
 function isLightFunc(x) {
-    return Duktape.info(x)[0] == 9;  // tag
+    return valueIsLightFunc(x);
 }
 
 function printTypedJx(v, name) {
@@ -86,35 +88,13 @@ function testTypedJx(func, name) {
     }
 }
 
-function sanitizeTraceback(x) {
-    x = x.replace(/\/tmp\/.*?:/g, 'TESTCASE:');
-    x = x.replace(/:\d+/g, ':NNN')
-    x = x.replace(/\/\*/g, '(*').replace(/\*\//g, '*)');
-    x = x.replace(/light_[0-9a-fA-F]+_/g, 'light_PTR_', x);
-    x = x.replace(/LIGHT_[0-9a-fA-F]+_/g, 'LIGHT_PTR_', x);
-    return x;
-}
-
 /*===
 light func support test
-info.length: 2
-typeof: function
-9
+true
 ===*/
 
 function lightFuncSupportTest() {
-    /* Duktape.info() can be used to detect that light functions are
-     * supported.
-     */
-
-    var fun = getLightFunc();
-    var info = Duktape.info(fun);
-
-    /* Value is primitive (no prop allocations etc) but still callable. */
-    print('info.length:', info.length);
-    print('typeof:', typeof fun);
-    print(Duktape.enc('jx', Duktape.info(fun)[0]));
-    // fun[1] is internal type tag which we don't want to test here
+    print(valueIsLightFunc(getLightFunc()));
 }
 
 try {
@@ -498,9 +478,9 @@ try {
 
 /*===
 arithmetic test
-string: testfunction light_PTR_0511() {"light"}function light_PTR_0a11() {"light"}
-string: function light_PTR_0511() {"light"}function light_PTR_0a11() {"light"}
-string: function foo() {"ecmascript"}function bar() {"ecmascript"}
+string: testfunction light_PTR_0511() { [lightfunc code] }function light_PTR_0a11() { [lightfunc code] }
+string: function light_PTR_0511() { [lightfunc code] }function light_PTR_0a11() { [lightfunc code] }
+string: function foo() { [ecmascript code] }function bar() { [ecmascript code] }
 ===*/
 
 function arithmeticTest() {
@@ -522,9 +502,9 @@ try {
 
 /*===
 toString() test
-function light_PTR_002f() {"light"}
-function light_PTR_002f() {"light"}
-function light_PTR_002f() {"light"}
+function light_PTR_002f() { [lightfunc code] }
+function light_PTR_002f() { [lightfunc code] }
+function light_PTR_002f() { [lightfunc code] }
 true
 true
 ===*/
@@ -651,8 +631,8 @@ try {
 
 /*===
 toBuffer() test
-object: function light_PTR_0511() {"light"}
-object: function light_PTR_0a11() {"light"}
+object: function light_PTR_0511() { [lightfunc code] }
+object: function light_PTR_0a11() { [lightfunc code] }
 ===*/
 
 function toBufferTest() {
@@ -691,19 +671,20 @@ try {
 
 /*===
 toPointer() test
-pointer null
-object null
+pointer true
+object true
 ===*/
 
 function toPointerTest() {
     var lfunc = Math.cos;
     var t;
 
+    // result is 'null' for lightfuncs
     t = Duktape.Pointer(lfunc);
-    print(typeof t, t);
+    print(typeof t, String(t) === 'null');
 
     t = new Duktape.Pointer(lfunc);
-    print(typeof t, t);
+    print(typeof t, String(t) === 'null');
 }
 
 try {
@@ -1127,15 +1108,15 @@ try {
 
 /*===
 bound function test
-F: function light_PTR_002f() {"light"}
+F: function light_PTR_002f() { [lightfunc code] }
 F type tag: 9
-G: function light_PTR_002f() {"bound"}
+G: function bound light_PTR_002f() { [bound code] }
 G type tag: 6
 G.length: 1
-H: function light_PTR_002f() {"bound"}
+H: function bound bound light_PTR_002f() { [bound code] }
 H type tag: 6
 H.length: 0
-I: function light_PTR_002f() {"bound"}
+I: function bound bound bound light_PTR_002f() { [bound code] }
 I type tag: 6
 I.length: 0
 G(123): 234
@@ -1149,24 +1130,24 @@ function boundFunctionTest() {
 
     var F = Math.max;  // length 2, varargs
     print('F:', sanitizeLfunc(String(F)));
-    print('F type tag:', Duktape.info(F)[0]);
+    print('F type tag:', getValuePublicType(F));
 
     // 'G' will be a full Function object but will still have a lightfunc
     // 'name' as a result of ToObject coercion, which is intentional but
     // somewhat confusing.  This would be fixable in the ToObject() coercion.
     var G = F.bind('myThis', 234);  // bound once
     print('G:', sanitizeLfunc(String(G)));
-    print('G type tag:', Duktape.info(G)[0]);
+    print('G type tag:', getValuePublicType(G));
     print('G.length:', G.length);  // length 1, one argument was bound
 
     var H = G.bind('foo', 345);  // bound twice
     print('H:', sanitizeLfunc(String(H)));
-    print('H type tag:', Duktape.info(H)[0]);
+    print('H type tag:', getValuePublicType(H));
     print('H.length:', H.length);  // length 0, two arguments are bound
 
     var I = H.bind('foo', 345);  // bound three times
     print('I:', sanitizeLfunc(String(I)));
-    print('I type tag:', Duktape.info(I)[0]);
+    print('I type tag:', getValuePublicType(I));
     print('I.length:', I.length);  // length 0, doesn't become negative
 
     // Another simple test
@@ -1196,8 +1177,8 @@ toString coerced object (return "length")
 read from length -> 2
 read from testWritable -> 123
 read from testNonWritable -> 234
-read from call -> function light_PTR_001f() {"light"}
-read from apply -> function light_PTR_0022() {"light"}
+read from call -> function light_PTR_001f() { [lightfunc code] }
+read from apply -> function light_PTR_0022() { [lightfunc code] }
 read from nonexistent -> undefined
 ===*/
 
@@ -1513,7 +1494,7 @@ function propertyAccessorThisBindingTest() {
             print('this == lightFunc:', this == lightFunc);
             print('this === lightFunc:', this === lightFunc);
             print('this.name:', sanitizeLfunc(this.name));
-            print('type tag:', Duktape.info(this)[0]);
+            print('type tag:', getValuePublicType(this));
             return 'getter retval';
         },
         set: function () {
@@ -1523,7 +1504,7 @@ function propertyAccessorThisBindingTest() {
             print('this == lightFunc:', this == lightFunc);
             print('this === lightFunc:', this === lightFunc);
             print('this.name:', sanitizeLfunc(this.name));
-            print('type tag:', Duktape.info(this)[0]);
+            print('type tag:', getValuePublicType(this));
         },
         enumerable: false,
         configurable: true
@@ -1536,7 +1517,7 @@ function propertyAccessorThisBindingTest() {
             print('this == lightFunc:', this == lightFunc);
             print('this === lightFunc:', this === lightFunc);
             print('this.name:', sanitizeLfunc(this.name));
-            print('type tag:', Duktape.info(this)[0]);
+            print('type tag:', getValuePublicType(this));
             return 'getter retval';
         },
         set: function () {
@@ -1545,7 +1526,7 @@ function propertyAccessorThisBindingTest() {
             print('this == lightFunc:', this == lightFunc);
             print('this === lightFunc:', this === lightFunc);
             print('this.name:', sanitizeLfunc(this.name));
-            print('type tag:', Duktape.info(this)[0]);
+            print('type tag:', getValuePublicType(this));
         },
         enumerable: false,
         configurable: true
@@ -1681,11 +1662,11 @@ Error: for traceback
     at light_PTR_0212 light strict preventsyield
     at duktapeActTest (TESTCASE:NNN)
     at global (TESTCASE:NNN) preventsyield
--1 ["lineNumber","pc","function"] light_PTR_0011
--2 ["lineNumber","pc","function"] callback
--3 ["lineNumber","pc","function"] light_PTR_0212
--4 ["lineNumber","pc","function"] duktapeActTest
--5 ["lineNumber","pc","function"] global
+-1 ["pc","lineNumber","function"] light_PTR_0011
+-2 ["pc","lineNumber","function"] callback
+-3 ["pc","lineNumber","function"] light_PTR_0212
+-4 ["pc","lineNumber","function"] duktapeActTest
+-5 ["pc","lineNumber","function"] global
 ===*/
 
 function duktapeActTest() {
@@ -1737,7 +1718,6 @@ SyntaxError: function false
 TypeError: function false
 URIError: function false
 Proxy: function false
-Duktape.Buffer: function false
 Duktape.Pointer: function false
 Duktape.Thread: function false
 Duktape.Logger: function false
@@ -1787,7 +1767,6 @@ function exemptBuiltinsTest() {
     print('URIError:', f(URIError));
     print('Proxy:', f(Proxy));
 
-    print('Duktape.Buffer:', f(Duktape.Buffer));
     print('Duktape.Pointer:', f(Duktape.Pointer));
     print('Duktape.Thread:', f(Duktape.Thread));
     print('Duktape.Logger:', f(Duktape.Logger));
@@ -2402,7 +2381,7 @@ act: undefined undefined
 gc: boolean true
 fin-get: TypeError
 fin-set: TypeError
-encdec-hex: string "function light_PTR_0511() {\"light\"}"
+encdec-hex: string "function light_PTR_0511() { [lightfunc code] }"
 dec-hex: TypeError
 compact: function {_func:true}
 ===*/
@@ -2411,7 +2390,7 @@ function duktapeBuiltinTest() {
     var lfunc = Math.cos;
 
     // avoid printing internal tag type
-    testTypedJx(function () { return Duktape.info(lfunc)[0]; }, 'info');
+    testTypedJx(function () { return getValuePublicType(lfunc); }, 'info');
 
     // doesn't really make sense
     testTypedJx(function () { return Duktape.act(lfunc); }, 'act');
@@ -2425,7 +2404,7 @@ function duktapeBuiltinTest() {
     // attempt to set finalizer
     testTypedJx(function () { return Duktape.fin(lfunc, function () {}); }, 'fin-set');
 
-    testTypedJx(function () { return sanitizeLfunc(bufferToString(Duktape.dec('hex', Duktape.enc('hex', lfunc)))); }, 'encdec-hex');
+    testTypedJx(function () { return sanitizeLfunc(bufferToStringRaw(Duktape.dec('hex', Duktape.enc('hex', lfunc)))); }, 'encdec-hex');
     testTypedJx(function () { return Duktape.dec('hex', lfunc); }, 'dec-hex');
 
     // attempt to compact is a no-op
@@ -2465,9 +2444,9 @@ try {
 
 /*===
 Function built-in test
-Function: function {_func:true}
-new Function: function {_func:true}
-toString: string "function light_PTR_0511() {\"light\"}"
+Function: SyntaxError
+new Function: SyntaxError
+toString: string "function light_PTR_0511() { [lightfunc code] }"
 valueOf: function {_func:true}
 ===*/
 
@@ -2499,8 +2478,8 @@ parseInt: number NaN
 parseFloat: number NaN
 isNaN: boolean true
 isFinite: boolean false
-decodeURI: string "function light_PTR_0511() {\"light\"}"
-decodeURIComponent: string "function light_PTR_0511() {\"light\"}"
+decodeURI: string "function light_PTR_0511() { [lightfunc code] }"
+decodeURIComponent: string "function light_PTR_0511() { [lightfunc code] }"
 encodeURI: string "string"
 encodeURIComponent: string "string"
 escape: string "string"
@@ -2564,7 +2543,7 @@ Duktape.Logger: TypeError
 new Duktape.Logger: object {}
 fmt: TypeError
 raw: TypeError
-TIMESTAMP INF test: My light func is: function light_PTR_0511() {"light"}
+TIMESTAMP INF test: My light func is: function light_PTR_0511() { [lightfunc code] }
 ===*/
 
 function duktapeLoggerBuiltinTest() {
@@ -2582,7 +2561,7 @@ function duktapeLoggerBuiltinTest() {
 
     old_raw = Duktape.Logger.prototype.old_raw;
     Duktape.Logger.prototype.raw = function (buf) {
-        var msg = sanitizeLfunc(bufferToString(buf));
+        var msg = sanitizeLfunc(bufferToStringRaw(buf));
         msg = msg.replace(/^\S+/, 'TIMESTAMP');
         print(msg);
     };
@@ -2695,7 +2674,7 @@ isSealed: boolean true
 isFrozen: boolean true
 isExtensible: boolean false
 toString: string "[object Function]"
-toLocaleString: string "function light_PTR_0511() {\"native\"}"
+toLocaleString: string "function light_PTR_0511() { [native code] }"
 valueOf: function {_func:true}
 isPrototypeOf: boolean false
 ===*/
@@ -2742,8 +2721,8 @@ try {
 
 /*===
 Duktape.Pointer built-in test
-Duktape.Pointer: pointer (null)
-new Duktape.Pointer: object (null)
+true
+true
 toString: TypeError
 valueOf: TypeError
 ===*/
@@ -2751,8 +2730,8 @@ valueOf: TypeError
 function duktapePointerBuiltinTest() {
     var lfunc = Math.cos;
 
-    testTypedJx(function () { return Duktape.Pointer(lfunc); }, 'Duktape.Pointer');
-    testTypedJx(function () { return new Duktape.Pointer(lfunc); }, 'new Duktape.Pointer');
+    print(String(Duktape.Pointer(lfunc)) === 'null');
+    print(String(new Duktape.Pointer(lfunc)) === 'null');
     testTypedJx(function () { return Duktape.Pointer.prototype.toString.call(lfunc); }, 'toString');
     testTypedJx(function () { return Duktape.Pointer.prototype.toString.call(lfunc); }, 'valueOf');
 }
@@ -2768,26 +2747,26 @@ try {
 Proxy built-in test
 get
 this: object false [object Object]
-target: function false function light_PTR_0511() {"native"}
+target: function false function light_PTR_0511() { [native code] }
 key: string name
 proxy.name: light_PTR_0511
 get
 this: object false [object Object]
-target: function false function light_PTR_0511() {"native"}
+target: function false function light_PTR_0511() { [native code] }
 key: string length
 proxy.length: 1
 get
 this: object false [object Object]
-target: function false function light_PTR_0511() {"native"}
+target: function false function light_PTR_0511() { [native code] }
 key: string nonExistent
 proxy.nonExistent: dummy
 get
-this: function false function light_PTR_0511() {"native"}
+this: function false function light_PTR_0511() { [native code] }
 target: object false [object Object]
 key: string foo
 proxy.foo: bar
 get
-this: function false function light_PTR_0511() {"native"}
+this: function false function light_PTR_0511() { [native code] }
 target: object false [object Object]
 key: string nonExistent
 proxy.nonExistent: dummy
@@ -2796,7 +2775,7 @@ proxy.nonExistent: dummy
 function proxyBuiltinTest() {
     var lfunc = Math.cos;
 
-    // Proxy as a target object; ES6 requires that must be an Object and a
+    // Proxy as a target object; ES2015 requires that must be an Object and a
     // lightfunc pretends to be an object.  So, it must be possible to use
     // lightfunc as a target.  Currently Proxy will just coerce the lightfunc
     // to a full Function silently.
@@ -2814,7 +2793,7 @@ function proxyBuiltinTest() {
     print('proxy.length:', proxy.length);
     print('proxy.nonExistent:', proxy.nonExistent);
 
-    // Proxy as a handler value; ES6 requires it must be an Object and a
+    // Proxy as a handler value; ES2015 requires it must be an Object and a
     // lightfunc pretends to be an object.  The traps must be placed in
     // Function.prototype for it to actually work - so this is not a very
     // useful thing.  Currently Proxy will just coerce the lightfunc to a
@@ -2874,30 +2853,30 @@ try {
 
 /*===
 String built-in test
-String: string "function light_PTR_0511() {\"light\"}"
-new String: string "function light_PTR_0511() {\"light\"}"
+String: string "function light_PTR_0511() { [lightfunc code] }"
+new String: string "function light_PTR_0511() { [lightfunc code] }"
 new String: string "object"
 fromCharCode: string "\x00"
 toString: TypeError
 valueOf: TypeError
 charAt: string "f"
 charCodeAt: number 102
-concat: string "function light_PTR_0511() {\"light\"}function light_PTR_0511() {\"light\"}"
+concat: string "function light_PTR_0511() { [lightfunc code] }function light_PTR_0511() { [lightfunc code] }"
 indexOf: number 0
 lastIndexOf: number 0
 localeCompare: number 0
 match: object null
 replace: string "undefined"
 search: number -1
-slice: string "function light_PTR_0511() {\"light\"}"
+slice: string "function light_PTR_0511() { [lightfunc code] }"
 split: object ["",""]
-substring: string "function light_PTR_0511() {\"light\"}"
-toLowerCase: string "function light_PTR_0511() {\"light\"}"
-toLocaleLowerCase: string "function light_PTR_0511() {\"light\"}"
-toUpperCase: string "FUNCTION LIGHT_PTR_0511() {\"LIGHT\"}"
-toLocaleUpperCase: string "FUNCTION LIGHT_PTR_0511() {\"LIGHT\"}"
-trim: string "function light_PTR_0511() {\"light\"}"
-substr: string "function light_PTR_0511() {\"light\"}"
+substring: string "function light_PTR_0511() { [lightfunc code] }"
+toLowerCase: string "function light_PTR_0511() { [lightfunc code] }"
+toLocaleLowerCase: string "function light_PTR_0511() { [lightfunc code] }"
+toUpperCase: string "FUNCTION LIGHT_PTR_0511() { [LIGHTFUNC CODE] }"
+toLocaleUpperCase: string "FUNCTION LIGHT_PTR_0511() { [LIGHTFUNC CODE] }"
+trim: string "function light_PTR_0511() { [lightfunc code] }"
+substr: string "function light_PTR_0511() { [lightfunc code] }"
 ===*/
 
 function stringBuiltinTest() {
@@ -2995,8 +2974,8 @@ function objectValueOfTest() {
     t = lfunc.valueOf();
     print(typeof lfunc, typeof t);
     print(lfunc === t);
-    print(Duktape.info(lfunc)[0]);  // tag 9: lightfunc
-    print(Duktape.info(t)[0]);      // tag 6: object
+    print(getValuePublicType(lfunc));  // tag 9: lightfunc
+    print(getValuePublicType(t));      // tag 6: object
 }
 
 try {

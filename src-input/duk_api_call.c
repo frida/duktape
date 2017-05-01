@@ -87,8 +87,8 @@ DUK_EXTERNAL void duk_call_prop(duk_context *ctx, duk_idx_t obj_idx, duk_idx_t n
 	/*
 	 *  XXX: if duk_handle_call() took values through indices, this could be
 	 *  made much more sensible.  However, duk_handle_call() needs to fudge
-	 *  the 'this' and 'func' values to handle bound function chains, which
-	 *  is now done "in-place", so this is not a trivial change.
+	 *  the 'this' and 'func' values to handle bound functions, which is now
+	 *  done "in-place", so this is not a trivial change.
 	 */
 
 	DUK_ASSERT_CTX_VALID(ctx);
@@ -242,11 +242,11 @@ DUK_EXTERNAL void duk_new(duk_context *ctx, duk_idx_t nargs) {
 	 *  that the "prototype" property is looked up *only* from the
 	 *  final object, *before* calling the constructor.
 	 *
-	 *  Currently we follow the bound function chain here to get the
-	 *  "prototype" property value from the final, non-bound function.
-	 *  However, we let duk_handle_call() handle the argument "piling"
-	 *  when the constructor is called.  The bound function chain is
-	 *  thus now processed twice.
+	 *  Since Duktape 2.2 bound functions are represented with the
+	 *  duk_hboundfunc internal type, and bound function chains are
+	 *  collapsed when a bound function is created.  As a result, the
+	 *  direct target of a duk_hboundfunc is always non-bound and the
+	 *  this/argument lists have been resolved.
 	 *
 	 *  When constructing new Array instances, an unnecessary object is
 	 *  created and discarded now: the standard [[Construct]] creates an
@@ -292,39 +292,21 @@ DUK_EXTERNAL void duk_new(duk_context *ctx, duk_idx_t nargs) {
 	 */
 
 	duk_dup(ctx, idx_cons);
-	for (;;) {
-		duk_tval *tv;
-		tv = DUK_GET_TVAL_NEGIDX(ctx, -1);
-		DUK_ASSERT(tv != NULL);
+	duk_resolve_nonbound_function(ctx);
+	duk_require_callable(ctx, -1);
+	cons = duk_get_hobject(ctx, -1);
 
-		if (DUK_TVAL_IS_OBJECT(tv)) {
-			cons = DUK_TVAL_GET_OBJECT(tv);
-			DUK_ASSERT(cons != NULL);
-			if (!DUK_HOBJECT_IS_CALLABLE(cons) || !DUK_HOBJECT_HAS_CONSTRUCTABLE(cons)) {
-				/* Checking callability of the immediate target
-				 * is important, same for constructability.
-				 * Checking it for functions down the bound
-				 * function chain is not strictly necessary
-				 * because .bind() should normally reject them.
-				 * But it's good to check anyway because it's
-				 * technically possible to edit the bound function
-				 * chain via internal keys.
-				 */
-				goto not_constructable;
-			}
-			if (!DUK_HOBJECT_HAS_BOUNDFUNC(cons)) {
-				break;
-			}
-		} else if (DUK_TVAL_IS_LIGHTFUNC(tv)) {
-			/* Lightfuncs cannot be bound. */
-			break;
-		} else {
-			/* Anything else is not constructable. */
-			goto not_constructable;
-		}
-		duk_get_prop_stridx(ctx, -1, DUK_STRIDX_INT_TARGET);  /* -> [... cons target] */
-		duk_remove(ctx, -2);                                  /* -> [... target] */
+	/* Result is a lightfunc or a callable actual function. */
+	DUK_ASSERT(cons == NULL || DUK_HOBJECT_IS_CALLABLE(cons));
+	if (cons != NULL && !DUK_HOBJECT_HAS_CONSTRUCTABLE(cons)) {
+		/* Check constructability from the final, non-bound object.
+		 * The constructable flag is 1:1 for the bound function and
+		 * its target so this should be sufficient.  Lightfuncs are
+		 * always constructable.
+		 */
+		goto not_constructable;
 	}
+
 	DUK_ASSERT(duk_is_callable(ctx, -1));
 	DUK_ASSERT(duk_is_lightfunc(ctx, -1) ||
 	           (duk_get_hobject(ctx, -1) != NULL && !DUK_HOBJECT_HAS_BOUNDFUNC(duk_get_hobject(ctx, -1))));
@@ -342,7 +324,7 @@ DUK_EXTERNAL void duk_new(duk_context *ctx, duk_idx_t nargs) {
 
 	/* [... constructor arg1 ... argN final_cons fallback] */
 
-	duk_get_prop_stridx(ctx, -2, DUK_STRIDX_PROTOTYPE);
+	duk_get_prop_stridx_short(ctx, -2, DUK_STRIDX_PROTOTYPE);
 	proto = duk_get_hobject(ctx, -1);
 	if (!proto) {
 		DUK_DDD(DUK_DDDPRINT("constructor has no 'prototype' property, or value not an object "
@@ -350,16 +332,28 @@ DUK_EXTERNAL void duk_new(duk_context *ctx, duk_idx_t nargs) {
 	} else {
 		DUK_DDD(DUK_DDDPRINT("constructor has 'prototype' property with object value "
 		                     "-> set fallback prototype to that value: %!iO", (duk_heaphdr *) proto));
-		fallback = duk_get_hobject(ctx, -2);
+		fallback = duk_known_hobject(ctx, -2);
 		DUK_ASSERT(fallback != NULL);
 		DUK_HOBJECT_SET_PROTOTYPE_UPDREF(thr, fallback, proto);
 	}
 	duk_pop(ctx);
 
+#if 0  /* XXX: smaller alternative */
+	if (duk_is_object(ctx, -1)) {
+		DUK_DDD(DUK_DDDPRINT("constructor has 'prototype' property with object value "
+		                     "-> set fallback prototype to that value: %!iT", duk_get_tval(ctx, -1)));
+		duk_set_prototype(ctx, -2);
+	} else {
+		DUK_DDD(DUK_DDDPRINT("constructor has no 'prototype' property, or value not an object "
+		                     "-> leave standard Object prototype as fallback prototype"));
+		duk_pop(ctx);
+	}
+#endif
+
 	/* [... constructor arg1 ... argN final_cons fallback] */
 
 	/*
-	 *  Manipulate callstack for the call.
+	 *  Manipulate value stack for the call.
 	 */
 
 	duk_dup_top(ctx);
@@ -402,8 +396,10 @@ DUK_EXTERNAL void duk_new(duk_context *ctx, duk_idx_t nargs) {
 	 *  object instance or not.
 	 */
 
-	if (duk_is_object(ctx, -1)) {
-		duk_remove(ctx, -2);
+	if (duk_check_type_mask(ctx, -1, DUK_TYPE_MASK_OBJECT |
+	                                 DUK_TYPE_MASK_BUFFER |
+	                                 DUK_TYPE_MASK_LIGHTFUNC)) {
+		duk_remove_m2(ctx);
 	} else {
 		duk_pop(ctx);
 	}
@@ -414,7 +410,7 @@ DUK_EXTERNAL void duk_new(duk_context *ctx, duk_idx_t nargs) {
 	 *  stack reflects the caller which is correct.
 	 */
 
-#ifdef DUK_USE_AUGMENT_ERROR_CREATE
+#if defined(DUK_USE_AUGMENT_ERROR_CREATE)
 	duk_hthread_sync_currpc(thr);
 	duk_err_augment_error_create(thr, thr, NULL, 0, 1 /*noblame_fileline*/);
 #endif
@@ -468,11 +464,12 @@ DUK_EXTERNAL duk_bool_t duk_is_constructor_call(duk_context *ctx) {
 
 	DUK_ASSERT_CTX_VALID(ctx);
 	DUK_ASSERT(thr != NULL);
-	DUK_ASSERT_DISABLE(thr->callstack_top >= 0);
 
-	act = duk_hthread_get_current_activation(thr);
-	DUK_ASSERT(act != NULL);  /* because callstack_top > 0 */
-	return ((act->flags & DUK_ACT_FLAG_CONSTRUCT) != 0 ? 1 : 0);
+	act = thr->callstack_curr;
+	if (act != NULL) {
+		return ((act->flags & DUK_ACT_FLAG_CONSTRUCT) != 0 ? 1 : 0);
+	}
+	return 0;
 }
 
 /* XXX: Make this obsolete by adding a function flag for rejecting a
@@ -499,14 +496,14 @@ DUK_EXTERNAL duk_bool_t duk_is_strict_call(duk_context *ctx) {
 
 	DUK_ASSERT_CTX_VALID(ctx);
 	DUK_ASSERT(thr != NULL);
-	DUK_ASSERT_DISABLE(thr->callstack_top >= 0);
 
-	act = duk_hthread_get_current_activation(thr);
-	if (act == NULL) {
+	act = thr->callstack_curr;
+	if (act != NULL) {
+		return ((act->flags & DUK_ACT_FLAG_STRICT) != 0 ? 1 : 0);
+	} else {
 		/* Strict by default. */
 		return 1;
 	}
-	return ((act->flags & DUK_ACT_FLAG_STRICT) != 0 ? 1 : 0);
 }
 
 /*
@@ -520,9 +517,8 @@ DUK_EXTERNAL duk_int_t duk_get_current_magic(duk_context *ctx) {
 
 	DUK_ASSERT_CTX_VALID(ctx);
 	DUK_ASSERT(thr != NULL);
-	DUK_ASSERT_DISABLE(thr->callstack_top >= 0);
 
-	act = duk_hthread_get_current_activation(thr);
+	act = thr->callstack_curr;
 	if (act) {
 		func = DUK_ACT_GET_FUNC(act);
 		if (!func) {
@@ -575,4 +571,42 @@ DUK_EXTERNAL void duk_set_magic(duk_context *ctx, duk_idx_t idx, duk_int_t magic
 	nf = duk_require_hnatfunc(ctx, idx);
 	DUK_ASSERT(nf != NULL);
 	nf->magic = (duk_int16_t) magic;
+}
+
+/*
+ *  Misc helpers
+ */
+
+/* Resolve a bound function on value stack top to a non-bound target
+ * (leave other values as is).
+ */
+DUK_INTERNAL void duk_resolve_nonbound_function(duk_context *ctx) {
+	duk_tval *tv;
+
+	tv = DUK_GET_TVAL_NEGIDX(ctx, -1);
+	if (DUK_TVAL_IS_OBJECT(tv)) {
+		duk_hobject *h;
+
+		h = DUK_TVAL_GET_OBJECT(tv);
+		DUK_ASSERT(h != NULL);
+		if (DUK_HOBJECT_HAS_BOUNDFUNC(h)) {
+			duk_push_tval(ctx, &((duk_hboundfunc *) h)->target);
+			duk_replace(ctx, -2);
+#if 0
+			DUK_TVAL_SET_TVAL(tv, &((duk_hboundfunc *) h)->target);
+			DUK_TVAL_INCREF(thr, tv);
+			DUK_HOBJECT_DECREF_NORZ(thr, h);
+#endif
+			/* Rely on Function.prototype.bind() on never creating a bound
+			 * function whose target is not proper.  This is now safe
+			 * because the target is not even an internal property but a
+			 * struct member.
+			 */
+			DUK_ASSERT(duk_is_lightfunc(ctx, -1) || duk_is_callable(ctx, -1));
+		}
+	}
+
+	/* Lightfuncs cannot be bound but are always callable and
+	 * constructable.
+	 */
 }

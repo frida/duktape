@@ -35,10 +35,10 @@ var TORTURE = false;  // for manual testing of binary/json parsing robustness
  *  Duktape 1.x and 2.x buffer harmonization
  */
 
-var allocPlain = (typeof ArrayBuffer.allocPlain === 'function' ?
-                  ArrayBuffer.allocPlain : Duktape.Buffer);
-var plainOf = (typeof ArrayBuffer.plainOf === 'function' ?
-               ArrayBuffer.plainOf : Duktape.Buffer);
+var allocPlain = (typeof Uint8Array.allocPlain === 'function' ?
+                  Uint8Array.allocPlain : Duktape.Buffer);
+var plainOf = (typeof Uint8Array.plainOf === 'function' ?
+               Uint8Array.plainOf : Duktape.Buffer);
 var bufferToString = (typeof String.fromBuffer === 'function' ?
                       String.fromBuffer : String);
 
@@ -937,7 +937,7 @@ TargetConnHandler.prototype.trialParseDvalue = function trialParseDvalue() {
                 if (avail >= 2 + len) {
                     v = new Uint8Array(len);
                     v.set(buf.subarray(2, 2 + len));
-                    v = { type: 'heapptr', pointer: Duktape.enc('hex', plainof(v)) };
+                    v = { type: 'heapptr', pointer: Duktape.enc('hex', plainOf(v)) };
                     consume(2 + len);
                 }
             }

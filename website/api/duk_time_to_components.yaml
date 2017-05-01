@@ -11,7 +11,6 @@ summary: |
   <p>There are some differences to the Ecmascript <code>Date</code> UTC
   accessors like <code>Date.prototype.getUTCMinutes()</code>:</p>
   <ul>
-  <li>The month component is one-based, not zero-based.</li>
   <li>The time value is allowed to have fractions (sub-millisecond
       resolution) so that the millisecond component may also have
       fractions.</li>
@@ -25,13 +24,17 @@ example: |
     "Thursday", "Friday", "Saturday"
   };
 
+  /* Note that month is zero-based to match the Ecmascript API, so for
+   * human readable printing add 1 to the month.  Time components are
+   * IEEE doubles to match Ecmascript Date behavior.
+   */
   duk_time_components(ctx, time, &comp);
   printf("Datetime: %04d-%02d-%02d %02d:%02d:%02d.%03dZ\n",
-         (int) comp.year, (int) comp.month, (int) comp.day,
-         (int) comp.hour, (int) comp.minute, (int) comp.second,
-         (int) comp.millisecond);
+         (int) comp.year, (int) comp.month + 1, (int) comp.day,
+         (int) comp.hours, (int) comp.minutes, (int) comp.seconds,
+         (int) comp.milliseconds);
 
-  printf("Weekday is: %s\n", weekdays[comp.weekday]);  /* 0=Sunday */
+  printf("Weekday is: %s\n", weekdays[(int) comp.weekday]);  /* 0=Sunday */
 
 tags:
   - time

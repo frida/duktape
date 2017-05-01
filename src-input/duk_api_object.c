@@ -31,7 +31,7 @@ DUK_EXTERNAL duk_bool_t duk_get_prop(duk_context *ctx, duk_idx_t obj_idx) {
 	DUK_ASSERT(rc == 0 || rc == 1);
 	/* a value is left on stack regardless of rc */
 
-	duk_remove(ctx, -2);  /* remove key */
+	duk_remove_m2(ctx);  /* remove key */
 	return rc;  /* 1 if property found, 0 otherwise */
 }
 
@@ -61,12 +61,11 @@ DUK_EXTERNAL duk_bool_t duk_get_prop_index(duk_context *ctx, duk_idx_t obj_idx, 
 	return duk_get_prop(ctx, obj_idx);
 }
 
-DUK_INTERNAL duk_bool_t duk_get_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_int_t stridx) {
+DUK_INTERNAL duk_bool_t duk_get_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_uint_t stridx) {
 	duk_hthread *thr = (duk_hthread *) ctx;
 
 	DUK_ASSERT_CTX_VALID(ctx);
-	DUK_ASSERT_DISABLE(stridx >= 0);
-	DUK_ASSERT(stridx < DUK_HEAP_NUM_STRINGS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
 	DUK_UNREF(thr);
 
 	obj_idx = duk_require_normalize_index(ctx, obj_idx);
@@ -74,12 +73,16 @@ DUK_INTERNAL duk_bool_t duk_get_prop_stridx(duk_context *ctx, duk_idx_t obj_idx,
 	return duk_get_prop(ctx, obj_idx);
 }
 
-DUK_INTERNAL duk_bool_t duk_get_prop_stridx_boolean(duk_context *ctx, duk_idx_t obj_idx, duk_small_int_t stridx, duk_bool_t *out_has_prop) {
+DUK_INTERNAL duk_bool_t duk_get_prop_stridx_short_raw(duk_context *ctx, duk_uint_t packed_args) {
+	return duk_get_prop_stridx(ctx, (duk_idx_t) (duk_int16_t) (packed_args >> 16),
+	                                (duk_small_uint_t) (packed_args & 0xffffUL));
+}
+
+DUK_INTERNAL duk_bool_t duk_get_prop_stridx_boolean(duk_context *ctx, duk_idx_t obj_idx, duk_small_uint_t stridx, duk_bool_t *out_has_prop) {
 	duk_bool_t rc;
 
 	DUK_ASSERT_CTX_VALID(ctx);
-	DUK_ASSERT_DISABLE(stridx >= 0);
-	DUK_ASSERT(stridx < DUK_HEAP_NUM_STRINGS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
 
 	rc = duk_get_prop_stridx(ctx, obj_idx, stridx);
 	if (out_has_prop) {
@@ -109,6 +112,7 @@ DUK_LOCAL duk_bool_t duk__put_prop_shared(duk_context *ctx, duk_idx_t obj_idx, d
 	 */
 	DUK_ASSERT((idx_key == -2 && (idx_key ^ 1) == -1) ||
 	           (idx_key == -1 && (idx_key ^ 1) == -2));
+	/* XXX: Direct access; faster validation. */
 	tv_obj = duk_require_tval(ctx, obj_idx);
 	tv_key = duk_require_tval(ctx, idx_key);
 	tv_val = duk_require_tval(ctx, idx_key ^ 1);
@@ -156,17 +160,21 @@ DUK_EXTERNAL duk_bool_t duk_put_prop_index(duk_context *ctx, duk_idx_t obj_idx, 
 	return duk__put_prop_shared(ctx, obj_idx, -1);
 }
 
-DUK_INTERNAL duk_bool_t duk_put_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_int_t stridx) {
+DUK_INTERNAL duk_bool_t duk_put_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_uint_t stridx) {
 	duk_hthread *thr = (duk_hthread *) ctx;
 
 	DUK_ASSERT_CTX_VALID(ctx);
-	DUK_ASSERT_DISABLE(stridx >= 0);
-	DUK_ASSERT(stridx < DUK_HEAP_NUM_STRINGS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
 	DUK_UNREF(thr);
 
 	obj_idx = duk_require_normalize_index(ctx, obj_idx);
 	duk_push_hstring(ctx, DUK_HTHREAD_GET_STRING(thr, stridx));
 	return duk__put_prop_shared(ctx, obj_idx, -1);
+}
+
+DUK_INTERNAL duk_bool_t duk_put_prop_stridx_short_raw(duk_context *ctx, duk_uint_t packed_args) {
+	return duk_put_prop_stridx(ctx, (duk_idx_t) (duk_int16_t) (packed_args >> 16),
+	                                (duk_small_uint_t) (packed_args & 0xffffUL));
 }
 
 DUK_EXTERNAL duk_bool_t duk_del_prop(duk_context *ctx, duk_idx_t obj_idx) {
@@ -219,18 +227,24 @@ DUK_EXTERNAL duk_bool_t duk_del_prop_index(duk_context *ctx, duk_idx_t obj_idx, 
 	return duk_del_prop(ctx, obj_idx);
 }
 
-DUK_INTERNAL duk_bool_t duk_del_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_int_t stridx) {
+DUK_INTERNAL duk_bool_t duk_del_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_uint_t stridx) {
 	duk_hthread *thr = (duk_hthread *) ctx;
 
 	DUK_ASSERT_CTX_VALID(ctx);
-	DUK_ASSERT_DISABLE(stridx >= 0);
-	DUK_ASSERT(stridx < DUK_HEAP_NUM_STRINGS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
 	DUK_UNREF(thr);
 
 	obj_idx = duk_require_normalize_index(ctx, obj_idx);
 	duk_push_hstring(ctx, DUK_HTHREAD_GET_STRING(thr, stridx));
 	return duk_del_prop(ctx, obj_idx);
 }
+
+#if 0
+DUK_INTERNAL duk_bool_t duk_del_prop_stridx_short_raw(duk_context *ctx, duk_uint_t packed_args) {
+	return duk_del_prop_stridx(ctx, (duk_idx_t) (duk_int16_t) (packed_args >> 16),
+	                                (duk_small_uint_t) (packed_args & 0xffffUL));
+}
+#endif
 
 DUK_EXTERNAL duk_bool_t duk_has_prop(duk_context *ctx, duk_idx_t obj_idx) {
 	duk_hthread *thr = (duk_hthread *) ctx;
@@ -280,18 +294,24 @@ DUK_EXTERNAL duk_bool_t duk_has_prop_index(duk_context *ctx, duk_idx_t obj_idx, 
 	return duk_has_prop(ctx, obj_idx);
 }
 
-DUK_INTERNAL duk_bool_t duk_has_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_int_t stridx) {
+DUK_INTERNAL duk_bool_t duk_has_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_uint_t stridx) {
 	duk_hthread *thr = (duk_hthread *) ctx;
 
 	DUK_ASSERT_CTX_VALID(ctx);
-	DUK_ASSERT_DISABLE(stridx >= 0);
-	DUK_ASSERT(stridx < DUK_HEAP_NUM_STRINGS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
 	DUK_UNREF(thr);
 
 	obj_idx = duk_require_normalize_index(ctx, obj_idx);
 	duk_push_hstring(ctx, DUK_HTHREAD_GET_STRING(thr, stridx));
 	return duk_has_prop(ctx, obj_idx);
 }
+
+#if 0
+DUK_INTERNAL duk_bool_t duk_has_prop_stridx_short_raw(duk_context *ctx, duk_uint_t packed_args) {
+	return duk_has_prop_stridx(ctx, (duk_idx_t) (duk_int16_t) (packed_args >> 16),
+	                                (duk_small_uint_t) (packed_args & 0xffffUL));
+}
+#endif
 
 /* Define own property without inheritance lookups and such.  This differs from
  * [[DefineOwnProperty]] because special behaviors (like Array 'length') are
@@ -307,7 +327,7 @@ DUK_INTERNAL void duk_xdef_prop(duk_context *ctx, duk_idx_t obj_idx, duk_small_u
 
 	obj = duk_require_hobject(ctx, obj_idx);
 	DUK_ASSERT(obj != NULL);
-	key = duk_to_hstring(ctx, -2);
+	key = duk_to_property_key_hstring(ctx, -2);
 	DUK_ASSERT(key != NULL);
 	DUK_ASSERT(duk_require_tval(ctx, -1) != NULL);
 
@@ -329,14 +349,13 @@ DUK_INTERNAL void duk_xdef_prop_index(duk_context *ctx, duk_idx_t obj_idx, duk_u
 	/* value popped by call */
 }
 
-DUK_INTERNAL void duk_xdef_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_int_t stridx, duk_small_uint_t desc_flags) {
+DUK_INTERNAL void duk_xdef_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_small_uint_t stridx, duk_small_uint_t desc_flags) {
 	duk_hthread *thr = (duk_hthread *) ctx;
 	duk_hobject *obj;
 	duk_hstring *key;
 
 	DUK_ASSERT_CTX_VALID(ctx);
-	DUK_ASSERT_DISABLE(stridx >= 0);
-	DUK_ASSERT(stridx < DUK_HEAP_NUM_STRINGS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
 
 	obj = duk_require_hobject(ctx, obj_idx);
 	DUK_ASSERT(obj != NULL);
@@ -348,16 +367,20 @@ DUK_INTERNAL void duk_xdef_prop_stridx(duk_context *ctx, duk_idx_t obj_idx, duk_
 	/* value popped by call */
 }
 
-DUK_INTERNAL void duk_xdef_prop_stridx_builtin(duk_context *ctx, duk_idx_t obj_idx, duk_small_int_t stridx, duk_small_int_t builtin_idx, duk_small_uint_t desc_flags) {
+DUK_INTERNAL void duk_xdef_prop_stridx_short_raw(duk_context *ctx, duk_uint_t packed_args) {
+	duk_xdef_prop_stridx(ctx, (duk_idx_t) (duk_int8_t) (packed_args >> 24),
+	                          (duk_small_uint_t) (packed_args >> 8) & 0xffffUL,
+	                          (duk_small_uint_t) (packed_args & 0xffL));
+}
+
+DUK_INTERNAL void duk_xdef_prop_stridx_builtin(duk_context *ctx, duk_idx_t obj_idx, duk_small_uint_t stridx, duk_small_int_t builtin_idx, duk_small_uint_t desc_flags) {
 	duk_hthread *thr = (duk_hthread *) ctx;
 	duk_hobject *obj;
 	duk_hstring *key;
 
 	DUK_ASSERT_CTX_VALID(ctx);
-	DUK_ASSERT_DISABLE(stridx >= 0);
-	DUK_ASSERT(stridx < DUK_HEAP_NUM_STRINGS);
-	DUK_ASSERT_DISABLE(builtin_idx >= 0);
-	DUK_ASSERT(builtin_idx < DUK_NUM_BUILTINS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
+	DUK_ASSERT_BIDX_VALID(builtin_idx);
 
 	obj = duk_require_hobject(ctx, obj_idx);
 	DUK_ASSERT(obj != NULL);
@@ -374,7 +397,7 @@ DUK_INTERNAL void duk_xdef_prop_stridx_builtin(duk_context *ctx, duk_idx_t obj_i
  * object creation code, function instance creation code, and Function.prototype.bind().
  */
 
-DUK_INTERNAL void duk_xdef_prop_stridx_thrower(duk_context *ctx, duk_idx_t obj_idx, duk_small_int_t stridx) {
+DUK_INTERNAL void duk_xdef_prop_stridx_thrower(duk_context *ctx, duk_idx_t obj_idx, duk_small_uint_t stridx) {
 	obj_idx = duk_require_normalize_index(ctx, obj_idx);
 	duk_push_hstring_stridx(ctx, stridx);
 	duk_push_hobject_bidx(ctx, DUK_BIDX_TYPE_ERROR_THROWER);
@@ -446,7 +469,8 @@ DUK_EXTERNAL void duk_def_prop(duk_context *ctx, duk_idx_t obj_idx, duk_uint_t f
 	} else {
 		idx_value = (duk_idx_t) -1;
 	}
-	key = duk_require_hstring(ctx, idx_base);
+	key = duk_to_property_key_hstring(ctx, idx_base);
+	DUK_ASSERT(key != NULL);
 
 	duk_require_valid_index(ctx, idx_base);
 
@@ -494,6 +518,10 @@ DUK_EXTERNAL void duk_compact(duk_context *ctx, duk_idx_t obj_idx) {
 		/* Note: this may fail, caller should protect the call if necessary */
 		duk_hobject_compact_props(thr, obj);
 	}
+}
+
+DUK_INTERNAL void duk_compact_m1(duk_context *ctx) {
+	duk_compact(ctx, -1);
 }
 
 /* XXX: the duk_hobject_enum.c stack APIs should be reworked */
@@ -566,7 +594,7 @@ DUK_EXTERNAL duk_bool_t duk_get_global_string(duk_context *ctx, const char *key)
 
 	duk_push_hobject(ctx, thr->builtins[DUK_BIDX_GLOBAL]);
 	ret = duk_get_prop_string(ctx, -1, key);
-	duk_remove(ctx, -2);
+	duk_remove_m2(ctx);
 	return ret;
 }
 
@@ -581,7 +609,7 @@ DUK_EXTERNAL duk_bool_t duk_get_global_lstring(duk_context *ctx, const char *key
 
 	duk_push_hobject(ctx, thr->builtins[DUK_BIDX_GLOBAL]);
 	ret = duk_get_prop_lstring(ctx, -1, key, key_len);
-	duk_remove(ctx, -2);
+	duk_remove_m2(ctx);
 	return ret;
 }
 
@@ -684,9 +712,31 @@ DUK_EXTERNAL void duk_get_finalizer(duk_context *ctx, duk_idx_t idx) {
 }
 
 DUK_EXTERNAL void duk_set_finalizer(duk_context *ctx, duk_idx_t idx) {
+	duk_hobject *h;
+	duk_bool_t callable;
+
 	DUK_ASSERT_CTX_VALID(ctx);
 
+	h = duk_require_hobject(ctx, idx);  /* Get before 'put' so that 'idx' is correct. */
+	callable = duk_is_callable(ctx, -1);
 	duk_put_prop_stridx(ctx, idx, DUK_STRIDX_INT_FINALIZER);
+
+	/* In addition to setting the finalizer property, keep a "have
+	 * finalizer" flag in duk_hobject in sync so that refzero can do
+	 * a very quick finalizer check by walking the prototype chain
+	 * and checking the flag alone.  (Note that this means that just
+	 * setting _Finalizer on an object won't affect finalizer checks.)
+	 *
+	 * NOTE: if the argument is a Proxy object, this flag will be set
+	 * on the Proxy, not the target.  As a result, the target won't get
+	 * a finalizer flag and the Proxy also won't be finalized as there's
+	 * an explicit Proxy check in finalization now.
+	 */
+	if (callable) {
+		DUK_HOBJECT_SET_HAVE_FINALIZER(h);
+	} else {
+		DUK_HOBJECT_CLEAR_HAVE_FINALIZER(h);
+	}
 }
 #else  /* DUK_USE_FINALIZER_SUPPORT */
 DUK_EXTERNAL void duk_get_finalizer(duk_context *ctx, duk_idx_t idx) {

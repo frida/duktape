@@ -8,7 +8,7 @@ this binding: type=4, value='123.456'
 this binding: type=5, value='foo'
 this binding: type=6, value='[object Object]'
 this binding: type=6, value=''
-this binding: type=7, value='[object ArrayBuffer]'
+this binding: type=7, value='[object Uint8Array]'
 this binding: type=8, value='0xdeadbeef'
 ===*/
 
@@ -39,7 +39,7 @@ void test(duk_context *ctx) {
 	duk_push_object(ctx);
 	duk_push_array(ctx);
 	duk_push_fixed_buffer(ctx, 16);
-	duk_push_pointer(ctx, (void *) 0xdeadbeef);
+	duk_push_pointer(ctx, (void *) 0xdeadbeefUL);
 
 	n = duk_get_top(ctx);
 	printf("top: %ld\n", (long) n);

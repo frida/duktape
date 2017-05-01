@@ -21,11 +21,14 @@ DUK_USE_COROUTINE_SUPPORT: false
 # Finalizer support has about 0.8kB footprint.
 DUK_USE_FINALIZER_SUPPORT: false
 
-# ES6 Proxy has about 2kB footprint.
+# ES2015 Proxy has about 2kB footprint.
 DUK_USE_ES6_PROXY: false
 
 # Don't support non-BMP characters in source code (UTF-8 otherwise OK).
 DUK_USE_SOURCE_NONBMP: false
+
+# Don't include even .name property for functions.
+DUK_USE_FUNC_NAME_PROPERTY: false
 
 # Remove built-in bindings.
 DUK_USE_MATH_BUILTIN: false

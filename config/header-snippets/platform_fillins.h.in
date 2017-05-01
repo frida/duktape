@@ -1,3 +1,8 @@
+/* An abort()-like primitive is needed by the default fatal error handler. */
+#if !defined(DUK_ABORT)
+#define DUK_ABORT             abort
+#endif
+
 #if !defined(DUK_SETJMP)
 #define DUK_JMPBUF_TYPE       jmp_buf
 #define DUK_SETJMP(jb)        setjmp((jb))
@@ -101,13 +106,6 @@
 #define DUK_MEMZERO(p,n) DUK_MEMSET((p), 0, (n))
 #endif
 
-#if !defined(DUK_DOUBLE_2TO32)
-#define DUK_DOUBLE_2TO32     4294967296.0
-#endif
-#if !defined(DUK_DOUBLE_2TO31)
-#define DUK_DOUBLE_2TO31     2147483648.0
-#endif
-
 #if !defined(DUK_DOUBLE_INFINITY)
 #undef DUK_USE_COMPUTED_INFINITY
 #if defined(DUK_F_GCC_VERSION) && (DUK_F_GCC_VERSION < 40600)
@@ -115,7 +113,8 @@
 #define DUK_DOUBLE_INFINITY  (__builtin_inf())
 #elif defined(INFINITY)
 #define DUK_DOUBLE_INFINITY  ((double) INFINITY)
-#elif !defined(DUK_F_VBCC) && !defined(DUK_F_MSVC) && !defined(DUK_F_BCC)
+#elif !defined(DUK_F_VBCC) && !defined(DUK_F_MSVC) && !defined(DUK_F_BCC) && \
+      !defined(DUK_F_OLD_SOLARIS) && !defined(DUK_F_AIX)
 #define DUK_DOUBLE_INFINITY  (1.0 / 0.0)
 #else
 /* In VBCC (1.0 / 0.0) results in a warning and 0.0 instead of infinity.
@@ -131,7 +130,8 @@
 #undef DUK_USE_COMPUTED_NAN
 #if defined(NAN)
 #define DUK_DOUBLE_NAN       NAN
-#elif !defined(DUK_F_VBCC) && !defined(DUK_F_MSVC) && !defined(DUK_F_BCC)
+#elif !defined(DUK_F_VBCC) && !defined(DUK_F_MSVC) && !defined(DUK_F_BCC) && \
+      !defined(DUK_F_OLD_SOLARIS) && !defined(DUK_F_AIX)
 #define DUK_DOUBLE_NAN       (0.0 / 0.0)
 #else
 /* In VBCC (0.0 / 0.0) results in a warning and 0.0 instead of NaN.
@@ -179,6 +179,9 @@
  * example, fpclassify() can incorrectly classify certain NaN formats.
  * To be safe, use replacements.
  */
+#define DUK_F_USE_REPL_ALL
+#elif defined(DUK_F_AIX)
+/* Older versions may be missing isnan(), etc. */
 #define DUK_F_USE_REPL_ALL
 #endif
 
@@ -268,9 +271,10 @@
 /* The functions below exist only in C99/C++11 or later and need a workaround
  * for platforms that don't include them.  MSVC isn't detected as C99, but
  * these functions also exist in MSVC 2013 and later so include a clause for
- * that too.
+ * that too.  Android doesn't have log2; disable all of these for Android.
  */
-#if defined(DUK_F_C99) || defined(DUK_F_CPP11) || (defined(_MSC_VER) && (_MSC_VER >= 1800))
+#if (defined(DUK_F_C99) || defined(DUK_F_CPP11) || (defined(_MSC_VER) && (_MSC_VER >= 1800))) && \
+    !defined(DUK_F_ANDROID) && !defined(DUK_F_MINT)
 #if !defined(DUK_CBRT)
 #define DUK_CBRT             cbrt
 #endif
@@ -283,15 +287,24 @@
 #if !defined(DUK_TRUNC)
 #define DUK_TRUNC            trunc
 #endif
-#endif  /* DUK_F_C99 */
+#endif  /* DUK_F_C99 etc */
 
 /* NetBSD 6.0 x86 (at least) has a few problems with pow() semantics,
- * see test-bug-netbsd-math-pow.js.  Use NetBSD specific workaround.
- * (This might be a wider problem; if so, generalize the define name.)
+ * see test-bug-netbsd-math-pow.js.  MinGW has similar (but different)
+ * issues, see test-bug-mingw-math-issues.js.  Enable pow() workarounds
+ * for these targets.
  */
-#undef DUK_USE_POW_NETBSD_WORKAROUND
-#if defined(DUK_F_NETBSD)
-#define DUK_USE_POW_NETBSD_WORKAROUND
+#undef DUK_USE_POW_WORKAROUNDS
+#if defined(DUK_F_NETBSD) || defined(DUK_F_MINGW)
+#define DUK_USE_POW_WORKAROUNDS
+#endif
+
+/* Similar workarounds for atan2() semantics issues.  MinGW issues are
+ * documented in test-bug-mingw-math-issues.js.
+ */
+#undef DUK_USE_ATAN2_WORKAROUNDS
+#if defined(DUK_F_MINGW)
+#define DUK_USE_ATAN2_WORKAROUNDS
 #endif
 
 /* Rely as little as possible on compiler behavior for NaN comparison,

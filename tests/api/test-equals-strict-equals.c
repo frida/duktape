@@ -15,10 +15,10 @@ index 12 -> type 5, value 'foo'
 index 13 -> type 5, value 'bar'
 index 14 -> type 6, value '[object Object]'
 index 15 -> type 6, value ''
-index 16 -> type 7, value '[object ArrayBuffer]'
-index 17 -> type 7, value '[object ArrayBuffer]'
-index 18 -> type 7, value '[object ArrayBuffer]'
-index 19 -> type 7, value '[object ArrayBuffer]'
+index 16 -> type 7, value '[object Uint8Array]'
+index 17 -> type 7, value '[object Uint8Array]'
+index 18 -> type 7, value '[object Uint8Array]'
+index 19 -> type 7, value '[object Uint8Array]'
 index 20 -> type 8, value 'null'
 index 21 -> type 8, value '0xdeadbeef'
 0 vs. 0 -> equals=1, strict_equals=1
@@ -96,7 +96,7 @@ void test(duk_context *ctx) {
 	buf3[0] = 'b';  buf3[1] = 'a'; buf3[2] = 'r';
 
 	duk_push_pointer(ctx, NULL);
-	duk_push_pointer(ctx, (void *) 0xdeadbeef);
+	duk_push_pointer(ctx, (void *) 0xdeadbeefUL);
 
 	n = duk_get_top(ctx);
 	for (i = 0; i < n; i++) {

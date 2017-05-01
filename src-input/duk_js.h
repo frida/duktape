@@ -2,15 +2,14 @@
  *  Ecmascript execution, support primitives.
  */
 
-#ifndef DUK_JS_H_INCLUDED
+#if !defined(DUK_JS_H_INCLUDED)
 #define DUK_JS_H_INCLUDED
 
 /* Flags for call handling. */
-#define DUK_CALL_FLAG_IGNORE_RECLIMIT        (1 << 0)  /* duk_handle_call_xxx: call ignores C recursion limit (for errhandler calls) */
-#define DUK_CALL_FLAG_CONSTRUCTOR_CALL       (1 << 1)  /* duk_handle_call_xxx: constructor call (i.e. called as 'new Foo()') */
-#define DUK_CALL_FLAG_IS_RESUME              (1 << 2)  /* duk_handle_ecma_call_setup: setup for a resume() */
-#define DUK_CALL_FLAG_IS_TAILCALL            (1 << 3)  /* duk_handle_ecma_call_setup: setup for a tail call */
-#define DUK_CALL_FLAG_DIRECT_EVAL            (1 << 4)  /* call is a direct eval call */
+#define DUK_CALL_FLAG_CONSTRUCTOR_CALL       (1 << 0)  /* duk_handle_call_xxx: constructor call (i.e. called as 'new Foo()') */
+#define DUK_CALL_FLAG_IS_RESUME              (1 << 1)  /* duk_handle_ecma_call_setup: setup for a resume() */
+#define DUK_CALL_FLAG_IS_TAILCALL            (1 << 2)  /* duk_handle_ecma_call_setup: setup for a tail call */
+#define DUK_CALL_FLAG_DIRECT_EVAL            (1 << 3)  /* call is a direct eval call */
 
 /* Flags for duk_js_equals_helper(). */
 #define DUK_EQUALS_FLAG_SAMEVALUE            (1 << 0)  /* use SameValue instead of non-strict equality */
@@ -28,8 +27,11 @@ DUK_INTERNAL_DECL duk_double_t duk_js_tointeger(duk_hthread *thr, duk_tval *tv);
 DUK_INTERNAL_DECL duk_uint32_t duk_js_touint32(duk_hthread *thr, duk_tval *tv);
 DUK_INTERNAL_DECL duk_int32_t duk_js_toint32(duk_hthread *thr, duk_tval *tv);
 DUK_INTERNAL_DECL duk_uint16_t duk_js_touint16(duk_hthread *thr, duk_tval *tv);
-DUK_INTERNAL_DECL duk_small_int_t duk_js_to_arrayindex_raw_string(const duk_uint8_t *str, duk_uint32_t blen, duk_uarridx_t *out_idx);
-DUK_INTERNAL_DECL duk_uarridx_t duk_js_to_arrayindex_string_helper(duk_hstring *h);
+DUK_INTERNAL_DECL duk_uarridx_t duk_js_to_arrayindex_string(const duk_uint8_t *str, duk_uint32_t blen);
+#if !defined(DUK_USE_HSTRING_ARRIDX)
+DUK_INTERNAL_DECL duk_uarridx_t duk_js_to_arrayindex_hstring_fast_known(duk_hstring *h);
+DUK_INTERNAL_DECL duk_uarridx_t duk_js_to_arrayindex_hstring_fast(duk_hstring *h);
+#endif
 DUK_INTERNAL_DECL duk_bool_t duk_js_equals_helper(duk_hthread *thr, duk_tval *tv_x, duk_tval *tv_y, duk_small_int_t flags);
 DUK_INTERNAL_DECL duk_small_int_t duk_js_data_compare(const duk_uint8_t *buf1, const duk_uint8_t *buf2, duk_size_t len1, duk_size_t len2);
 DUK_INTERNAL_DECL duk_small_int_t duk_js_string_compare(duk_hstring *h1, duk_hstring *h2);
@@ -43,6 +45,7 @@ DUK_INTERNAL_DECL duk_small_uint_t duk_js_typeof_stridx(duk_tval *tv_x);
 
 /* arithmetic */
 DUK_INTERNAL_DECL double duk_js_arith_pow(double x, double y);
+DUK_INTERNAL_DECL double duk_js_arith_mod(double x, double y);
 
 #define duk_js_equals(thr,tv_x,tv_y) \
 	duk_js_equals_helper((thr), (tv_x), (tv_y), 0)
@@ -81,7 +84,7 @@ DUK_INTERNAL_DECL duk_bool_t duk_js_delvar_envrec(duk_hthread *thr, duk_hobject 
 DUK_INTERNAL_DECL duk_bool_t duk_js_delvar_activation(duk_hthread *thr, duk_activation *act, duk_hstring *name);
 DUK_INTERNAL_DECL duk_bool_t duk_js_declvar_activation(duk_hthread *thr, duk_activation *act, duk_hstring *name, duk_tval *val, duk_small_int_t prop_flags, duk_bool_t is_func_decl);
 DUK_INTERNAL_DECL void duk_js_init_activation_environment_records_delayed(duk_hthread *thr, duk_activation *act);
-DUK_INTERNAL_DECL void duk_js_close_environment_record(duk_hthread *thr, duk_hobject *env, duk_hobject *func, duk_size_t regbase);
+DUK_INTERNAL_DECL void duk_js_close_environment_record(duk_hthread *thr, duk_hobject *env);
 DUK_INTERNAL_DECL duk_hobject *duk_create_activation_environment_record(duk_hthread *thr, duk_hobject *func, duk_size_t idx_bottom);
 DUK_INTERNAL_DECL
 void duk_js_push_closure(duk_hthread *thr,

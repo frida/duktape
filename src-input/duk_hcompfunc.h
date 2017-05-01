@@ -5,7 +5,7 @@
  *  bytecode, constants, and inner functions.
  */
 
-#ifndef DUK_HCOMPFUNC_H_INCLUDED
+#if !defined(DUK_HCOMPFUNC_H_INCLUDED)
 #define DUK_HCOMPFUNC_H_INCLUDED
 
 /*
@@ -30,21 +30,36 @@
 #define DUK_HCOMPFUNC_SET_BYTECODE(heap,h,v)  do { \
 		(h)->bytecode16 = DUK_USE_HEAPPTR_ENC16((heap)->heap_udata, (void *) (v)); \
 	} while (0)
+#define DUK_HCOMPFUNC_GET_LEXENV(heap,h)  \
+	((duk_hobject *) (void *) (DUK_USE_HEAPPTR_DEC16((heap)->heap_udata, (h)->lex_env16)))
+#define DUK_HCOMPFUNC_SET_LEXENV(heap,h,v)  do { \
+		(h)->lex_env16 = DUK_USE_HEAPPTR_ENC16((heap)->heap_udata, (void *) (v)); \
+	} while (0)
+#define DUK_HCOMPFUNC_GET_VARENV(heap,h)  \
+	((duk_hobject *) (void *) (DUK_USE_HEAPPTR_DEC16((heap)->heap_udata, (h)->var_env16)))
+#define DUK_HCOMPFUNC_SET_VARENV(heap,h,v)  do { \
+		(h)->var_env16 = DUK_USE_HEAPPTR_ENC16((heap)->heap_udata, (void *) (v)); \
+	} while (0)
 #else
-#define DUK_HCOMPFUNC_GET_DATA(heap,h) \
-	((duk_hbuffer_fixed *) (void *) (h)->data)
+#define DUK_HCOMPFUNC_GET_DATA(heap,h)  ((duk_hbuffer_fixed *) (void *) (h)->data)
 #define DUK_HCOMPFUNC_SET_DATA(heap,h,v) do { \
 		(h)->data = (duk_hbuffer *) (v); \
 	} while (0)
-#define DUK_HCOMPFUNC_GET_FUNCS(heap,h)  \
-	((h)->funcs)
+#define DUK_HCOMPFUNC_GET_FUNCS(heap,h)  ((h)->funcs)
 #define DUK_HCOMPFUNC_SET_FUNCS(heap,h,v)  do { \
 		(h)->funcs = (v); \
 	} while (0)
-#define DUK_HCOMPFUNC_GET_BYTECODE(heap,h)  \
-	((h)->bytecode)
+#define DUK_HCOMPFUNC_GET_BYTECODE(heap,h)  ((h)->bytecode)
 #define DUK_HCOMPFUNC_SET_BYTECODE(heap,h,v)  do { \
 		(h)->bytecode = (v); \
+	} while (0)
+#define DUK_HCOMPFUNC_GET_LEXENV(heap,h)  ((h)->lex_env)
+#define DUK_HCOMPFUNC_SET_LEXENV(heap,h,v)  do { \
+		(h)->lex_env = (v); \
+	} while (0)
+#define DUK_HCOMPFUNC_GET_VARENV(heap,h)  ((h)->var_env)
+#define DUK_HCOMPFUNC_SET_VARENV(heap,h,v)  do { \
+		(h)->var_env = (v); \
 	} while (0)
 #endif
 
@@ -112,6 +127,13 @@
 #define DUK_HCOMPFUNC_GET_CODE_COUNT(heap,h)  \
 	((duk_size_t) (DUK_HCOMPFUNC_GET_CODE_SIZE((heap), (h)) / sizeof(duk_instr_t)))
 
+/*
+ *  Validity assert
+ */
+
+#define DUK_ASSERT_HCOMPFUNC_VALID(h) do { \
+		DUK_ASSERT((h) != NULL); \
+	} while (0)
 
 /*
  *  Main struct
@@ -162,6 +184,17 @@ struct duk_hcompfunc {
 #else
 	duk_hobject **funcs;
 	duk_instr_t *bytecode;
+#endif
+
+	/* Lexenv: lexical environment of closure, NULL for templates.
+	 * Varenv: variable environment of closure, NULL for templates.
+	 */
+#if defined(DUK_USE_HEAPPTR16)
+	duk_uint16_t lex_env16;
+	duk_uint16_t var_env16;
+#else
+	duk_hobject *lex_env;
+	duk_hobject *var_env;
 #endif
 
 	/*
@@ -219,8 +252,6 @@ struct duk_hcompfunc {
 	 *      _Formals: [ "arg1", "arg2" ],
 	 *      _Source: "function func(arg1, arg2) { ... }",
 	 *      _Pc2line: <debug info for pc-to-line mapping>,
-	 *      _Varenv: <variable environment of closure>,
-	 *      _Lexenv: <lexical environment of closure (if differs from _Varenv)>
 	 *    }
 	 *
 	 *  More detailed description of these properties can be found

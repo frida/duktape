@@ -6,11 +6,12 @@ Duktape is a small and portable Ecmascript E5/E5.1 implementation.  It is
 intended to be easily embeddable into C programs, with a C API similar in
 spirit to Lua's.
 
-Duktape supports the full E5/E5.1 feature set including errors, Unicode
-strings, and regular expressions, a subset of Ecmascript 2015 (E6) and
-Ecmascript 2016 (E7) features (e.g. computed property names, Proxy objects,
-exponentiation operator, Reflect), Khronos/ES6 ArrayBuffer/TypedView, Node.js
-Buffer, and WHATWG Encoding API living standard.
+Duktape supports the full E5/E5.1 feature set (with some semantics updated
+from ES2015+) including errors, Unicode strings, and regular expressions,
+a subset of Ecmascript 2015 (E6) and Ecmascript 2016 (E7) features (e.g.
+computed property names, Proxy objects, exponentiation operator, Reflect),
+ES2015 ArrayBuffer/TypedView, Node.js Buffer, and WHATWG Encoding API
+living standard.
 
 Duktape also provides a number of custom features such as error tracebacks,
 additional data types for better C integration, combined reference counting
@@ -53,8 +54,8 @@ To integrate Duktape into your program:
   for build::
 
       # Duktape options can be customized via command line options.
-      # In this example, enable "fastint" support and disable ES6 Proxy
-      # support
+      # In this example, enable "fastint" support and disable ES2015
+      # Proxy support
 
       $ python2 tools/configure.py --output-directory duktape-src \
             -DDUK_USE_FASTINT -UDUK_USE_ES6_PROXY
@@ -115,6 +116,10 @@ This distributable contains:
 You can find release notes at:
 
 * https://github.com/svaarala/duktape/blob/master/RELEASES.rst
+  (summary of all versions)
+
+* https://github.com/svaarala/duktape/blob/master/doc/release-notes-v2-1.rst
+  (more detailed notes for this version)
 
 This distributable contains Duktape version @DUK_VERSION_FORMATTED@, created from git
 commit @GIT_COMMIT@ (@GIT_DESCRIBE@).

@@ -8,6 +8,10 @@ autodetect:
     check: DUK_F_APPLE
     include: platform_apple.h.in
   -
+    name: Orbis
+    check: DUK_F_ORBIS
+    include: platform_orbis.h.in
+  -
     name: OpenBSD
     check: DUK_F_OPENBSD
     include: platform_openbsd.h.in
@@ -23,6 +27,10 @@ autodetect:
     name: AmigaOS
     check: DUK_F_AMIGAOS
     include: platform_amigaos.h.in
+  -
+    name: Durango (XboxOne)
+    check: DUK_F_DURANGO
+    include: platform_durango.h.in
   -
     name: Windows
     check: DUK_F_WINDOWS
@@ -51,6 +59,14 @@ autodetect:
     name: Solaris
     check: DUK_F_SUN
     include: platform_solaris.h.in
+  -
+    name: AIX
+    check: DUK_F_AIX
+    include: platform_aix.h.in
+  -
+    name: HPUX
+    check: DUK_F_HPUX
+    include: platform_hpux.h.in
   -
     name: Generic POSIX
     check: DUK_F_POSIX

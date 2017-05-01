@@ -40,7 +40,7 @@
 /*===
 *** test_basic (duk_safe_call)
 dump result type: 7
-ff000000000e0000000300000001000900000000000100000001300009800000000600000199000103020000049c00040500000505ae8001070380020803000502b00005040000020502000103b000010000000000a100000000057072696e74000000000568656c6c6f0140091eb851eb851f000000030000000000000000000300020000000100000001300c088001000234000200a1000000a2000000020000000561646465720000000f66616b6546696c656e616d652e6a730000000d03000000010000000c000000000000000178000000000000000179000000010000000000000001780000000179000000000000000000000006676c6f62616c0000000f66616b6546696c656e616d652e6a730000000e0e000000010000000c00000000000000000000000000
+ff000000000e0000000300000001000900000000000100000001180008800000000600000199000103020000049c00040500000505ae8001070380020803000502b00005040000020502000103b000010000000000a100000000057072696e74000000000568656c6c6f0140091eb851eb851f000000030000000000000000000300020000000100000001180c098001000234000200a1000000a2000000020000000561646465720000000f66616b6546696c656e616d652e6a730000000d03000000010000000c000000000000000178000000000000000179000000010000000000000001780000000179000000000000000000000006676c6f62616c0000000f66616b6546696c656e616d652e6a730000000e0e000000010000000c00000000000000000000000000
 load result type: 6
 hello 3 3.14
 call result type: 1
@@ -93,7 +93,7 @@ static duk_ret_t test_basic(duk_context *ctx, void *udata) {
 /*===
 *** test_mandel (duk_safe_call)
 Mandelbrot source length: 884
-ff000000005a000000100000000000130000000000010000001e300c0980804c0003801c010380640203000000a5800053a0800005a08000030301030e28000e0032800003a080004da000030e7a7ffffaa001030e40000e0e3e010e083a000100a580003ea0800007a080000403001000b400100d0000040e28000e0032800003a0800036a000040e7a7ffffaa000040e40020e0e3e030e073a000200a5800029a0800008a0800005038000090380000a030004060202050e28000e0032800003a0800020a000050e7a7ffffaa009090b3c0a0a0c3c0c0b0e34050e0e2a000e0030800006a009030e3d0a0e0e3c080e0a340c0b0e38070e09347ffff2a002050e2a000e0030800002a00006060280000da007050e2a000e0030800002a000080602800008a009050e2a000e0030800002a0000a0602800003a0000b0602800001a07fffe0a0000200a6000d0f000c0d0e6e00061000000e01b07fffcaa0000100a6000d0e99000d11000e0d106e000f1202001001b0000e01b07fffb3a0000000a6000000a2014004000000000000013ff400000000000001400800000000000001400000000000000000000000012301401000000000000000000000012e01401400000000000000000000012c01402400000000000000000000012d00000000013d00000000047075736800000000057072696e7400000000046a6f696e000000000000000000000000066d616e64656c000000096d616e64656c2e6a73000000285a000000020000001400000013000000210000002880201001008004244108910080844a04201080000000017700000000000000016800000001000000046974657200000002000000016900000003000000016a00000004000000016b000000050000000163000000060000000278300000000700000002793000000008000000027878000000090000000279790000000a000000037878320000000b000000037979320000000c000000046c696e650000000d0000000000000000
+ff000000005a000000100000000000130000000000010000001e180c0980804c0003801c010380640203000000a5800053a0800005a08000030301030e28000e0032800003a080004da000030e7a7ffffaa001030e40000e0e3e010e083a000100a580003ea0800007a080000403001000b400100d0000040e28000e0032800003a0800036a000040e7a7ffffaa000040e40020e0e3e030e073a000200a5800029a0800008a0800005038000090380000a030004060202050e28000e0032800003a0800020a000050e7a7ffffaa009090b3c0a0a0c3c0c0b0e34050e0e2a000e0030800006a009030e3d0a0e0e3c080e0a340c0b0e38070e09347ffff2a002050e2a000e0030800002a00006060280000da007050e2a000e0030800002a000080602800008a009050e2a000e0030800002a0000a0602800003a0000b0602800001a07fffe0a0000200a6000d0f000c0d0e6e00061000000e01b07fffcaa0000100a6000d0e99000d11000e0d106e000f1202001001b0000e01b07fffb3a0000000a6000000a2014004000000000000013ff400000000000001400800000000000001400000000000000000000000012301401000000000000000000000012e01401400000000000000000000012c01402400000000000000000000012d00000000013d00000000047075736800000000057072696e7400000000046a6f696e000000000000000000000000066d616e64656c000000096d616e64656c2e6a73000000285a000000020000001400000013000000210000002880201001008004244108910080844a04201080000000017700000000000000016800000001000000046974657200000002000000016900000003000000016a00000004000000016b000000050000000163000000060000000278300000000700000002793000000008000000027878000000090000000279790000000a000000037878320000000b000000037979320000000c000000046c696e650000000d0000000000000000
 ..........................,,,,,,,,,,,,,,,,,,,,,,,,,.........................
 ....................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,...................
 ................,,,,,,,,,,,,,,,,,,,,,,,,,,,---=----,,,,,,,,,,...............
@@ -193,13 +193,13 @@ static duk_ret_t test_large_func(duk_context *ctx, void *udata) {
 
 /*===
 *** test_properties (duk_safe_call)
-.length: {"value":3,"writable":false,"enumerable":false,"configurable":false}
-.name: {"value":"test","writable":false,"enumerable":false,"configurable":false}
-.fileName: {"value":"fakeFilename.js","writable":true,"enumerable":false,"configurable":true}
+.length: {"value":3,"writable":false,"enumerable":false,"configurable":true}
+.name: {"value":"test","writable":false,"enumerable":false,"configurable":true}
+.fileName: {"value":"fakeFilename.js","writable":false,"enumerable":false,"configurable":true}
 .prototype: {"value":{},"writable":true,"enumerable":false,"configurable":false}
-._Formals: {value:["a","b","c"],writable:false,enumerable:false,configurable:false}
-._Varmap: {value:{a:0,b:1,c:2,x:3},writable:false,enumerable:false,configurable:false}
-._Pc2line: {value:|04000000020000000c00000000|,writable:true,enumerable:false,configurable:true}
+0: {value:["a","b","c"],writable:false,enumerable:false,configurable:false}
+1: {value:{a:0,b:1,c:2,x:3},writable:false,enumerable:false,configurable:false}
+2: {value:|04000000020000000c00000000|,writable:true,enumerable:false,configurable:true}
 typeof .prototype: object
 typeof .prototype.constructor: function
 .prototype.constructor === func: true
@@ -226,19 +226,16 @@ static duk_ret_t test_properties(duk_context *ctx, void *udata) {
 	duk_dump_function(ctx);
 	duk_load_function(ctx);
 
-	/* Create the internal key prefix (0xFF) is C code and pass it to the
-	 * eval code.  This avoids creating creating the prefix using Ecmascript
-	 * code (the idiom for that changed in Duktape 2.x).
-	 */
+	/* Create the internal keys (hidden symbols) from C code. */
 
 	duk_eval_string(ctx,
-		"(function (v, pfx) {\n"
+		"(function (v, k1, k2, k3) {\n"
 		"    [ 'length', 'name', 'fileName', 'prototype' ].forEach(function (k) {\n"
 		"        print('.' + k + ': ' + JSON.stringify(Object.getOwnPropertyDescriptor(v, k)));\n"
 		"    });\n"
 		"    // internal properties; print with JX to print buffer\n"
-		"    [ 'Formals', 'Varmap', 'Pc2line' ].forEach(function (k) {\n"
-		"        print('._' + k + ': ' + Duktape.enc('jx', Object.getOwnPropertyDescriptor(v, pfx + k)));\n"
+		"    [ k1, k2, k3 ].forEach(function (k, i) {\n"
+		"        print(i + ': ' + Duktape.enc('jx', Object.getOwnPropertyDescriptor(v, k)));\n"
 		"    });\n"
 		"    // .prototype\n"
 		"    print('typeof .prototype: ' + typeof v.prototype);\n"
@@ -248,8 +245,10 @@ static duk_ret_t test_properties(duk_context *ctx, void *udata) {
 		"    print('descriptor of .prototype.constructor: ' + JSON.stringify(Object.getOwnPropertyDescriptor(v.prototype, 'constructor')));\n"
 		"})");
 	duk_dup(ctx, -2),
-	duk_push_string(ctx, "\xFF");  /* internal key prefix */
-	duk_call(ctx, 2);
+	duk_push_string(ctx, "\xFF" "Formals");
+	duk_push_string(ctx, "\xFF" "Varmap");
+	duk_push_string(ctx, "\xFF" "Pc2line");
+	duk_call(ctx, 4);
 	duk_pop(ctx);
 
 	duk_pop(ctx);
@@ -717,6 +716,88 @@ static duk_ret_t test_internal_prototype_lost(duk_context *ctx, void *udata) {
 	return 0;
 }
 
+/*===
+*** test_constructor_call (duk_safe_call)
+function
+object
+undefined undefined
+test called
+retval
+still here
+test called
+object
+still here
+function
+undefined
+foo getter called
+retval
+still here
+TypeError
+final top: 0
+==> rc=0, result='undefined'
+===*/
+
+/* Constructability is remembered across a dump/load even if the external
+ * .prototype is reset.  The .prototype is NOT recreated for non-constructable
+ * functions, e.g. ES2015 object literal getters.
+ */
+static duk_ret_t test_constructor_call(duk_context *ctx, void *udata) {
+	(void) udata;
+
+	/* Basic constructable case. */
+
+	duk_eval_string(ctx,
+		"(function () {\n"
+		"    var f = function test() { print('test called'); return 'retval' };\n"
+		"    f.prototype.foo = 'bar';\n"
+		"    return f;\n"
+		"})()");
+	duk_dump_function(ctx);
+	duk_load_function(ctx);
+
+	duk_eval_string(ctx,
+		"(function (f) {\n"
+		"    print(typeof f);\n"
+		"    print(typeof f.prototype);\n"
+		"    print(typeof f.prototype.foo, f.prototype.foo);\n"
+		"    try { print(f()); print('still here'); } catch (e) { print(e.name); }\n"
+		"    try { print(typeof new f()); print('still here'); } catch (e) { print(e.name); }\n"
+		"})");
+	duk_dup(ctx, -2);
+	duk_call(ctx, 1);
+	duk_pop(ctx);
+
+	duk_pop(ctx);
+
+	/* In ES2015 a getter shorthand in object literal is not constructable
+	 * and has no .prototype property.
+	 */
+
+	duk_eval_string(ctx,
+		"(function () {\n"
+		"    var obj = { get foo() { print('foo getter called'); return 'retval'; } };\n"
+		"    return Object.getOwnPropertyDescriptor(obj, 'foo').get;\n"
+		"})()");
+	duk_dump_function(ctx);
+	duk_load_function(ctx);
+
+	duk_eval_string(ctx,
+		"(function (f) {\n"
+		"    print(typeof f);\n"
+		"    print(typeof f.prototype);\n"
+		"    try { print(f()); print('still here'); } catch (e) { print(e.name); }\n"
+		"    try { print(typeof new f()); print('still here'); } catch (e) { print(e.name); }\n"
+		"})");
+	duk_dup(ctx, -2);
+	duk_call(ctx, 1);
+	duk_pop(ctx);
+
+	duk_pop(ctx);
+
+	printf("final top: %ld\n", (long) duk_get_top(ctx));
+	return 0;
+}
+
 void test(duk_context *ctx) {
 	TEST_SAFE_CALL(test_basic);
 	TEST_SAFE_CALL(test_mandel);
@@ -734,4 +815,6 @@ void test(duk_context *ctx) {
 	TEST_SAFE_CALL(test_bound_rejected);
 	TEST_SAFE_CALL(test_external_prototype_lost);
 	TEST_SAFE_CALL(test_internal_prototype_lost);
+
+	TEST_SAFE_CALL(test_constructor_call);
 }

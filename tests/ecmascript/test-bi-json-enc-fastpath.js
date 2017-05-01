@@ -64,7 +64,7 @@ top level value test
 9 [null,null,null,null,null,null,null,null,null,null]
 10 undefined
 11 "1970-01-01T00:00:00.123Z"
-12 {}
+12 {"0":222,"1":173,"2":190,"3":239}
 13 {}
 14 {"type":"Buffer","data":[65,66,67,68,69,70,71,72]}
 ===*/
@@ -313,7 +313,7 @@ jx/jc test
 false
 true
 json1
-{"null":null,"true":true,"trueBoxed":true,"false":false,"falseBoxed":false,"number":123,"numberBoxed":123,"posZero":0,"negZero":0,"posInf":null,"negInf":null,"nan":null,"123mustquote":"must quote, non-identifier first char","mustquote\u0000":"must quote, NUL","mustquote<4660>":"must quote, non-ASCII","must_allow_unquoted123":"all chars ok","nonAsciiString":"nonascii: \u0000\u001e<127><4660><51966>","stringBoxed":"boxed string","buffer":{},"nodejsBuffer":{"0":65,"1":66,"2":67,"3":68,"4":69,"5":70,"6":71,"7":72,"8":73,"9":74,"10":75,"11":76},"nodejsBufferView":{"0":68,"1":69,"2":70,"3":71},"arrayBuffer":{},"dataView":{"0":97,"1":98,"2":99,"3":100,"4":101,"5":102,"6":103,"7":104},"int8Array":{"0":97,"1":98,"2":99,"3":100,"4":101,"5":102,"6":103,"7":104},"uint8Array":{"0":97,"1":98,"2":99,"3":100,"4":101,"5":102,"6":103,"7":104},"uint8ArrayView":{"0":98,"1":99,"2":100,"3":101},"uint8ClampedArray":{"0":97,"1":98,"2":99,"3":100,"4":101,"5":102,"6":103,"7":104},"int16Array":{"0":25185,"1":25699,"2":26213,"3":26727},"int16ArrayView":{"0":26213,"1":26727},"uint16Array":{"0":25185,"1":25699,"2":26213,"3":26727},"int32Array":{"0":1684234849,"1":1751606885},"uint32Array":{"0":1684234849,"1":1751606885},"float32Array":{"0":1.6777999408082104e+22,"1":4.371022013021617e+24},"float64Array":{"0":8.540883223036124e+194}}
+{"null":null,"true":true,"trueBoxed":true,"false":false,"falseBoxed":false,"number":123,"numberBoxed":123,"posZero":0,"negZero":0,"posInf":null,"negInf":null,"nan":null,"123mustquote":"must quote, non-identifier first char","mustquote\u0000":"must quote, NUL","mustquote<4660>":"must quote, non-ASCII","must_allow_unquoted123":"all chars ok","nonAsciiString":"nonascii: \u0000\u001e<127><4660><51966>","stringBoxed":"boxed string","buffer":{"0":222,"1":173,"2":190,"3":239},"nodejsBuffer":{"0":65,"1":66,"2":67,"3":68,"4":69,"5":70,"6":71,"7":72,"8":73,"9":74,"10":75,"11":76},"nodejsBufferView":{"0":68,"1":69,"2":70,"3":71},"arrayBuffer":{},"dataView":{},"int8Array":{"0":97,"1":98,"2":99,"3":100,"4":101,"5":102,"6":103,"7":104},"uint8Array":{"0":97,"1":98,"2":99,"3":100,"4":101,"5":102,"6":103,"7":104},"uint8ArrayView":{"0":98,"1":99,"2":100,"3":101},"uint8ClampedArray":{"0":97,"1":98,"2":99,"3":100,"4":101,"5":102,"6":103,"7":104},"int16Array":{"0":25185,"1":25699,"2":26213,"3":26727},"int16ArrayView":{"0":26213,"1":26727},"uint16Array":{"0":25185,"1":25699,"2":26213,"3":26727},"int32Array":{"0":1684234849,"1":1751606885},"uint32Array":{"0":1684234849,"1":1751606885},"float32Array":{"0":1.6777999408082104e+22,"1":4.371022013021617e+24},"float64Array":{"0":8.540883223036124e+194}}
 json2
 {
     "null": null,
@@ -334,7 +334,12 @@ json2
     "must_allow_unquoted123": "all chars ok",
     "nonAsciiString": "nonascii: \u0000\u001e<127><4660><51966>",
     "stringBoxed": "boxed string",
-    "buffer": {},
+    "buffer": {
+        "0": 222,
+        "1": 173,
+        "2": 190,
+        "3": 239
+    },
     "nodejsBuffer": {
         "0": 65,
         "1": 66,
@@ -356,16 +361,7 @@ json2
         "3": 71
     },
     "arrayBuffer": {},
-    "dataView": {
-        "0": 97,
-        "1": 98,
-        "2": 99,
-        "3": 100,
-        "4": 101,
-        "5": 102,
-        "6": 103,
-        "7": 104
-    },
+    "dataView": {},
     "int8Array": {
         "0": 97,
         "1": 98,
@@ -454,7 +450,12 @@ json3
     "must_allow_unquoted123": "all chars ok",
     "nonAsciiString": "nonascii: \u0000\u001e<127><4660><51966>",
     "stringBoxed": "boxed string",
-    "buffer": {},
+    "buffer": {
+        "0": 222,
+        "1": 173,
+        "2": 190,
+        "3": 239
+    },
     "nodejsBuffer": {
         "0": 65,
         "1": 66,
@@ -476,16 +477,7 @@ json3
         "3": 71
     },
     "arrayBuffer": {},
-    "dataView": {
-        "0": 97,
-        "1": 98,
-        "2": 99,
-        "3": 100,
-        "4": 101,
-        "5": 102,
-        "6": 103,
-        "7": 104
-    },
+    "dataView": {},
     "int8Array": {
         "0": 97,
         "1": 98,
@@ -556,7 +548,7 @@ json3
 }
 true
 jx1
-{undefined:undefined,null:null,true:true,trueBoxed:true,false:false,falseBoxed:false,number:123,numberBoxed:123,posZero:0,negZero:-0,posInf:Infinity,negInf:-Infinity,nan:NaN,"123mustquote":"must quote, non-identifier first char","mustquote\x00":"must quote, NUL","mustquote\u1234":"must quote, non-ASCII",must_allow_unquoted123:"all chars ok",nonAsciiString:"nonascii: \x00\x1e\x7f\u1234\ucafe",stringBoxed:"boxed string",buffer:|deadbeef|,pointer:(<PTR>),pointerBoxed:(<PTR>),nodejsBuffer:|4142434445464748494a4b4c|,nodejsBufferView:|44454647|,arrayBuffer:|6162636465666768|,dataView:|6162636465666768|,int8Array:|6162636465666768|,uint8Array:|6162636465666768|,uint8ArrayView:|62636465|,uint8ClampedArray:|6162636465666768|,int16Array:|6162636465666768|,int16ArrayView:|65666768|,uint16Array:|6162636465666768|,int32Array:|6162636465666768|,uint32Array:|6162636465666768|,float32Array:|6162636465666768|,float64Array:|6162636465666768|,function:{_func:true}}
+{undefined:undefined,null:null,true:true,trueBoxed:true,false:false,falseBoxed:false,number:123,numberBoxed:123,posZero:0,negZero:-0,posInf:Infinity,negInf:-Infinity,nan:NaN,"123mustquote":"must quote, non-identifier first char","mustquote\x00":"must quote, NUL","mustquote\u1234":"must quote, non-ASCII",must_allow_unquoted123:"all chars ok",nonAsciiString:"nonascii: \x00\x1e\x7f\u1234\ucafe",stringBoxed:"boxed string",buffer:|deadbeef|,pointer:(PTR),pointerBoxed:(PTR),nodejsBuffer:|4142434445464748494a4b4c|,nodejsBufferView:|44454647|,arrayBuffer:|6162636465666768|,dataView:|6162636465666768|,int8Array:|6162636465666768|,uint8Array:|6162636465666768|,uint8ArrayView:|62636465|,uint8ClampedArray:|6162636465666768|,int16Array:|6162636465666768|,int16ArrayView:|65666768|,uint16Array:|6162636465666768|,int32Array:|6162636465666768|,uint32Array:|6162636465666768|,float32Array:|6162636465666768|,float64Array:|6162636465666768|,function:{_func:true}}
 jx2
 {
     undefined: undefined,
@@ -579,8 +571,8 @@ jx2
     nonAsciiString: "nonascii: \x00\x1e\x7f\u1234\ucafe",
     stringBoxed: "boxed string",
     buffer: |deadbeef|,
-    pointer: (<PTR>),
-    pointerBoxed: (<PTR>),
+    pointer: (PTR),
+    pointerBoxed: (PTR),
     nodejsBuffer: |4142434445464748494a4b4c|,
     nodejsBufferView: |44454647|,
     arrayBuffer: |6162636465666768|,
@@ -620,8 +612,8 @@ jx3
     nonAsciiString: "nonascii: \x00\x1e\x7f\u1234\ucafe",
     stringBoxed: "boxed string",
     buffer: |deadbeef|,
-    pointer: (<PTR>),
-    pointerBoxed: (<PTR>),
+    pointer: (PTR),
+    pointerBoxed: (PTR),
     nodejsBuffer: |4142434445464748494a4b4c|,
     nodejsBufferView: |44454647|,
     arrayBuffer: |6162636465666768|,
@@ -641,7 +633,7 @@ jx3
 }
 true
 jc1
-{"undefined":{"_undef":true},"null":null,"true":true,"trueBoxed":true,"false":false,"falseBoxed":false,"number":123,"numberBoxed":123,"posZero":0,"negZero":-0,"posInf":{"_inf":true},"negInf":{"_ninf":true},"nan":{"_nan":true},"123mustquote":"must quote, non-identifier first char","mustquote\u0000":"must quote, NUL","mustquote\u1234":"must quote, non-ASCII","must_allow_unquoted123":"all chars ok","nonAsciiString":"nonascii: \u0000\u001e\u007f\u1234\ucafe","stringBoxed":"boxed string","buffer":{"_buf":"deadbeef"},"pointer":{"_ptr":"<PTR>"},"pointerBoxed":{"_ptr":"<PTR>"},"nodejsBuffer":{"_buf":"4142434445464748494a4b4c"},"nodejsBufferView":{"_buf":"44454647"},"arrayBuffer":{"_buf":"6162636465666768"},"dataView":{"_buf":"6162636465666768"},"int8Array":{"_buf":"6162636465666768"},"uint8Array":{"_buf":"6162636465666768"},"uint8ArrayView":{"_buf":"62636465"},"uint8ClampedArray":{"_buf":"6162636465666768"},"int16Array":{"_buf":"6162636465666768"},"int16ArrayView":{"_buf":"65666768"},"uint16Array":{"_buf":"6162636465666768"},"int32Array":{"_buf":"6162636465666768"},"uint32Array":{"_buf":"6162636465666768"},"float32Array":{"_buf":"6162636465666768"},"float64Array":{"_buf":"6162636465666768"},"function":{"_func":true}}
+{"undefined":{"_undef":true},"null":null,"true":true,"trueBoxed":true,"false":false,"falseBoxed":false,"number":123,"numberBoxed":123,"posZero":0,"negZero":-0,"posInf":{"_inf":true},"negInf":{"_ninf":true},"nan":{"_nan":true},"123mustquote":"must quote, non-identifier first char","mustquote\u0000":"must quote, NUL","mustquote\u1234":"must quote, non-ASCII","must_allow_unquoted123":"all chars ok","nonAsciiString":"nonascii: \u0000\u001e\u007f\u1234\ucafe","stringBoxed":"boxed string","buffer":{"_buf":"deadbeef"},"pointer":{"_ptr":"PTR"},"pointerBoxed":{"_ptr":"PTR"},"nodejsBuffer":{"_buf":"4142434445464748494a4b4c"},"nodejsBufferView":{"_buf":"44454647"},"arrayBuffer":{"_buf":"6162636465666768"},"dataView":{"_buf":"6162636465666768"},"int8Array":{"_buf":"6162636465666768"},"uint8Array":{"_buf":"6162636465666768"},"uint8ArrayView":{"_buf":"62636465"},"uint8ClampedArray":{"_buf":"6162636465666768"},"int16Array":{"_buf":"6162636465666768"},"int16ArrayView":{"_buf":"65666768"},"uint16Array":{"_buf":"6162636465666768"},"int32Array":{"_buf":"6162636465666768"},"uint32Array":{"_buf":"6162636465666768"},"float32Array":{"_buf":"6162636465666768"},"float64Array":{"_buf":"6162636465666768"},"function":{"_func":true}}
 jc2
 {
     "undefined": {"_undef":true},
@@ -664,8 +656,8 @@ jc2
     "nonAsciiString": "nonascii: \u0000\u001e\u007f\u1234\ucafe",
     "stringBoxed": "boxed string",
     "buffer": {"_buf":"deadbeef"},
-    "pointer": {"_ptr":"<PTR>"},
-    "pointerBoxed": {"_ptr":"<PTR>"},
+    "pointer": {"_ptr":"PTR"},
+    "pointerBoxed": {"_ptr":"PTR"},
     "nodejsBuffer": {"_buf":"4142434445464748494a4b4c"},
     "nodejsBufferView": {"_buf":"44454647"},
     "arrayBuffer": {"_buf":"6162636465666768"},
@@ -705,8 +697,8 @@ jc3
     "nonAsciiString": "nonascii: \u0000\u001e\u007f\u1234\ucafe",
     "stringBoxed": "boxed string",
     "buffer": {"_buf":"deadbeef"},
-    "pointer": {"_ptr":"<PTR>"},
-    "pointerBoxed": {"_ptr":"<PTR>"},
+    "pointer": {"_ptr":"PTR"},
+    "pointerBoxed": {"_ptr":"PTR"},
     "nodejsBuffer": {"_buf":"4142434445464748494a4b4c"},
     "nodejsBufferView": {"_buf":"44454647"},
     "arrayBuffer": {"_buf":"6162636465666768"},
@@ -735,19 +727,21 @@ function jxJcFastPathTest() {
 
     function cleanPrint(x) {
         x = x.replace(/[^\u0020-\u007e\u000a]/g, function (x) { return '<' + x.charCodeAt(0) + '>'; });
-        x = x.replace(/0x[0-9a-fA-F]+/g, function (x) { return '<PTR>'; });
+        x = x.replace(/\((?:0x)?[0-9a-fA-F]+\)/g, function (x) { return '(PTR)'; });
+        x = x.replace(/"_ptr":"(?:0x)?[0-9a-fA-F]+"/g, function (x) { return '"_ptr":"PTR"'; });
         print(x);
     }
 
     var arrayBuffer = new ArrayBuffer(8);
-    arrayBuffer[0] = 0x61;
-    arrayBuffer[1] = 0x62;
-    arrayBuffer[2] = 0x63;
-    arrayBuffer[3] = 0x64;
-    arrayBuffer[4] = 0x65;
-    arrayBuffer[5] = 0x66;
-    arrayBuffer[6] = 0x67;
-    arrayBuffer[7] = 0x68;
+    var u8 = new Uint8Array(arrayBuffer);
+    u8[0] = 0x61;
+    u8[1] = 0x62;
+    u8[2] = 0x63;
+    u8[3] = 0x64;
+    u8[4] = 0x65;
+    u8[5] = 0x66;
+    u8[6] = 0x67;
+    u8[7] = 0x68;
 
     // Remove Node.js buffer .toJSON() method here, because its presence
     // would cause a fastpath abort.

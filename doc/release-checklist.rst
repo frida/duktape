@@ -32,19 +32,17 @@ Checklist for ordinary releases
 
   - Verify by running Duktape cmdline and evaluating ``Duktape.version``
 
-  - Check dist-files/Makefile.sharedlibrary; currently duplicates version
-    number and needs to be fixed manually
-
 * Check dist-files/README.rst
+
+  - Update release specific release notes link
 
 * Ensure LICENSE.txt is up-to-date
 
   - Check year range
 
-  - Also check ``tools/create_spdx_license.py``
+  - Also check ``util/create_spdx_license.py``
 
-* Ensure RELEASES.rst is up-to-date (must be done before candidate tar.xz
-  build because dist package contains RELEASES.rst)
+* Ensure RELEASES.rst is up-to-date
 
   - New release is in place
 
@@ -57,8 +55,8 @@ Checklist for ordinary releases
 * Compilation tests:
 
   - Clean compile for command line tool with (a) no options and (b) common
-    debug options (DUK_USE_DEBUG, DUK_USE_DEBUG_LEVEL=0, DUK_USE_SELF_TESTS,
-    DUK_USE_ASSERTIONS)
+    debug options (DUK_USE_DEBUG, DUK_USE_DEBUG_LEVEL=0, DUK_USE_DEBUG_PRINT=...,
+    DUK_USE_SELF_TESTS, DUK_USE_ASSERTIONS)
 
   - Compile both from ``src`` and ``src-separate``.
 
@@ -71,14 +69,6 @@ Checklist for ordinary releases
     run in dist, check output manually
 
   - Platform / compiler combinations (incomplete, should be automated):
-
-    + Linux x86-64 gcc
-
-    + Linux x86-64 gcc + -m32
-
-    + Linux x86-64 clang
-
-    + Linux x86-64 clang + -m32
 
     + FreeBSD clang
 
@@ -106,16 +96,6 @@ Checklist for ordinary releases
 
   - Check ``make duk-clang``, covers ``-Wcast-align``
 
-* Compile command line tool as a Windows DLL, checks Windows symbol visibility
-  macros::
-
-    > cd dist
-    > python2 tools/configure --output-directory prep --source-directory src-input \
-      --config-metadata config --dll
-    > cl /W3 /O2 /Iprep /LD prep\duktape.c
-    > cl /W3 /O2 /Iprep /Feduk.exe examples\cmdline\duk_cmdline.c duktape.lib
-    > duk.exe
-
 * Test genconfig manually using metadata from the distributable
 
   - Ensure that Duktape compiles with e.g. ``-DDUK_USE_FASTINT`` genconfig
@@ -127,13 +107,13 @@ Checklist for ordinary releases
 
   - On x86-64 (exercise 16-byte duk_tval):
 
-    - make qecmatest   # quick test
+    - make ecmatest
 
-    - VALGRIND_WRAP=1 make qecmatest  # valgrind test
+    - VALGRIND_WRAP=1 make ecmatest  # valgrind test
 
   - On x86-32 (exercise 8-byte duk_tval)
 
-    - make qecmatest   # quick test
+    - make ecmatest
 
   - Run testcases on all endianness targets
 
@@ -145,9 +125,11 @@ Checklist for ordinary releases
 
   - DUK_USE_SHUFFLE_TORTURE
 
-  - DUK_USE_REFZERO_FINALIZER_TORTURE
+  - DUK_USE_FINALIZER_TORTURE
 
-  - DUK_USE_MARKANDSWEEP_FINALIZER_TORTURE + DUK_USE_GC_TORTURE
+  - DUK_USE_FINALIZER_TORTURE + DUK_USE_GC_TORTURE
+
+  - DUK_USE_STRTAB_TORTURE
 
 * Memory usage testing
 
@@ -170,13 +152,8 @@ Checklist for ordinary releases
 
     - make apitest
 
-  - Test with and without ``DUK_USE_UNION_INITIALIZERS``
-
-* Compile option matrix test
-
-  - Run 1000 iterations of ``util/matrix_compile.py`` which compiles and runs
-    random combinations of feature options and compilers (gcc, g++, clang) on
-    x86, x64, and x32
+    - -Werror is no longer enabled so check apitest output for any test
+      case warnings (or enable -Werror manually in runtests.js)
 
 * Regfuzz
 
@@ -192,35 +169,15 @@ Checklist for ordinary releases
 
   - Run with assertions enabled at least on x86-64
 
-* emscripten (run emscripten-generated code with Duktape)
+* Assorted release tests driven by Makefile
 
-  - on x86-64
+  - on x86-65
 
-    - make emscriptentest
+    - make clean releasetest
 
-* emscripten (compile Duktape with emscripten, run with Node)
+  - Run with assertions enabled at least on x86-64
 
-  - on x86-64
-
-    - make emscriptenduktest
-
-* emscripten (compile Duktape with emscripten, run with Duktape)
-
-  - on x86-64
-
-    - make emscripteninceptiontest
-
-* JS-Interpreter
-
-  - on x86-64
-
-    - make jsinterpretertest
-
-* lua.js
-
-  - on x86-64
-
-    - make luajstest
+  - Makefile should now error out if any test fails
 
 * Debugger test
 
@@ -229,12 +186,27 @@ Checklist for ordinary releases
 
   - Test JSON proxy
 
+* Prepare an update pull for compat-table
+
+  - Fork and branch
+
+  - Compile "duk", Duktape.version must match upcoming release
+
+  - Go through data-*.js files, and copy previous results directly, e.g.
+    "duktape20: false," -> add line "duktape21: false,"
+
+  - Run "nodejs duktape.js" in compat-table, and update data files to match
+    new results
+
+  - Rerun "nodejs build.js", and finalize the pull
+
 * Release notes (``doc/release-notes-*.rst``)
 
-  - Write new release notes for release; needs known issues output from at
-    least API, Ecmascript, and test262 test runs
+  - Write new release notes for release
 
   - Ensure instructions for upgrading from last release are correct
+
+  - Detailed test outputs are no longer included
 
 * Git release and tag
 
@@ -344,7 +316,7 @@ Checklist for ordinary releases
     from 1000 to 1099.  This ensures that any forks off the trunk will have a
     version number easy to distinguish as an unofficial release.
 
-  - ``src/duk_api_public.h.in``
+  - ``src/duktape.h.in``
 
 Checklist for maintenance releases
 ==================================

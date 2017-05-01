@@ -168,6 +168,8 @@ Miscellaneous
 Suggested options
 =================
 
+NOTE: This list is not exhaustive, see ``config/examples/low_memory.yaml``.
+
 * Use the default memory management settings: although reference counting
   increases heap header size, it also reduces memory usage fluctuation
   which is often more important than absolute footprint.
@@ -205,7 +207,7 @@ Suggested options
 
   - ``#undef DUK_USE_JSON_EATWHITE_FASTPATH``
 
-* If you don't need Node.js Buffer and Khronos/ES6 typed array support, use:
+* If you don't need Node.js Buffer and ES2015 typed array support, use:
 
   - ``#undef DUK_USE_BUFFEROBJECT_SUPPORT``
 
@@ -215,7 +217,8 @@ Suggested options
 
   - ``#undef DUK_USE_JC``
 
-* Features borrowed from Ecmascript E6 can usually be disabled:
+* Features borrowed from Ecmascript ES2015 can usually be disabled
+  (not exhaustive):
 
   - ``#undef DUK_USE_ES6_OBJECT_SETPROTOTYPEOF``
 
@@ -270,7 +273,7 @@ system RAM):
 * Enable other 16-bit fields to reduce header size; these are typically
   used together (all or none):
 
-  - ``#define DUK_USE_REFCOUNT16``
+  - ``#define DUK_USE_REFCOUNT16`` (and ``#undef DUK_USE_REFCOUNT32``)
 
   - ``#define DUK_USE_STRHASH16``
 
@@ -318,14 +321,15 @@ system RAM):
 
   - **UNIMPLEMENTED AT THE MOMENT**
 
-* Enable a low memory optimized string table variant which uses a fixed size
-  top level hash table and array chaining to resolve collisions.  This makes
-  memory behavior more predictable and avoids a large continuous allocation
-  used by the default string table:
+* Configure string table parameters.  Often in low memory targets it's
+  preferable to use a fixed size, i.e. set the minimum and maximum size
+  to the same value.  For example:
 
-  - ``#define DUK_USE_STRTAB_CHAIN``
+  - ``#define DUK_USE_STRTAB_MINSIZE 128``
 
-  - ``#define DUK_USE_STRTAB_CHAIN_SIZE 128`` (other values possible also)
+  - ``#define DUK_USE_STRTAB_MAXSIZE 128``
+
+  - ``#define DUK_USE_STRTAB_PTRCOMP``
 
 * Use "external" strings to allocate most strings from flash (there are
   multiple strategies for this, see separate section):
@@ -900,15 +904,6 @@ Strings
 * 16-bit fields for string char and byte length
 
 * 16-bit string hash
-
-* Rework string table to avoid current issues: (1) large reallocations,
-  (2) rehashing needs both old and new string table as it's not in-place.
-  Multiple options, including:
-
-  - Separate chaining (open hashing, closed addressing) with a fixed or
-    bounded top level hash table
-
-  - Various tree structures like red-black trees
 
 * Compressed pointers
 

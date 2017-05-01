@@ -1017,7 +1017,7 @@ DUK_INTERNAL void duk_unicode_case_convert_string(duk_hthread *thr, duk_small_in
 	const duk_uint8_t *p, *p_start, *p_end;
 	duk_codepoint_t prev, curr, next;
 
-	h_input = duk_require_hstring(ctx, -1);
+	h_input = duk_require_hstring(ctx, -1);  /* Accept symbols. */
 	DUK_ASSERT(h_input != NULL);
 
 	bw = &bw_alloc;
@@ -1064,8 +1064,9 @@ DUK_INTERNAL void duk_unicode_case_convert_string(duk_hthread *thr, duk_small_in
 	}
 
 	DUK_BW_COMPACT(thr, bw);
-	(void) duk_buffer_to_string(ctx, -1);  /* invalidates h_buf pointer */
-	duk_remove(ctx, -2);
+	(void) duk_buffer_to_string(ctx, -1);  /* Safe, output is encoded. */
+	/* invalidates h_buf pointer */
+	duk_remove_m2(ctx);
 }
 
 #if defined(DUK_USE_REGEXP_SUPPORT)

@@ -16,7 +16,7 @@
 
 #include "duk_internal.h"
 
-#ifdef DUK_USE_REGEXP_SUPPORT
+#if defined(DUK_USE_REGEXP_SUPPORT)
 
 /*
  *  Helpers for UTF-8 handling
@@ -477,7 +477,7 @@ DUK_LOCAL const duk_uint8_t *duk__match_regexp(duk_re_matcher_ctx *re_ctx, const
 			 * slightly higher code footprint.
 			 */
 			duk_uint32_t idx_start, idx_count;
-#ifdef DUK_USE_EXPLICIT_NULL_INIT
+#if defined(DUK_USE_EXPLICIT_NULL_INIT)
 			duk_uint32_t idx_end, idx;
 #endif
 			duk_uint8_t **range_save;
@@ -502,7 +502,7 @@ DUK_LOCAL const duk_uint8_t *duk__match_regexp(duk_re_matcher_ctx *re_ctx, const
 			                                                           sizeof(duk_uint8_t *) * idx_count);
 			DUK_ASSERT(range_save != NULL);
 			DUK_MEMCPY(range_save, re_ctx->saved + idx_start, sizeof(duk_uint8_t *) * idx_count);
-#ifdef DUK_USE_EXPLICIT_NULL_INIT
+#if defined(DUK_USE_EXPLICIT_NULL_INIT)
 			idx_end = idx_start + idx_count;
 			for (idx = idx_start; idx < idx_end; idx++) {
 				re_ctx->saved[idx] = NULL;
@@ -714,11 +714,10 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 	DUK_ASSERT(DUK_HOBJECT_GET_CLASS_NUMBER(h_regexp) == DUK_HOBJECT_CLASS_REGEXP);
 	DUK_UNREF(h_regexp);
 
-	duk_to_string(ctx, -1);
-	h_input = duk_get_hstring(ctx, -1);
+	h_input = duk_to_hstring(ctx, -1);
 	DUK_ASSERT(h_input != NULL);
 
-	duk_get_prop_stridx(ctx, -2, DUK_STRIDX_INT_BYTECODE);  /* [ ... re_obj input ] -> [ ... re_obj input bc ] */
+	duk_get_prop_stridx_short(ctx, -2, DUK_STRIDX_INT_BYTECODE);  /* [ ... re_obj input ] -> [ ... re_obj input bc ] */
 	h_bytecode = duk_require_hstring(ctx, -1);  /* no regexp instance should exist without a non-configurable bytecode property */
 	DUK_ASSERT(h_bytecode != NULL);
 
@@ -797,7 +796,7 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 
 	/* [ ... re_obj input bc saved_buf ] */
 
-	duk_get_prop_stridx(ctx, -4, DUK_STRIDX_LAST_INDEX);  /* -> [ ... re_obj input bc saved_buf lastIndex ] */
+	duk_get_prop_stridx_short(ctx, -4, DUK_STRIDX_LAST_INDEX);  /* -> [ ... re_obj input bc saved_buf lastIndex ] */
 	(void) duk_to_int(ctx, -1);  /* ToInteger(lastIndex) */
 	d = duk_get_number(ctx, -1);  /* integer, but may be +/- Infinite, +/- zero (not NaN, though) */
 	duk_pop(ctx);
@@ -819,6 +818,7 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 		char_offset = (duk_uint32_t) 0;
 	}
 
+	DUK_ASSERT(char_offset <= DUK_HSTRING_GET_CHARLEN(h_input));
 	sp = re_ctx.input + duk_heap_strcache_offset_char2byte(thr, h_input, char_offset);
 
 	/*
@@ -907,7 +907,7 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 	/* [ ... re_obj input bc saved_buf ] */
 
 	if (match) {
-#ifdef DUK_USE_ASSERTIONS
+#if defined(DUK_USE_ASSERTIONS)
 		duk_hobject *h_res;
 #endif
 		duk_uint32_t char_end_offset = 0;
@@ -924,7 +924,7 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 
 		duk_push_array(ctx);
 
-#ifdef DUK_USE_ASSERTIONS
+#if defined(DUK_USE_ASSERTIONS)
 		h_res = duk_require_hobject(ctx, -1);
 		DUK_ASSERT(DUK_HOBJECT_HAS_EXTENSIBLE(h_res));
 		DUK_ASSERT(DUK_HOBJECT_HAS_EXOTIC_ARRAY(h_res));
@@ -934,10 +934,10 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 		/* [ ... re_obj input bc saved_buf res_obj ] */
 
 		duk_push_u32(ctx, char_offset);
-		duk_xdef_prop_stridx_wec(ctx, -2, DUK_STRIDX_INDEX);
+		duk_xdef_prop_stridx_short_wec(ctx, -2, DUK_STRIDX_INDEX);
 
 		duk_dup_m4(ctx);
-		duk_xdef_prop_stridx_wec(ctx, -2, DUK_STRIDX_INPUT);
+		duk_xdef_prop_stridx_short_wec(ctx, -2, DUK_STRIDX_INPUT);
 
 		for (i = 0; i < re_ctx.nsaved; i += 2) {
 			/* Captures which are undefined have NULL pointers and are returned
@@ -971,7 +971,7 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 		if (global) {
 			/* global regexp: lastIndex updated on match */
 			duk_push_u32(ctx, char_end_offset);
-			duk_put_prop_stridx(ctx, -6, DUK_STRIDX_LAST_INDEX);
+			duk_put_prop_stridx_short(ctx, -6, DUK_STRIDX_LAST_INDEX);
 		} else {
 			/* non-global regexp: lastIndex never updated on match */
 			;
@@ -990,7 +990,7 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 		/* [ ... re_obj input bc saved_buf res_obj ] */
 
 		duk_push_int(ctx, 0);
-		duk_put_prop_stridx(ctx, -6, DUK_STRIDX_LAST_INDEX);
+		duk_put_prop_stridx_short(ctx, -6, DUK_STRIDX_LAST_INDEX);
 	}
 
 	/* [ ... re_obj input bc saved_buf res_obj ] */

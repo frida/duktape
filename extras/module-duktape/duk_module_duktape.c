@@ -5,6 +5,14 @@
 #include "duktape.h"
 #include "duk_module_duktape.h"
 
+/* (v)snprintf() is missing before MSVC 2015.  Note that _(v)snprintf() does
+ * NOT NUL terminate on truncation, but that's OK here.
+ * http://stackoverflow.com/questions/2915672/snprintf-and-visual-studio-2010
+ */
+#if defined(_MSC_VER) && (_MSC_VER < 1900)
+#define snprintf _snprintf
+#endif
+
 #if 0  /* Enable manually */
 #define DUK__ASSERT(x) do { \
 		if (!(x)) { \
@@ -346,7 +354,7 @@ static duk_ret_t duk__require(duk_context *ctx) {
 	 * (Note capitalization: .filename matches Node.js while .fileName is
 	 * used elsewhere in Duktape.)
 	 */
-	duk_push_string(ctx, "})");
+	duk_push_string(ctx, "\n})");  /* Newline allows module last line to contain a // comment. */
 	duk_concat(ctx, 3);
 	if (!duk_get_prop_string(ctx, DUK__IDX_MODULE, "filename")) {
 		/* module.filename for .fileName, default to resolved ID if
@@ -441,7 +449,7 @@ void duk_module_duktape_init(duk_context *ctx) {
 		"var D=Object.defineProperty;"
 		"D(req,'name',{value:'require'});"
 		"D(this,'require',{value:req,writable:true,configurable:true});"
-		"D(Duktape,'modLoaded',{value:{},writable:true,configurable:true});"
+		"D(Duktape,'modLoaded',{value:Object.create(null),writable:true,configurable:true});"
 		"})");
 	duk_push_c_function(ctx, duk__require, 1 /*nargs*/);
 	duk_call(ctx, 1);

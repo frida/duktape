@@ -14,8 +14,8 @@
 #
 #  Both of these have practical complications like endianness differences,
 #  pointer compression variants, object property table layout variants,
-#  and so on.  Multiple #ifdef'd initializer sections are emitted to cover
-#  all supported alternatives.
+#  and so on.  Multiple #if defined()'d initializer sections are emitted
+#  to cover all supported alternatives.
 #
 
 import logging
@@ -43,6 +43,9 @@ DUK__FIXED_HASH_SEED = 0xabcd1234
 # Base value for compressed ROM pointers, used range is [ROMPTR_FIRST,0xffff].
 # Must match DUK_USE_ROM_PTRCOMP_FIRST (generated header checks).
 ROMPTR_FIRST = 0xf800  # 2048 should be enough; now around ~1000 used
+
+# ROM string table size
+ROMSTR_LOOKUP_SIZE = 256
 
 #
 #  Miscellaneous helpers
@@ -305,6 +308,37 @@ def metadata_merge_user_objects(meta, user_meta):
                     logger.debug('Add property %s of %s' % (p['key'], o['id']))
                     targ['properties'].append(p)
 
+# Replace 'symbol' keys and values with encoded strings.
+def format_symbol(sym):
+    #print(repr(sym))
+    assert(isinstance(sym, dict))
+    assert(sym.get('type', None) == 'symbol')
+    variant = sym['variant']
+    if variant == 'global':
+        return '\x80' + sym['string']
+    elif variant == 'wellknown':
+        # Well known symbols use an empty suffix which never occurs for
+        # runtime local symbols.
+        return '\x81' + sym['string'] + '\xff'
+    elif variant == 'hidden':
+        return '\xff' + sym['string']
+    raise Exception('invalid symbol variant %r' % variant)
+
+def metadata_normalize_symbol_strings(meta):
+    for o in meta['strings']:
+        if isinstance(o['str'], dict) and o['str'].get('type') == 'symbol':
+            o['str'] = format_symbol(o['str'])
+            #print('normalized symbol as string list element: %r', o)
+
+    for o in meta['objects']:
+        for p in o['properties']:
+            if isinstance(p['key'], dict) and p['key'].get('type') == 'symbol':
+                p['key'] = format_symbol(p['key'])
+                #print('normalized symbol as property key: %r', p)
+            if isinstance(p['value'], dict) and p['value'].get('type') == 'symbol':
+                p['value'] = format_symbol(p['value'])
+                #print('normalized symbol as property value: %r', p)
+
 # Normalize nargs for top level functions by defaulting 'nargs' from 'length'.
 def metadata_normalize_nargs_length(meta):
     # Default 'nargs' from 'length' for top level function objects.
@@ -345,7 +379,7 @@ def metadata_prepare_objects_bidx(meta):
     # and need to be present in thr->builtins[].  The list is already
     # stripped of built-in objects which are not needed based on config.
     # Ideally we'd scan the actually needed indices from the source
-    # but since some usage is inside #ifdefs that's not trivial.
+    # but since some usage is inside #if defined()s that's not trivial.
     for obj in objlist:
         if obj.get('bidx', False):
             obj['bidx_used'] = True
@@ -360,7 +394,7 @@ def metadata_prepare_objects_bidx(meta):
         else:
             meta['objects'].append(obj)
 
-# Normalize metadata property shorthand.  For example, if a proprety value
+# Normalize metadata property shorthand.  For example, if a property value
 # is a shorthand function, create a function object and change the property
 # to point to that function object.
 def metadata_normalize_shorthand(meta):
@@ -391,8 +425,9 @@ def metadata_normalize_shorthand(meta):
         obj['class'] = 'Function'
         obj['callable'] = True
         obj['constructable'] = val.get('constructable', False)
-        props.append({ 'key': 'length', 'value': val['length'], 'attributes': '' })
-        props.append({ 'key': 'name', 'value': funprop['key'], 'attributes': '' })
+        fun_name = val.get('name', funprop['key'])
+        props.append({ 'key': 'length', 'value': val['length'], 'attributes': 'c' })  # Configurable in ES2015
+        props.append({ 'key': 'name', 'value': fun_name, 'attributes': 'c' })   # Configurable in ES2015
         return obj
 
     def addAccessor(funprop, magic, nargs, length, name, native_func):
@@ -409,8 +444,8 @@ def metadata_normalize_shorthand(meta):
         obj['constructable'] = False
         # Shorthand accessors are minimal and have no .length or .name
         # right now.  Use longhand if these matter.
-        #props.append({ 'key': 'length', 'value': length, 'attributes': '' })
-        #props.append({ 'key': 'name', 'value': name, 'attributes': '' })
+        #props.append({ 'key': 'length', 'value': length, 'attributes': 'c' })
+        #props.append({ 'key': 'name', 'value': name, 'attributes': 'c' })
         return obj
 
     def decodeGetterShorthand(key, funprop):
@@ -614,7 +649,7 @@ def metadata_normalize_ram_function_names(meta):
         if name_prop is None:
             num_added += 1
             logger.debug('Adding missing "name" property for function %s' % o['id'])
-            o['properties'].append({ 'key': 'name', 'value': '', 'attributes': '' })
+            o['properties'].append({ 'key': 'name', 'value': '', 'attributes': 'c' })
 
     if num_added > 0:
         logger.debug('Added missing "name" property for %d functions' % num_added)
@@ -1003,6 +1038,9 @@ def load_metadata(opts, rom=False, build_info=None, active_opts=None):
     # properties which are disabled in (known) active duk_config.h.
     metadata_remove_disabled(meta, active_opts)
 
+    # Replace Symbol keys and property values with plain (encoded) strings.
+    metadata_normalize_symbol_strings(meta)
+
     # Normalize 'nargs' and 'length' defaults.
     metadata_normalize_nargs_length(meta)
 
@@ -1340,31 +1378,18 @@ def steal_prop(props, key):
 # XXX: Reserved word stridxs could be made to match token numbers
 #      directly so that a duk_stridx2token[] would not be needed.
 
-# Default property attributes, see E5 Section 15 beginning.
-LENGTH_PROPERTY_ATTRIBUTES = ''
+# Default property attributes.
+LENGTH_PROPERTY_ATTRIBUTES = 'c'
 ACCESSOR_PROPERTY_ATTRIBUTES = 'c'
 DEFAULT_DATA_PROPERTY_ATTRIBUTES = 'wc'
 
 # Encoding constants (must match duk_hthread_builtins.c).
-CLASS_BITS = 5
-BIDX_BITS = 7
-STRIDX_BITS = 9   # would be nice to optimize to 8
-NATIDX_BITS = 8
-NUM_NORMAL_PROPS_BITS = 6
-NUM_FUNC_PROPS_BITS = 6
 PROP_FLAGS_BITS = 3
-STRING_LENGTH_BITS = 8
-STRING_CHAR_BITS = 7
 LENGTH_PROP_BITS = 3
 NARGS_BITS = 3
 PROP_TYPE_BITS = 3
-MAGIC_BITS = 16
-ACCESSOR_MAGIC_BITS = 2
 
 NARGS_VARARGS_MARKER = 0x07
-NO_CLASS_MARKER = 0x00   # 0 = DUK_HOBJECT_CLASS_NONE
-NO_BIDX_MARKER = 0x7f
-NO_STRIDX_MARKER = 0xff
 
 PROP_TYPE_DOUBLE = 0
 PROP_TYPE_STRING = 1
@@ -1384,24 +1409,25 @@ PROPDESC_FLAG_ACCESSOR =     (1 << 3)  # unused now
 # Class names, numeric indices must match duk_hobject.h class numbers.
 class_names = [
     'Unused',
-    'Arguments',
+    'Object',
     'Array',
+    'Function',
+    'Arguments',
     'Boolean',
     'Date',
     'Error',
-    'Function',
     'JSON',
     'Math',
     'Number',
-    'Object',
     'RegExp',
     'String',
     'global',
+    'Symbol',
     'ObjEnv',
     'DecEnv',
-    'Buffer',
     'Pointer',
-    'Thread',
+    'Thread'
+    # Remaining class names are not currently needed.
 ]
 class2num = {}
 for i,v in enumerate(class_names):
@@ -1411,111 +1437,129 @@ for i,v in enumerate(class_names):
 def class_to_number(x):
     return class2num[x]
 
+# Bitpack a string into a format shared by heap and thread init data.
+def bitpack_string(be, s, stats=None):
+    # Strings are encoded as follows: a string begins in lowercase
+    # mode and recognizes the following 5-bit symbols:
+    #
+    #    0-25    'a' ... 'z' or 'A' ... 'Z' depending on uppercase mode
+    #    26-31   special controls, see code below
+
+    LOOKUP1 = 26
+    LOOKUP2 = 27
+    SWITCH1 = 28
+    SWITCH = 29
+    UNUSED1 = 30
+    EIGHTBIT = 31
+    LOOKUP = '0123456789_ \xff\x80"{'  # special characters
+    assert(len(LOOKUP) == 16)
+
+    # support up to 256 byte strings now, cases above ~30 bytes are very
+    # rare, so favor short strings in encoding
+    if len(s) <= 30:
+        be.bits(len(s), 5)
+    else:
+        be.bits(31, 5)
+        be.bits(len(s), 8)
+
+    # 5-bit character, mode specific
+    mode = 'lowercase'
+
+    for idx, c in enumerate(s):
+        # This encoder is not that optimal, but good enough for now.
+
+        islower = (ord(c) >= ord('a') and ord(c) <= ord('z'))
+        isupper = (ord(c) >= ord('A') and ord(c) <= ord('Z'))
+        islast = (idx == len(s) - 1)
+        isnextlower = False
+        isnextupper = False
+        if not islast:
+            c2 = s[idx+1]
+            isnextlower = (ord(c2) >= ord('a') and ord(c2) <= ord('z'))
+            isnextupper = (ord(c2) >= ord('A') and ord(c2) <= ord('Z'))
+
+        # XXX: Add back special handling for hidden or other symbols?
+
+        if islower and mode == 'lowercase':
+            be.bits(ord(c) - ord('a'), 5)
+            if stats is not None: stats['n_optimal'] += 1
+        elif isupper and mode == 'uppercase':
+            be.bits(ord(c) - ord('A'), 5)
+            if stats is not None: stats['n_optimal'] += 1
+        elif islower and mode == 'uppercase':
+            if isnextlower:
+                be.bits(SWITCH, 5)
+                be.bits(ord(c) - ord('a'), 5)
+                mode = 'lowercase'
+                if stats is not None: stats['n_switch'] += 1
+            else:
+                be.bits(SWITCH1, 5)
+                be.bits(ord(c) - ord('a'), 5)
+                if stats is not None: stats['n_switch1'] += 1
+        elif isupper and mode == 'lowercase':
+            if isnextupper:
+                be.bits(SWITCH, 5)
+                be.bits(ord(c) - ord('A'), 5)
+                mode = 'uppercase'
+                if stats is not None: stats['n_switch'] += 1
+            else:
+                be.bits(SWITCH1, 5)
+                be.bits(ord(c) - ord('A'), 5)
+                if stats is not None: stats['n_switch1'] += 1
+        elif c in LOOKUP:
+            idx = LOOKUP.find(c)
+            if idx >= 8:
+                be.bits(LOOKUP2, 5)
+                be.bits(idx - 8, 3)
+                if stats is not None: stats['n_lookup2'] += 1
+            else:
+                be.bits(LOOKUP1, 5)
+                be.bits(idx, 3)
+                if stats is not None: stats['n_lookup1'] += 1
+        elif ord(c) >= 0 and ord(c) <= 255:
+            logger.debug('eightbit encoding for %d (%s)' % (ord(c), c))
+            be.bits(EIGHTBIT, 5)
+            be.bits(ord(c), 8)
+            if stats is not None: stats['n_eightbit'] += 1
+        else:
+            raise Exception('internal error in bitpacking a string')
+
 # Generate bit-packed RAM string init data.
 def gen_ramstr_initdata_bitpacked(meta):
     be = dukutil.BitEncoder()
 
-    # Strings are encoded as follows: a string begins in lowercase
-    # mode and recognizes the following 5-bit symbols:
-    #
-    #    0-25    'a' ... 'z'
-    #    26         '_'
-    #    27      0x00 (actually decoded to 0xff, internal marker)
-    #    28         reserved
-    #    29      switch to uppercase for one character
-    #            (next 5-bit symbol must be in range 0-25)
-    #    30      switch to uppercase
-    #    31      read a 7-bit character verbatim
-    #
-    # Uppercase mode is the same except codes 29 and 30 switch to
-    # lowercase.
-
-    UNDERSCORE = 26
-    ZERO = 27
-    SWITCH1 = 29
-    SWITCH = 30
-    SEVENBIT = 31
-
     maxlen = 0
-    n_optimal = 0
-    n_switch1 = 0
-    n_switch = 0
-    n_sevenbit = 0
+    stats = {
+        'n_optimal': 0,
+        'n_lookup1': 0,
+        'n_lookup2': 0,
+        'n_switch1': 0,
+        'n_switch': 0,
+        'n_eightbit': 0
+    }
 
     for s_obj in meta['strings_stridx']:
         s = s_obj['str']
-
-        be.bits(len(s), 5)
-
         if len(s) > maxlen:
             maxlen = len(s)
-
-        # 5-bit character, mode specific
-        mode = 'lowercase'
-
-        for idx, c in enumerate(s):
-            # This encoder is not that optimal, but good enough for now.
-
-            islower = (ord(c) >= ord('a') and ord(c) <= ord('z'))
-            isupper = (ord(c) >= ord('A') and ord(c) <= ord('Z'))
-            islast = (idx == len(s) - 1)
-            isnextlower = False
-            isnextupper = False
-            if not islast:
-                c2 = s[idx+1]
-                isnextlower = (ord(c2) >= ord('a') and ord(c2) <= ord('z'))
-                isnextupper = (ord(c2) >= ord('A') and ord(c2) <= ord('Z'))
-
-            if c == '_':
-                be.bits(UNDERSCORE, 5)
-                n_optimal += 1
-            elif c == '\xff':
-                # A 0xff prefix (never part of valid UTF-8) is used for internal properties.
-                # It is encoded as 0x00 in generated init data for technical reasons: it
-                # keeps lookup table elements 7 bits instead of 8 bits.
-                be.bits(ZERO, 5)
-                n_optimal += 1
-            elif islower and mode == 'lowercase':
-                be.bits(ord(c) - ord('a'), 5)
-                n_optimal += 1
-            elif isupper and mode == 'uppercase':
-                be.bits(ord(c) - ord('A'), 5)
-                n_optimal += 1
-            elif islower and mode == 'uppercase':
-                if isnextlower:
-                    be.bits(SWITCH, 5)
-                    be.bits(ord(c) - ord('a'), 5)
-                    mode = 'lowercase'
-                    n_switch += 1
-                else:
-                    be.bits(SWITCH1, 5)
-                    be.bits(ord(c) - ord('a'), 5)
-                    n_switch1 += 1
-            elif isupper and mode == 'lowercase':
-                if isnextupper:
-                    be.bits(SWITCH, 5)
-                    be.bits(ord(c) - ord('A'), 5)
-                    mode = 'uppercase'
-                    n_switch += 1
-                else:
-                    be.bits(SWITCH1, 5)
-                    be.bits(ord(c) - ord('A'), 5)
-                    n_switch1 += 1
-            else:
-                assert(ord(c) >= 0 and ord(c) <= 127)
-                be.bits(SEVENBIT, 5)
-                be.bits(ord(c), 7)
-                n_sevenbit += 1
-                #logger.debug('sevenbit for: %r' % c)
+        bitpack_string(be, s, stats)
 
     # end marker not necessary, C code knows length from define
 
+    if be._varuint_count > 0:
+        logger.debug('Varuint distribution:')
+        logger.debug(json.dumps(be._varuint_dist[0:1024]))
+        logger.debug('Varuint encoding categories: %r' % be._varuint_cats)
+        logger.debug('Varuint efficiency: %f bits/value' % (float(be._varuint_bits) / float(be._varuint_count)))
     res = be.getByteString()
 
     logger.debug(('%d ram strings, %d bytes of string init data, %d maximum string length, ' + \
-                 'encoding: optimal=%d,switch1=%d,switch=%d,sevenbit=%d') % \
+                 'encoding: optimal=%d,lookup1=%d,lookup2=%d,switch1=%d,switch=%d,eightbit=%d') % \
                  (len(meta['strings_stridx']), len(res), maxlen, \
-                 n_optimal, n_switch1, n_switch, n_sevenbit))
+                 stats['n_optimal'],
+                 stats['n_lookup1'], stats['n_lookup2'],
+                 stats['n_switch1'], stats['n_switch'],
+                 stats['n_eightbit']))
 
     return res, maxlen
 
@@ -1590,24 +1634,20 @@ def encode_property_flags(flags):
 def gen_ramobj_initdata_for_object(meta, be, bi, string_to_stridx, natfunc_name_to_natidx, objid_to_bidx):
     def _stridx(strval):
         stridx = string_to_stridx[strval]
-        be.bits(stridx, STRIDX_BITS)
+        be.varuint(stridx)
     def _stridx_or_string(strval):
-        # XXX: could share the built-in strings decoder, would save ~200 bytes.
         stridx = string_to_stridx.get(strval)
         if stridx is not None:
-            be.bits(0, 1)  # marker: stridx
-            be.bits(stridx, STRIDX_BITS)
+            be.varuint(stridx + 1)
         else:
-            be.bits(1, 1)  # marker: raw bytes
-            be.bits(len(strval), STRING_LENGTH_BITS)
-            for i in xrange(len(strval)):
-                be.bits(ord(strval[i]), STRING_CHAR_BITS)
+            be.varuint(0)
+            bitpack_string(be, strval)
     def _natidx(native_name):
         natidx = natfunc_name_to_natidx[native_name]
-        be.bits(natidx, NATIDX_BITS)
+        be.varuint(natidx)
 
     class_num = class_to_number(bi['class'])
-    be.bits(class_num, CLASS_BITS)
+    be.varuint(class_num)
 
     props = [x for x in bi['properties']]  # clone
 
@@ -1674,13 +1714,9 @@ def gen_ramobj_initdata_for_object(meta, be, bi, string_to_stridx, natfunc_name_
 
         # Convert signed magic to 16-bit unsigned for encoding
         magic = resolve_magic(bi.get('magic'), objid_to_bidx) & 0xffff
-        if magic != 0:
-            assert(magic >= 0)
-            assert(magic < (1 << MAGIC_BITS))
-            be.bits(1, 1)
-            be.bits(magic, MAGIC_BITS)
-        else:
-            be.bits(0, 1)
+        assert(magic >= 0)
+        assert(magic <= 0xffff)
+        be.varuint(magic)
 
 # Generate RAM object initdata for an object's properties.
 def gen_ramobj_initdata_for_props(meta, be, bi, string_to_stridx, natfunc_name_to_natidx, objid_to_bidx, double_byte_order):
@@ -1688,64 +1724,60 @@ def gen_ramobj_initdata_for_props(meta, be, bi, string_to_stridx, natfunc_name_t
     count_function_props = 0
 
     def _bidx(bi_id):
+        be.varuint(objid_to_bidx[bi_id])
+    def _bidx_or_none(bi_id):
         if bi_id is None:
-            be.bits(NO_BIDX_MARKER, BIDX_BITS)
+            be.varuint(0)
         else:
-            be.bits(objid_to_bidx[bi_id], BIDX_BITS)
+            be.varuint(objid_to_bidx[bi_id] + 1)
     def _stridx(strval):
         stridx = string_to_stridx[strval]
-        be.bits(stridx, STRIDX_BITS)
+        be.varuint(stridx)
     def _stridx_or_string(strval):
-        # XXX: could share the built-in strings decoder, would save ~200 bytes.
         stridx = string_to_stridx.get(strval)
         if stridx is not None:
-            be.bits(0, 1)  # marker: stridx
-            be.bits(stridx, STRIDX_BITS)
+            be.varuint(stridx + 1)
         else:
-            be.bits(1, 1)  # marker: raw bytes
-            be.bits(len(strval), STRING_LENGTH_BITS)
-            for i in xrange(len(strval)):
-                be.bits(ord(strval[i]), STRING_CHAR_BITS)
+            be.varuint(0)
+            bitpack_string(be, strval)
     def _natidx(native_name):
         if native_name is None:
             natidx = 0  # 0 is NULL in the native functions table, denotes missing function
         else:
             natidx = natfunc_name_to_natidx[native_name]
-        be.bits(natidx, NATIDX_BITS)
+        be.varuint(natidx)
     props = [x for x in bi['properties']]  # clone
 
     # internal prototype: not an actual property so not in property list
     if bi.has_key('internal_prototype'):
-        _bidx(bi['internal_prototype'])
+        _bidx_or_none(bi['internal_prototype'])
     else:
-        _bidx(None)
+        _bidx_or_none(None)
 
     # external prototype: encoded specially, steal from property list
     prop_proto = steal_prop(props, 'prototype')
     if prop_proto is not None:
         assert(prop_proto['value']['type'] == 'object')
         assert(prop_proto['attributes'] == '')
-        _bidx(prop_proto['value']['id'])
+        _bidx_or_none(prop_proto['value']['id'])
     else:
-        _bidx(None)
+        _bidx_or_none(None)
 
     # external constructor: encoded specially, steal from property list
     prop_constr = steal_prop(props, 'constructor')
     if prop_constr is not None:
         assert(prop_constr['value']['type'] == 'object')
         assert(prop_constr['attributes'] == 'wc')
-        _bidx(prop_constr['value']['id'])
+        _bidx_or_none(prop_constr['value']['id'])
     else:
-        _bidx(None)
+        _bidx_or_none(None)
 
     # name: encoded specially for function objects, so steal and ignore here
     if bi['class'] == 'Function':
         prop_name = steal_prop(props, 'name')
         assert(prop_name is not None)
         assert(isinstance(prop_name['value'], str))
-        # Function.prototype.name has special handling in duk_hthread_builtins.c
-        assert((bi['id'] != 'bi_function_prototype' and prop_name['attributes'] == '') or \
-               (bi['id'] == 'bi_function_prototype' and prop_name['attributes'] == 'w'))
+        assert(prop_name['attributes'] == 'c')
 
     # length: encoded specially, so steal and ignore
     prop_proto = steal_prop(props, 'length')
@@ -1771,7 +1803,7 @@ def gen_ramobj_initdata_for_props(meta, be, bi, string_to_stridx, natfunc_name_t
         else:
             values.append(prop)
 
-    be.bits(len(values), NUM_NORMAL_PROPS_BITS)
+    be.varuint(len(values))
 
     for valspec in values:
         count_normal_props += 1
@@ -1845,12 +1877,9 @@ def gen_ramobj_initdata_for_props(meta, be, bi, string_to_stridx, natfunc_name_t
                 be.bits(PROP_TYPE_STRIDX, PROP_TYPE_BITS)
                 _stridx(val)
             else:
-                # Not in string table -> encode as raw 7-bit value
-
+                # Not in string table, bitpack string value as is.
                 be.bits(PROP_TYPE_STRING, PROP_TYPE_BITS)
-                be.bits(len(val), STRING_LENGTH_BITS)
-                for i in xrange(len(val)):
-                    be.bits(ord(val[i]), STRING_CHAR_BITS)
+                bitpack_string(be, val)
         elif isinstance(val, dict):
             if val['type'] == 'object':
                 be.bits(PROP_TYPE_BUILTIN, PROP_TYPE_BITS)
@@ -1877,7 +1906,7 @@ def gen_ramobj_initdata_for_props(meta, be, bi, string_to_stridx, natfunc_name_t
                     assert(getter_magic == setter_magic)
                 _natidx(getter_natfun)
                 _natidx(setter_natfun)
-                be.bits(getter_magic, ACCESSOR_MAGIC_BITS)
+                be.varuint(getter_magic)
             elif val['type'] == 'lightfunc':
                 logger.warning('RAM init data format doesn\'t support "lightfunc" now, value replaced with "undefined": %r' % valspec)
                 be.bits(PROP_TYPE_UNDEFINED, PROP_TYPE_BITS)
@@ -1886,7 +1915,7 @@ def gen_ramobj_initdata_for_props(meta, be, bi, string_to_stridx, natfunc_name_t
         else:
             raise Exception('unsupported value: %s' % repr(val))
 
-    be.bits(len(functions), NUM_FUNC_PROPS_BITS)
+    be.varuint(len(functions))
 
     for funprop in functions:
         count_function_props += 1
@@ -1896,6 +1925,12 @@ def gen_ramobj_initdata_for_props(meta, be, bi, string_to_stridx, natfunc_name_t
         assert(prop_len is not None)
         assert(isinstance(prop_len['value'], (int)))
         length = prop_len['value']
+
+        # XXX: this doesn't currently handle a function .name != its key
+        # At least warn about it here.  Or maybe generate the correct name
+        # at run time (it's systematic at the moment, @@toPrimitive has the
+        # name "[Symbol.toPrimitive]" which can be computed from the symbol
+        # internal representation.
 
         _stridx_or_string(funprop['key'])
         _natidx(funobj['native'])
@@ -1914,13 +1949,9 @@ def gen_ramobj_initdata_for_props(meta, be, bi, string_to_stridx, natfunc_name_t
         # (there are quite a lot of function properties)
         # Convert signed magic to 16-bit unsigned for encoding
         magic = resolve_magic(funobj.get('magic'), objid_to_bidx) & 0xffff
-        if magic != 0:
-            assert(magic >= 0)
-            assert(magic < (1 << MAGIC_BITS))
-            be.bits(1, 1)
-            be.bits(magic, MAGIC_BITS)
-        else:
-            be.bits(0, 1)
+        assert(magic >= 0)
+        assert(magic <= 0xffff)
+        be.varuint(magic)
 
     return count_normal_props, count_function_props
 
@@ -1983,6 +2014,11 @@ def gen_ramobj_initdata_bitpacked(meta, native_funcs, natfunc_name_to_natidx, do
         count_normal_props += count_obj_normal
         count_function_props += count_obj_func
 
+    if be._varuint_count > 0:
+        logger.debug('varuint distribution:')
+        logger.debug(json.dumps(be._varuint_dist[0:1024]))
+        logger.debug('Varuint encoding categories: %r' % be._varuint_cats)
+        logger.debug('Varuint efficiency: %f bits/value' % (float(be._varuint_bits) / float(be._varuint_count)))
     romobj_init_data = be.getByteString()
     #logger.debug(repr(romobj_init_data))
     #logger.debug(len(romobj_init_data))
@@ -2222,85 +2258,118 @@ def rom_emit_strings_source(genc, meta):
     genc.emitLine('#error currently assumes DUK_USE_HEAPPTR16 and DUK_USE_REFCOUNT16 are both defined')
     genc.emitLine('#endif')
     genc.emitLine('#if defined(DUK_USE_HSTRING_CLEN)')
-    genc.emitLine('#define DUK__STRINIT(heaphdr_flags,refcount,hash32,hash16,blen,clen) \\')
-    genc.emitLine('\t{ { (heaphdr_flags) | ((hash16) << 16), (refcount), (blen) }, (clen) }')
+    genc.emitLine('#define DUK__STRINIT(heaphdr_flags,refcount,hash32,hash16,blen,clen,next) \\')
+    genc.emitLine('\t{ { (heaphdr_flags) | ((hash16) << 16), DUK__REFCINIT((refcount)), (blen), (duk_hstring *) DUK_LOSE_CONST((next)) }, (clen) }')
     genc.emitLine('#else  /* DUK_USE_HSTRING_CLEN */')
-    genc.emitLine('#define DUK__STRINIT(heaphdr_flags,refcount,hash32,hash16,blen,clen) \\')
-    genc.emitLine('\t{ { (heaphdr_flags) | ((hash16) << 16), (refcount), (blen) } }')
+    genc.emitLine('#define DUK__STRINIT(heaphdr_flags,refcount,hash32,hash16,blen,clen,next) \\')
+    genc.emitLine('\t{ { (heaphdr_flags) | ((hash16) << 16), DUK__REFCINIT((refcount)), (blen), (duk_hstring *) DUK_LOSE_CONST((next)) } }')
     genc.emitLine('#endif  /* DUK_USE_HSTRING_CLEN */')
     genc.emitLine('#else  /* DUK_USE_HEAPPTR16 */')
-    genc.emitLine('#define DUK__STRINIT(heaphdr_flags,refcount,hash32,hash16,blen,clen) \\')
-    genc.emitLine('\t{ { (heaphdr_flags), (refcount) }, (hash32), (blen), (clen) }')
+    genc.emitLine('#define DUK__STRINIT(heaphdr_flags,refcount,hash32,hash16,blen,clen,next) \\')
+    genc.emitLine('\t{ { (heaphdr_flags), DUK__REFCINIT((refcount)), DUK_LOSE_CONST((next)) }, (hash32), (blen), (clen) }')
     genc.emitLine('#endif  /* DUK_USE_HEAPPTR16 */')
 
-    # Emit string initializers.
-    genc.emitLine('')
+    # Organize ROM strings into a chained ROM string table.  The ROM string
+    # h_next link pointer is used for chaining just like for RAM strings but
+    # in a separate string table.
+    #
+    # To avoid dealing with the different possible string hash algorithms,
+    # use a much more trivial lookup key for ROM strings for now.
+    romstr_hash = []
+    while len(romstr_hash) < ROMSTR_LOOKUP_SIZE:
+        romstr_hash.append([])
+    for str_index,v in enumerate(strs):
+        if len(v) > 0:
+            rom_lookup_hash = ord(v[0]) + (len(v) << 4)
+        else:
+            rom_lookup_hash = 0 + (len(v) << 4)
+        rom_lookup_hash = rom_lookup_hash & 0xff
+        romstr_hash[rom_lookup_hash].append(v)
+
+    romstr_next = {}   # string -> the string's 'next' link
+    for lst in romstr_hash:
+        prev = None
+        #print(repr(lst))
+        for v in lst:
+            if prev is not None:
+                romstr_next[prev] = v
+            prev = v
+
+    chain_lens = {}
+    for lst in romstr_hash:
+        chainlen = len(lst)
+        if not chain_lens.has_key(chainlen):
+            chain_lens[chainlen] = 0
+        chain_lens[chainlen] += 1
+    tmp = []
+    for k in sorted(chain_lens.keys()):
+        tmp.append('%d: %d' % (k, chain_lens[k]))
+    logger.info('ROM string table chain lengths: %s' % ', '.join(tmp))
+
     bi_str_map = {}   # string -> initializer variable name
     for str_index,v in enumerate(strs):
         bi_str_map[v] = 'duk_str_%d' % str_index
 
-        tmp = 'DUK_INTERNAL const duk_romstr_%d duk_str_%d = {' % (len(v), str_index)
-        flags = [ 'DUK_HTYPE_STRING', 'DUK_HEAPHDR_FLAG_READONLY' ]
-        is_arridx = string_is_arridx(v)
+    # Emit string initializers.  Emit the strings in an order which avoids
+    # forward declarations for the h_next link pointers; const forward
+    # declarations are a problem in C++.
+    genc.emitLine('')
+    for lst in romstr_hash:
+        for v in reversed(lst):
+            tmp = 'DUK_INTERNAL const duk_romstr_%d %s = {' % (len(v), bi_str_map[v])
+            flags = [ 'DUK_HTYPE_STRING', 'DUK_HEAPHDR_FLAG_READONLY', 'DUK_HEAPHDR_FLAG_REACHABLE' ]
+            is_arridx = string_is_arridx(v)
 
-        blen = len(v)
-        clen = rom_charlen(v)
+            blen = len(v)
+            clen = rom_charlen(v)
 
-        if blen == clen:
-            flags.append('DUK_HSTRING_FLAG_ASCII')
-        if is_arridx:
-            flags.append('DUK_HSTRING_FLAG_ARRIDX')
-        if len(v) >= 1 and v[0] == '\xff':
-            flags.append('DUK_HSTRING_FLAG_INTERNAL')
-        if v in [ 'eval', 'arguments' ]:
-            flags.append('DUK_HSTRING_FLAG_EVAL_OR_ARGUMENTS')
-        if reserved_words.has_key(v):
-            flags.append('DUK_HSTRING_FLAG_RESERVED_WORD')
-        if strict_reserved_words.has_key(v):
-            flags.append('DUK_HSTRING_FLAG_STRICT_RESERVED_WORD')
+            if blen == clen:
+                flags.append('DUK_HSTRING_FLAG_ASCII')
+            if is_arridx:
+                flags.append('DUK_HSTRING_FLAG_ARRIDX')
+            if len(v) >= 1 and v[0] in [ '\x80', '\x81', '\xff' ]:
+                flags.append('DUK_HSTRING_FLAG_SYMBOL')
+            if len(v) >= 1 and v[0] in [ '\xff' ]:
+                flags.append('DUK_HSTRING_FLAG_HIDDEN')
+            if v in [ 'eval', 'arguments' ]:
+                flags.append('DUK_HSTRING_FLAG_EVAL_OR_ARGUMENTS')
+            if reserved_words.has_key(v):
+                flags.append('DUK_HSTRING_FLAG_RESERVED_WORD')
+            if strict_reserved_words.has_key(v):
+                flags.append('DUK_HSTRING_FLAG_STRICT_RESERVED_WORD')
 
-        tmp += 'DUK__STRINIT(%s,%d,%s,%s,%d,%d),' % \
-            ('|'.join(flags), 1, rom_get_strhash32_macro(v), \
-             rom_get_strhash16_macro(v), blen, clen)
+            h_next = 'NULL'
+            if romstr_next.has_key(v):
+                h_next = '&' + bi_str_map[romstr_next[v]]
 
-        tmpbytes = []
-        for c in v:
-            if ord(c) < 128:
-                tmpbytes.append('%d' % ord(c))
-            else:
-                tmpbytes.append('%dU' % ord(c))
-        tmpbytes.append('%d' % 0)  # NUL term
-        tmp += '{' + ','.join(tmpbytes) + '}'
-        tmp += '};'
-        genc.emitLine(tmp)
+            tmp += 'DUK__STRINIT(%s,%d,%s,%s,%d,%d,%s),' % \
+                ('|'.join(flags), 1, rom_get_strhash32_macro(v), \
+                 rom_get_strhash16_macro(v), blen, clen, h_next)
 
-    # Emit an array of ROM strings, used for string interning.
-    #
-    # XXX: String interning now simply walks through the list checking if
-    # an incoming string is present in ROM.  It would be better to use
-    # binary search (or perhaps even a perfect hash) for this lookup.
-    # To support binary search we could emit the list in string hash
-    # order, but because there are multiple different hash variants
-    # there would need to be multiple lists.  We could also order the
-    # strings based on the string data which is independent of the string
-    # hash and still possible to binary search relatively efficiently.
+            tmpbytes = []
+            for c in v:
+                if ord(c) < 128:
+                    tmpbytes.append('%d' % ord(c))
+                else:
+                    tmpbytes.append('%dU' % ord(c))
+            tmpbytes.append('%d' % 0)  # NUL term
+            tmp += '{' + ','.join(tmpbytes) + '}'
+            tmp += '};'
+            genc.emitLine(tmp)
+
+    # Emit the ROM string lookup table used by string interning.
     #
     # cdecl> explain const int * const foo;
     # declare foo as const pointer to const int
     genc.emitLine('')
-    genc.emitLine('DUK_INTERNAL const duk_hstring * const duk_rom_strings[%d] = {'% len(strs))
+    genc.emitLine('DUK_INTERNAL const duk_hstring * const duk_rom_strings_lookup[%d] = {'% len(romstr_hash))
     tmp = []
     linecount = 0
-    for str_index,v in enumerate(strs):
-        if str_index > 0:
-            tmp.append(', ')
-        if linecount >= 6:
-            linecount = 0
-            tmp.append('\n')
-        tmp.append('(const duk_hstring *) &duk_str_%d' % str_index)
-        linecount += 1
-    for line in ''.join(tmp).split('\n'):
-        genc.emitLine(line)
+    for lst in romstr_hash:
+        if len(lst) == 0:
+            genc.emitLine('\tNULL,')
+        else:
+            genc.emitLine('\t(const duk_hstring *) &%s,' % bi_str_map[lst[0]])
     genc.emitLine('};')
 
     # Emit an array of duk_hstring pointers indexed using DUK_STRIDX_xxx.
@@ -2320,7 +2389,7 @@ def rom_emit_strings_source(genc, meta):
 # Emit ROM strings header.
 def rom_emit_strings_header(genc, meta):
     genc.emitLine('#if !defined(DUK_SINGLE_FILE)')  # C++ static const workaround
-    genc.emitLine('DUK_INTERNAL_DECL const duk_hstring * const duk_rom_strings[%d];'% len(meta['strings']))
+    genc.emitLine('DUK_INTERNAL_DECL const duk_hstring * const duk_rom_strings_lookup[%d];' % ROMSTR_LOOKUP_SIZE)
     genc.emitLine('DUK_INTERNAL_DECL const duk_hstring * const duk_rom_strings_stridx[%d];' % len(meta['strings_stridx']))
     genc.emitLine('#endif')
 
@@ -2334,6 +2403,8 @@ def rom_emit_object_initializer_types_and_macros(genc):
                   'struct duk_romarr { duk_harray hdr; };')
     genc.emitLine('typedef struct duk_romfun duk_romfun; ' + \
                   'struct duk_romfun { duk_hnatfunc hdr; };')
+    genc.emitLine('typedef struct duk_romobjenv duk_romobjenv; ' + \
+                  'struct duk_romobjenv { duk_hobjenv hdr; };')
 
     # For ROM pointer compression we'd need a -compile time- variant.
     # The current portable solution is to just assign running numbers
@@ -2351,18 +2422,22 @@ def rom_emit_object_initializer_types_and_macros(genc):
     #genc.emitLine('#error need DUK_USE_HEAPPTR_ENC16_STATIC which provides compile-time pointer compression')
     #genc.emitLine('#endif')
     genc.emitLine('#define DUK__ROMOBJ_INIT(heaphdr_flags,refcount,props,props_enc16,iproto,iproto_enc16,esize,enext,asize,hsize) \\')
-    genc.emitLine('\t{ { { (heaphdr_flags), (refcount), 0, 0, (props_enc16) }, (iproto_enc16), (esize), (enext), (asize) } }')
+    genc.emitLine('\t{ { { (heaphdr_flags), DUK__REFCINIT((refcount)), 0, 0, (props_enc16) }, (iproto_enc16), (esize), (enext), (asize) } }')
     genc.emitLine('#define DUK__ROMARR_INIT(heaphdr_flags,refcount,props,props_enc16,iproto,iproto_enc16,esize,enext,asize,hsize,length) \\')
-    genc.emitLine('\t{ { { { (heaphdr_flags), (refcount), 0, 0, (props_enc16) }, (iproto_enc16), (esize), (enext), (asize) }, (length), 0 /*length_nonwritable*/ } }')
+    genc.emitLine('\t{ { { { (heaphdr_flags), DUK__REFCINIT((refcount)), 0, 0, (props_enc16) }, (iproto_enc16), (esize), (enext), (asize) }, (length), 0 /*length_nonwritable*/ } }')
     genc.emitLine('#define DUK__ROMFUN_INIT(heaphdr_flags,refcount,props,props_enc16,iproto,iproto_enc16,esize,enext,asize,hsize,nativefunc,nargs,magic) \\')
-    genc.emitLine('\t{ { { { (heaphdr_flags), (refcount), 0, 0, (props_enc16) }, (iproto_enc16), (esize), (enext), (asize) }, (nativefunc), (duk_int16_t) (nargs), (duk_int16_t) (magic) } }')
+    genc.emitLine('\t{ { { { (heaphdr_flags), DUK__REFCINIT((refcount)), 0, 0, (props_enc16) }, (iproto_enc16), (esize), (enext), (asize) }, (nativefunc), (duk_int16_t) (nargs), (duk_int16_t) (magic) } }')
+    genc.emitLine('#define DUK__ROMOBJENV_INIT(heaphdr_flags,refcount,props,props_enc16,iproto,iproto_enc16,esize,enext,asize,hsize,target,has_this) \\')
+    genc.emitLine('\t{ { { { (heaphdr_flags), DUK__REFCINIT((refcount)), 0, 0, (props_enc16) }, (iproto_enc16), (esize), (enext), (asize) }, (duk_hobject *) DUK_LOSE_CONST(target), (has_this) } }')
     genc.emitLine('#else  /* DUK_USE_HEAPPTR16 */')
     genc.emitLine('#define DUK__ROMOBJ_INIT(heaphdr_flags,refcount,props,props_enc16,iproto,iproto_enc16,esize,enext,asize,hsize) \\')
-    genc.emitLine('\t{ { { (heaphdr_flags), (refcount), NULL, NULL }, (duk_uint8_t *) DUK_LOSE_CONST(props), (duk_hobject *) DUK_LOSE_CONST(iproto), (esize), (enext), (asize), (hsize) } }')
+    genc.emitLine('\t{ { { (heaphdr_flags), DUK__REFCINIT((refcount)), NULL, NULL }, (duk_uint8_t *) DUK_LOSE_CONST(props), (duk_hobject *) DUK_LOSE_CONST(iproto), (esize), (enext), (asize), (hsize) } }')
     genc.emitLine('#define DUK__ROMARR_INIT(heaphdr_flags,refcount,props,props_enc16,iproto,iproto_enc16,esize,enext,asize,hsize,length) \\')
-    genc.emitLine('\t{ { { { (heaphdr_flags), (refcount), NULL, NULL }, (duk_uint8_t *) DUK_LOSE_CONST(props), (duk_hobject *) DUK_LOSE_CONST(iproto), (esize), (enext), (asize), (hsize) }, (length), 0 /*length_nonwritable*/ } }')
+    genc.emitLine('\t{ { { { (heaphdr_flags), DUK__REFCINIT((refcount)), NULL, NULL }, (duk_uint8_t *) DUK_LOSE_CONST(props), (duk_hobject *) DUK_LOSE_CONST(iproto), (esize), (enext), (asize), (hsize) }, (length), 0 /*length_nonwritable*/ } }')
     genc.emitLine('#define DUK__ROMFUN_INIT(heaphdr_flags,refcount,props,props_enc16,iproto,iproto_enc16,esize,enext,asize,hsize,nativefunc,nargs,magic) \\')
-    genc.emitLine('\t{ { { { (heaphdr_flags), (refcount), NULL, NULL }, (duk_uint8_t *) DUK_LOSE_CONST(props), (duk_hobject *) DUK_LOSE_CONST(iproto), (esize), (enext), (asize), (hsize) }, (nativefunc), (duk_int16_t) (nargs), (duk_int16_t) (magic) } }')
+    genc.emitLine('\t{ { { { (heaphdr_flags), DUK__REFCINIT((refcount)), NULL, NULL }, (duk_uint8_t *) DUK_LOSE_CONST(props), (duk_hobject *) DUK_LOSE_CONST(iproto), (esize), (enext), (asize), (hsize) }, (nativefunc), (duk_int16_t) (nargs), (duk_int16_t) (magic) } }')
+    genc.emitLine('#define DUK__ROMOBJENV_INIT(heaphdr_flags,refcount,props,props_enc16,iproto,iproto_enc16,esize,enext,asize,hsize,target,has_this) \\')
+    genc.emitLine('\t{ { { { (heaphdr_flags), DUK__REFCINIT((refcount)), NULL, NULL }, (duk_uint8_t *) DUK_LOSE_CONST(props), (duk_hobject *) DUK_LOSE_CONST(iproto), (esize), (enext), (asize), (hsize) }, (duk_hobject *) DUK_LOSE_CONST(target), (has_this) } }')
     genc.emitLine('#endif  /* DUK_USE_HEAPPTR16 */')
 
     # Initializer typedef for a dummy function pointer.  ROM support assumes
@@ -2642,6 +2717,8 @@ def rom_emit_objects(genc, meta, bi_str_map):
             genc.emitLine('DUK_EXTERNAL_DECL const duk_romfun duk_obj_%d;' % idx)
         elif obj.get('class') == 'Array':
             genc.emitLine('DUK_EXTERNAL_DECL const duk_romarr duk_obj_%d;' % idx)
+        elif obj.get('class') == 'ObjEnv':
+            genc.emitLine('DUK_EXTERNAL_DECL const duk_romobjenv duk_obj_%d;' % idx)
         else:
             genc.emitLine('DUK_EXTERNAL_DECL const duk_romobj duk_obj_%d;' % idx)
     genc.emitLine('')
@@ -2659,10 +2736,12 @@ def rom_emit_objects(genc, meta, bi_str_map):
             tmp = 'DUK_EXTERNAL const duk_romfun duk_obj_%d = ' % idx
         elif obj.get('class') == 'Array':
             tmp = 'DUK_EXTERNAL const duk_romarr duk_obj_%d = ' % idx
+        elif obj.get('class') == 'ObjEnv':
+            tmp = 'DUK_EXTERNAL const duk_romobjenv duk_obj_%d = ' % idx
         else:
             tmp = 'DUK_EXTERNAL const duk_romobj duk_obj_%d = ' % idx
 
-        flags = [ 'DUK_HTYPE_OBJECT', 'DUK_HEAPHDR_FLAG_READONLY' ]
+        flags = [ 'DUK_HTYPE_OBJECT', 'DUK_HEAPHDR_FLAG_READONLY', 'DUK_HEAPHDR_FLAG_REACHABLE' ]
         if isfunc:
             flags.append('DUK_HOBJECT_FLAG_NATFUNC')
             flags.append('DUK_HOBJECT_FLAG_STRICT')
@@ -2717,6 +2796,12 @@ def rom_emit_objects(genc, meta, bi_str_map):
             tmp += 'DUK__ROMARR_INIT(%s,%d,%s,%d,%s,%d,%d,%d,%d,%d,%d);' % \
                 ('|'.join(flags), refcount, props, props_enc16, \
                  iproto, iproto_enc16, e_size, e_next, a_size, h_size, arrlen)
+        elif obj.get('class') == 'ObjEnv':
+            objenv_target = '&%s' % bi_obj_map[obj['objenv_target']]
+            objenv_has_this = obj['objenv_has_this']
+            tmp += 'DUK__ROMOBJENV_INIT(%s,%d,%s,%d,%s,%d,%d,%d,%d,%d,%s,%d);' % \
+                ('|'.join(flags), refcount, props, props_enc16, \
+                 iproto, iproto_enc16, e_size, e_next, a_size, h_size, objenv_target, objenv_has_this)
         else:
             tmp += 'DUK__ROMOBJ_INIT(%s,%d,%s,%d,%s,%d,%d,%d,%d,%d);' % \
                 ('|'.join(flags), refcount, props, props_enc16, \
@@ -2967,6 +3052,12 @@ def main():
     gc_src.emitHeader('genbuiltins.py')
     gc_src.emitLine('#include "duk_internal.h"')
     gc_src.emitLine('')
+    gc_src.emitLine('#if defined(DUK_USE_ASSERTIONS)')
+    gc_src.emitLine('#define DUK__REFCINIT(refc) 0 /*h_assert_refcount*/, (refc) /*actual*/')
+    gc_src.emitLine('#else')
+    gc_src.emitLine('#define DUK__REFCINIT(refc) (refc) /*actual*/')
+    gc_src.emitLine('#endif')
+    gc_src.emitLine('')
     gc_src.emitLine('#if defined(DUK_USE_ROM_STRINGS)')
     if opts.rom_support:
         rom_bi_str_map = rom_emit_strings_source(gc_src, rom_meta)
@@ -3006,7 +3097,7 @@ def main():
 
     gc_hdr = dukutil.GenerateC()
     gc_hdr.emitHeader('genbuiltins.py')
-    gc_hdr.emitLine('#ifndef DUK_BUILTINS_H_INCLUDED')
+    gc_hdr.emitLine('#if !defined(DUK_BUILTINS_H_INCLUDED)')
     gc_hdr.emitLine('#define DUK_BUILTINS_H_INCLUDED')
     gc_hdr.emitLine('')
     gc_hdr.emitLine('#if defined(DUK_USE_ROM_STRINGS)')
@@ -3080,7 +3171,7 @@ def main():
             'plain': t1, 'base64': t2, 'define': s['define']
         })
     meta = {
-        'comment': 'Metadata for Duktape build',
+        'comment': 'Metadata for Duktape sources',
         'duk_version': ver,
         'duk_version_string': '%d.%d.%d' % (ver / 10000, (ver / 100) % 100, ver % 100),
         'git_commit': build_info['git_commit'],

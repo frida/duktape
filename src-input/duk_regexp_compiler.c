@@ -20,7 +20,7 @@
 
 #include "duk_internal.h"
 
-#ifdef DUK_USE_REGEXP_SUPPORT
+#if defined(DUK_USE_REGEXP_SUPPORT)
 
 /*
  *  Helper macros
@@ -864,34 +864,34 @@ DUK_LOCAL duk_uint32_t duk__parse_regexp_flags(duk_hthread *thr, duk_hstring *h)
 		switch (c) {
 		case (duk_uint8_t) 'g': {
 			if (flags & DUK_RE_FLAG_GLOBAL) {
-				goto error;
+				goto flags_error;
 			}
 			flags |= DUK_RE_FLAG_GLOBAL;
 			break;
 		}
 		case (duk_uint8_t) 'i': {
 			if (flags & DUK_RE_FLAG_IGNORE_CASE) {
-				goto error;
+				goto flags_error;
 			}
 			flags |= DUK_RE_FLAG_IGNORE_CASE;
 			break;
 		}
 		case (duk_uint8_t) 'm': {
 			if (flags & DUK_RE_FLAG_MULTILINE) {
-				goto error;
+				goto flags_error;
 			}
 			flags |= DUK_RE_FLAG_MULTILINE;
 			break;
 		}
 		default: {
-			goto error;
+			goto flags_error;
 		}
 		}
 	}
 
 	return flags;
 
- error:
+ flags_error:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_REGEXP_FLAGS);
 	return 0;  /* never here */
 }
@@ -931,8 +931,7 @@ DUK_LOCAL void duk__create_escaped_source(duk_hthread *thr, int idx_pattern) {
 	n = (duk_size_t) DUK_HSTRING_GET_BYTELEN(h);
 
 	if (n == 0) {
-		/* return '(?:)' */
-		duk_push_hstring_stridx(ctx, DUK_STRIDX_ESCAPED_EMPTY_REGEXP);
+		duk_push_string(ctx, "(?:)");
 		return;
 	}
 
@@ -959,7 +958,9 @@ DUK_LOCAL void duk__create_escaped_source(duk_hthread *thr, int idx_pattern) {
 	}
 
 	DUK_BW_SETPTR_AND_COMPACT(thr, bw, q);
-	(void) duk_buffer_to_string(ctx, -1);  /* -> [ ... escaped_source ] */
+	(void) duk_buffer_to_string(ctx, -1);  /* Safe if input is safe. */
+
+	/* [ ... escaped_source ] */
 }
 
 /*
@@ -993,8 +994,8 @@ DUK_INTERNAL void duk_regexp_compile(duk_hthread *thr) {
 	 */
 
 	/* TypeError if fails */
-	h_pattern = duk_require_hstring(ctx, -2);
-	h_flags = duk_require_hstring(ctx, -1);
+	h_pattern = duk_require_hstring_notsymbol(ctx, -2);
+	h_flags = duk_require_hstring_notsymbol(ctx, -1);
 
 	/*
 	 *  Create normalized 'source' property (E5 Section 15.10.3).
@@ -1072,7 +1073,7 @@ DUK_INTERNAL void duk_regexp_compile(duk_hthread *thr) {
 	/* [ ... pattern flags escaped_source buffer ] */
 
 	DUK_BW_COMPACT(thr, &re_ctx.bw);
-	(void) duk_buffer_to_string(ctx, -1);  /* coerce to string */
+	(void) duk_buffer_to_string(ctx, -1);  /* Safe because flags is at most 7 bit. */
 
 	/* [ ... pattern flags escaped_source bytecode ] */
 
@@ -1100,17 +1101,6 @@ DUK_INTERNAL void duk_regexp_compile(duk_hthread *thr) {
 DUK_INTERNAL void duk_regexp_create_instance(duk_hthread *thr) {
 	duk_context *ctx = (duk_context *) thr;
 	duk_hobject *h;
-	duk_hstring *h_bc;
-	duk_small_int_t re_flags;
-
-	/* [ ... escape_source bytecode ] */
-
-	h_bc = duk_require_hstring(ctx, -1);
-	DUK_ASSERT(h_bc != NULL);
-	DUK_ASSERT(DUK_HSTRING_GET_BYTELEN(h_bc) >= 1);          /* always at least the header */
-	DUK_ASSERT(DUK_HSTRING_GET_CHARLEN(h_bc) >= 1);
-	DUK_ASSERT((duk_small_int_t) DUK_HSTRING_GET_DATA(h_bc)[0] < 0x80);  /* flags always encodes to 1 byte */
-	re_flags = (duk_small_int_t) DUK_HSTRING_GET_DATA(h_bc)[0];
 
 	/* [ ... escaped_source bytecode ] */
 
@@ -1123,25 +1113,21 @@ DUK_INTERNAL void duk_regexp_create_instance(duk_hthread *thr) {
 	DUK_HOBJECT_SET_CLASS_NUMBER(h, DUK_HOBJECT_CLASS_REGEXP);
 	DUK_HOBJECT_SET_PROTOTYPE_UPDREF(thr, h, thr->builtins[DUK_BIDX_REGEXP_PROTOTYPE]);
 
-	duk_xdef_prop_stridx(ctx, -3, DUK_STRIDX_INT_BYTECODE, DUK_PROPDESC_FLAGS_NONE);
+	duk_xdef_prop_stridx_short(ctx, -3, DUK_STRIDX_INT_BYTECODE, DUK_PROPDESC_FLAGS_NONE);
 
 	/* [ ... regexp_object escaped_source ] */
 
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_SOURCE, DUK_PROPDESC_FLAGS_NONE);
+	/* In ES2015 .source, and the .global, .multiline, etc flags are
+	 * inherited getters.  Store the escaped source as an internal
+	 * property for the getter.
+	 */
+
+	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_INT_SOURCE, DUK_PROPDESC_FLAGS_NONE);
 
 	/* [ ... regexp_object ] */
 
-	duk_push_boolean(ctx, (re_flags & DUK_RE_FLAG_GLOBAL));
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_GLOBAL, DUK_PROPDESC_FLAGS_NONE);
-
-	duk_push_boolean(ctx, (re_flags & DUK_RE_FLAG_IGNORE_CASE));
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_IGNORE_CASE, DUK_PROPDESC_FLAGS_NONE);
-
-	duk_push_boolean(ctx, (re_flags & DUK_RE_FLAG_MULTILINE));
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_MULTILINE, DUK_PROPDESC_FLAGS_NONE);
-
 	duk_push_int(ctx, 0);
-	duk_xdef_prop_stridx(ctx, -2, DUK_STRIDX_LAST_INDEX, DUK_PROPDESC_FLAGS_W);
+	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_LAST_INDEX, DUK_PROPDESC_FLAGS_W);
 
 	/* [ ... regexp_object ] */
 }

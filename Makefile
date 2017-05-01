@@ -39,7 +39,7 @@ VALGRIND:=$(shell command -v valgrind 2>/dev/null)
 PYTHON:=$(shell { command -v python2 || command -v python; } 2>/dev/null)
 
 # Scrape version from the public header; convert from e.g. 10203 -> '1.2.3'
-DUK_VERSION:=$(shell cat src-input/duk_api_public.h.in | grep define | grep DUK_VERSION | tr -s ' ' ' ' | cut -d ' ' -f 3 | tr -d 'L')
+DUK_VERSION:=$(shell cat src-input/duktape.h.in | grep 'define ' | grep DUK_VERSION | tr -s ' ' ' ' | cut -d ' ' -f 3 | tr -d 'L')
 DUK_MAJOR:=$(shell echo "$(DUK_VERSION) / 10000" | bc)
 DUK_MINOR:=$(shell echo "$(DUK_VERSION) % 10000 / 100" | bc)
 DUK_PATCH:=$(shell echo "$(DUK_VERSION) % 100" | bc)
@@ -59,27 +59,42 @@ DUKTAPE_CMDLINE_SOURCES = \
 	examples/alloc-logging/duk_alloc_logging.c \
 	examples/alloc-torture/duk_alloc_torture.c \
 	examples/alloc-hybrid/duk_alloc_hybrid.c \
-	examples/debug-trans-socket/duk_trans_socket_unix.c \
 	extras/print-alert/duk_print_alert.c \
 	extras/console/duk_console.c \
 	extras/logging/duk_logging.c \
 	extras/module-duktape/duk_module_duktape.c
-LINENOISE_SOURCES = \
-	linenoise/linenoise.c
+ifdef SYSTEMROOT  # Windows
+DUKTAPE_CMDLINE_SOURCES += examples/debug-trans-socket/duk_trans_socket_windows.c
+else
+DUKTAPE_CMDLINE_SOURCES += examples/debug-trans-socket/duk_trans_socket_unix.c
+endif
+ifdef SYSTEMROOT  # Windows
+LINENOISE_SOURCES =
+else
+LINENOISE_SOURCES = linenoise/linenoise.c
+endif
 
 # Configure.py options for a few configuration profiles needed.
 CONFIGOPTS_NONDEBUG=--option-file util/makeduk_base.yaml
 CONFIGOPTS_NONDEBUG_SCANBUILD=--option-file util/makeduk_base.yaml --option-file util/makeduk_scanbuild.yaml
 CONFIGOPTS_NONDEBUG_PERF=--option-file config/examples/performance_sensitive.yaml
 CONFIGOPTS_NONDEBUG_SIZE=--option-file config/examples/low_memory.yaml
-CONFIGOPTS_NONDEBUG_AJDUK=--option-file util/makeduk_base.yaml --option-file util/makeduk_ajduk.yaml --fixup-file util/makeduk_ajduk_fixup.h
+CONFIGOPTS_NONDEBUG_AJDUK=--option-file util/makeduk_ajduk.yaml --fixup-file util/makeduk_ajduk_fixup.h
 CONFIGOPTS_NONDEBUG_ROM=--rom-support --rom-auto-lightfunc --option-file util/makeduk_base.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX
-CONFIGOPTS_NONDEBUG_AJDUK_ROM=--rom-support --rom-auto-lightfunc --builtin-file util/example_user_builtins1.yaml --builtin-file util/example_user_builtins2.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX -DDUK_USE_ASSERTIONS -UDUK_USE_DEBUG
+CONFIGOPTS_NONDEBUG_AJDUK_ROM=--rom-support --rom-auto-lightfunc --option-file util/makeduk_ajduk.yaml --fixup-file util/makeduk_ajduk_fixup.h --builtin-file util/example_user_builtins1.yaml --builtin-file util/example_user_builtins2.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX -UDUK_USE_DEBUG
+CONFIGOPTS_NONDEBUG_AJDUK_NOREFC=--option-file util/makeduk_base.yaml --option-file util/makeduk_ajduk.yaml --fixup-file util/makeduk_ajduk_fixup.h -UDUK_USE_REFERENCE_COUNTING -UDUK_USE_DOUBLE_LINKED_HEAP
 CONFIGOPTS_DEBUG=--option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml
 CONFIGOPTS_DEBUG_SCANBUILD=--option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml --option-file util/makeduk_scanbuild.yaml
 CONFIGOPTS_DEBUG_ROM=--rom-support --rom-auto-lightfunc --option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX
 CONFIGOPTS_EMDUK=-UDUK_USE_FASTINT -UDUK_USE_PACKED_TVAL
 CONFIGOPTS_DUKWEB=--option-file util/dukweb_base.yaml --fixup-file util/dukweb_fixup.h
+
+# Profile guided optimization test set.
+PGO_TEST_SET=\
+	tests/ecmascript/test-dev-mandel2-func.js \
+	tests/ecmascript/test-dev-totp.js \
+	tests/perf/test-fib.js \
+	tests/ecmascript/test-regexp-ipv6-regexp.js
 
 # Compiler setup for Linux.
 CC	= gcc
@@ -90,7 +105,11 @@ CCOPTS_SHARED += -DDUK_CMDLINE_PRINTALERT_SUPPORT
 CCOPTS_SHARED += -DDUK_CMDLINE_CONSOLE_SUPPORT
 CCOPTS_SHARED += -DDUK_CMDLINE_LOGGING_SUPPORT
 CCOPTS_SHARED += -DDUK_CMDLINE_MODULE_SUPPORT
+ifdef SYSTEMROOT  # Windows
+# Skip fancy (linenoise)
+else
 CCOPTS_SHARED += -DDUK_CMDLINE_FANCY
+endif
 CCOPTS_SHARED += -DDUK_CMDLINE_ALLOC_LOGGING
 CCOPTS_SHARED += -DDUK_CMDLINE_ALLOC_TORTURE
 CCOPTS_SHARED += -DDUK_CMDLINE_ALLOC_HYBRID
@@ -104,8 +123,10 @@ CCOPTS_SHARED += -Wall -Wextra -Wunused-result -Wdeclaration-after-statement -Wu
 CCOPTS_SHARED += -Wcast-qual
 CCOPTS_SHARED += -Wshadow
 CCOPTS_SHARED += -Wunreachable-code  # on some compilers unreachable code is an error
+CCOPTS_SHARED += -Wmissing-prototypes
 # -Wfloat-equal is too picky, there's no apparent way to compare floats
 # (even when you know it's safe) without triggering warnings
+CCOPTS_SHARED += -fmax-errors=3  # prevent floods of errors if e.g. parenthesis missing
 CCOPTS_SHARED += -I./linenoise
 CCOPTS_SHARED += -I./examples/alloc-logging
 CCOPTS_SHARED += -I./examples/alloc-torture
@@ -140,7 +161,11 @@ CCOPTS_AJDUK += -UDUK_CMDLINE_FANCY -DDUK_CMDLINE_AJSHEAP -D_POSIX_C_SOURCE=2008
 CCOPTS_AJDUK += -UDUK_CMDLINE_LOGGING_SUPPORT  # extras/logger init writes to Duktape.Logger, problem with ROM build
 CCOPTS_AJDUK += -UDUK_CMDLINE_MODULE_SUPPORT  # extras/module-duktape init writes to Duktape.Logger, problem with ROM build
 
+ifdef SYSTEMROOT  # Windows
+CCLIBS  = -lm -lws2_32
+else
 CCLIBS	= -lm
+endif
 
 # Emscripten options:
 #   - --memory-init-file 0 to avoid a separate memory init file (this is
@@ -177,6 +202,7 @@ checksetup:
 # which we don't want to delete by default with 'clean'.
 .PHONY:	clean
 clean:
+	@rm -f *.gcda
 	@rm -rf dist/
 	@rm -rf prep/
 	@rm -rf site/
@@ -289,6 +315,9 @@ prep/ajduk-nondebug: prep
 prep/ajduk-nondebug-rom: prep
 	@rm -rf ./prep/ajduk-nondebug-rom
 	$(PYTHON) tools/configure.py --output-directory ./prep/ajduk-nondebug-rom --source-directory src-input --config-metadata config $(CONFIGOPTS_NONDEBUG_AJDUK_ROM) --line-directives
+prep/ajduk-nondebug-norefc: prep
+	@rm -rf ./prep/ajduk-nondebug-norefc
+	$(PYTHON) tools/configure.py --output-directory ./prep/ajduk-nondebug-norefc --source-directory src-input --config-metadata config $(CONFIGOPTS_NONDEBUG_AJDUK_NOREFC) --line-directives
 
 # Library targets.
 libduktape.so.1.0.0: prep/nondebug
@@ -307,6 +336,18 @@ duk: linenoise prep/nondebug
 	$(CC) -o $@ -Iprep/nondebug $(CCOPTS_NONDEBUG) prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 	@ls -l $@
 	-@size $@
+duk-pgo:
+	@echo "Compiling with -fprofile-generate..."
+	@rm -f *.gcda
+	$(CC) -o $@ -Iprep/nondebug $(CCOPTS_NONDEBUG) -fprofile-generate prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
+	@ls -l $@
+	-@size $@
+	@echo "Generating profile..."
+	@echo "XXX: profile is pretty dummy now, some benchmark run would be much better"
+	./$@ $(PGO_TEST_SET)
+	@rm -f $@
+	$(CC) -o $@ -Iprep/nondebug $(CCOPTS_NONDEBUG) -fprofile-use prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
+	@echo "Recompiling with -fprofile-use..."
 duk-perf: linenoise prep/nondebug-perf
 	$(CC) -o $@ -Iprep/nondebug-perf $(CCOPTS_NONDEBUG) prep/nondebug-perf/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 	@ls -l $@
@@ -331,10 +372,36 @@ duk.O2: linenoise prep/nondebug
 	$(CC) -o $@ -Iprep/nondebug $(CCOPTS_NONDEBUG) -O2 prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 	@ls -l $@
 	-@size $@
+duk-pgo.O2: linenoise prep/nondebug
+	@echo "Compiling with -fprofile-generate..."
+	@rm -f *.gcda
+	$(CC) -o $@ -Iprep/nondebug $(CCOPTS_NONDEBUG) -O2 -fprofile-generate prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
+	@ls -l $@
+	-@size $@
+	@echo "Generating profile..."
+	@echo "XXX: profile is pretty dummy now, some benchmark run would be much better"
+	./$@ $(PGO_TEST_SET)
+	@rm -f $@
+	@echo "Recompiling with -fprofile-use..."
+	$(CC) -o $@ -Iprep/nondebug $(CCOPTS_NONDEBUG) -O2 -fprofile-use prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
+	@ls -l $@
+	-@size $@
 duk-perf.O2: linenoise prep/nondebug-perf
 	$(CC) -o $@ -Iprep/nondebug-perf $(CCOPTS_NONDEBUG) -O2 prep/nondebug-perf/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 	@ls -l $@
 	-@size $@
+duk-perf-pgo.O2: linenoise prep/nondebug-perf
+	@echo "Compiling with -fprofile-generate..."
+	@rm -f *.gcda
+	$(CC) -o $@ -Iprep/nondebug-perf $(CCOPTS_NONDEBUG) -O2 -fprofile-generate prep/nondebug-perf/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
+	@ls -l $@
+	-@size $@
+	@echo "Generating profile..."
+	@echo "XXX: profile is pretty dummy now, some benchmark run would be much better"
+	./$@ $(PGO_TEST_SET)
+	@rm -f $@
+	@echo "Recompiling with -fprofile-use..."
+	$(CC) -o $@ -Iprep/nondebug-perf $(CCOPTS_NONDEBUG) -O2 -fprofile-use prep/nondebug-perf/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 duk.O3: linenoise prep/nondebug
 	$(CC) -o $@ -Iprep/nondebug $(CCOPTS_NONDEBUG) -O3 prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 	@ls -l $@
@@ -405,6 +472,17 @@ ajduk-rom: alljoyn-js ajtcl linenoise prep/ajduk-nondebug-rom
 	@echo "*** SUCCESS:"
 	@ls -l $@
 	-@size $@
+ajduk-norefc: alljoyn-js ajtcl linenoise prep/ajduk-nondebug-norefc
+	$(CC) -o $@ \
+		-Ialljoyn-js/src -Iajtcl/inc/ -Iajtcl/src/target/linux/ -Iprep/ajduk-nondebug-norefc \
+		$(CCOPTS_NONDEBUG) $(CCOPTS_AJDUK) \
+		prep/ajduk-nondebug-norefc/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
+		examples/cmdline/duk_cmdline_ajduk.c \
+		alljoyn-js/src/ajs_heap.c ajtcl/src/aj_debug.c ajtcl/src/target/linux/aj_target_util.c \
+		-lm -lpthread
+	@echo "*** SUCCESS:"
+	@ls -l $@
+	-@size $@
 # util/fix_emscripten.py is used so that emduk.js can also be executed using
 # Duktape itself (though you can't currently pass arguments/files to it).
 # No Emscripten fixes are needed in practice since Duktape 1.5.0.
@@ -462,52 +540,40 @@ checkalign:
 	@cp util/check_align.sh /tmp
 	@cd /tmp; sh check_align.sh
 
-# Overall test target, not very useful.
+# Overall quick test target.
 .PHONY: test
-test: qecmatest apitest regfuzztest underscoretest lodashtest emscriptentest emscripteninceptiontest test262test
+test: apitest ecmatest
+	@echo ""
+	@echo "### Tests successful!"
+
+# Set of miscellaneous tests for release.
+.PHONY: releasetest
+releasetest: xmldoctest closuretest bluebirdtest luajstest jsinterpretertest lodashtest underscoretest emscriptenluatest emscriptenduktest emscripteninceptiontest emscriptenmandeltest emscriptentest errorinjecttest
+	@echo ""
+	@echo "### Release tests successful!"  # These tests now have output checks.
 
 # Runtests-based Ecmascript and API tests.
 .PHONY:	runtestsdeps
 runtestsdeps:	runtests/node_modules UglifyJS2
 runtests/node_modules:
-	echo "Installing required NodeJS modules for runtests"
-	cd runtests; npm install
+	@echo "Installing required NodeJS modules for runtests"
+	@cd runtests; npm install
 .PHONY:	ecmatest
 ecmatest: runtestsdeps duk
 	@echo "### ecmatest"
-	"$(NODE)" runtests/runtests.js $(RUNTESTSOPTS) --run-duk --cmd-duk=$(shell pwd)/duk --report-diff-to-other --run-nodejs --run-rhino --num-threads 4 --log-file=/tmp/duk-test.log tests/ecmascript/
-.PHONY:	ecmatestd
-ecmatestd: runtestsdeps dukd
-	@echo "### ecmatestd"
-	"$(NODE)" runtests/runtests.js $(RUNTESTSOPTS) --run-duk --cmd-duk=$(shell pwd)/dukd --report-diff-to-other --run-nodejs --run-rhino --num-threads 4 --log-file=/tmp/duk-test.log tests/ecmascript/
+	"$(NODE)" runtests/runtests.js $(RUNTESTSOPTS) --run-duk --cmd-duk=$(shell pwd)/duk --num-threads 4 --log-file=/tmp/duk-test.log tests/ecmascript/
 .PHONY:	qecmatest
-qecmatest: runtestsdeps duk
-	@echo "### qecmatest"
-	"$(NODE)" runtests/runtests.js $(RUNTESTSOPTS) --run-duk --cmd-duk=$(shell pwd)/duk --num-threads 4  --log-file=/tmp/duk-test.log tests/ecmascript/
-.PHONY:	qecmatestd
-qecmatestd: runtestsdeps dukd
-	@echo "### qecmatestd"
-	"$(NODE)" runtests/runtests.js $(RUNTESTSOPTS) --run-duk --cmd-duk=$(shell pwd)/dukd --num-threads 4 --log-file=/tmp/duk-test.log tests/ecmascript/
+qecmatest: ecmatest
+.PHONY: ecmatest-comparison
+ecmatest-comparison: runtestsdeps duk
+	@echo "### ecmatest"
+	"$(NODE)" runtests/runtests.js $(RUNTESTSOPTS) --run-duk --cmd-duk=$(shell pwd)/duk --report-diff-to-other --run-nodejs --run-rhino --num-threads 4 --log-file=/tmp/duk-test.log tests/ecmascript/
 .PHONY: apiprep
 apiprep: runtestsdeps libduktape.so.1.0.0
 .PHONY:	apitest
 apitest: apiprep
 	@echo "### apitest"
 	"$(NODE)" runtests/runtests.js $(RUNTESTSOPTS) --num-threads 1 --log-file=/tmp/duk-api-test.log tests/api/
-
-# Matrix tests.
-.PHONY: matrix10
-matrix10: dist
-	cd dist; $(PYTHON) ../util/matrix_compile.py --count=10
-.PHONY: matrix100
-matrix100: dist
-	cd dist; $(PYTHON) ../util/matrix_compile.py --count=100
-.PHONY: matrix1000
-matrix1000: dist
-	cd dist; $(PYTHON) ../util/matrix_compile.py --count=1000
-.PHONY: matrix10000
-matrix10000: dist
-	cd dist; $(PYTHON) ../util/matrix_compile.py --count=10000
 
 # Dukweb.js test.
 .PHONY: dukwebtest
@@ -546,7 +612,8 @@ regfuzztest: regfuzz-0.1.tar.gz duk
 # expect string etc.
 .PHONY: lodashtest
 lodashtest: lodash duk
-	./duk lodash/lodash.js tests/lodash/basic.js
+	./duk lodash/lodash.js tests/lodash/basic.js | tee /tmp/duk-lodash-test.out
+	if [ `md5sum /tmp/duk-lodash-test.out | cut -f 1 -d ' '` != "318977a4e39deb7c97c87b9b55ea9a80" ]; then false; fi
 .PHONY: test262test
 test262test: test262-es5-tests duk
 	@echo "### test262test"
@@ -566,34 +633,34 @@ test262cat: test262-es5-tests
 emscriptentest: emscripten duk
 	@echo "### emscriptentest"
 	@rm -f /tmp/duk-emcc-test*
-	@echo "NOTE: this emscripten test is incomplete (compiles helloworld.c and runs it, no checks yet)"
 	emscripten/emcc $(EMCCOPTS) tests/emscripten/helloworld.c -o /tmp/duk-emcc-test.js
 	cat /tmp/duk-emcc-test.js | $(PYTHON) util/fix_emscripten.py > /tmp/duk-emcc-test-fixed.js
 	@ls -l /tmp/duk-emcc-test*
 	#./duk /tmp/duk-emcc-test-fixed.js
-	./duk /tmp/duk-emcc-test.js
+	./duk /tmp/duk-emcc-test.js | tee /tmp/duk-emcc-test.out
+	if [ `md5sum /tmp/duk-emcc-test.out | cut -f 1 -d ' '` != "59ca0efa9f5633cb0371bbc0355478d8" ]; then false; fi
 .PHONY: emscriptenmandeltest
 emscriptenmandeltest: emscripten duk
 	@echo "### emscriptenmandeltest"
 	@rm -f /tmp/duk-emcc-test*
-	@echo "NOTE: this emscripten test is incomplete (compiles mandelbrot.c and runs it, no checks yet)"
 	emscripten/emcc $(EMCCOPTS) tests/emscripten/mandelbrot.c -o /tmp/duk-emcc-test.js
 	cat /tmp/duk-emcc-test.js | $(PYTHON) util/fix_emscripten.py > /tmp/duk-emcc-test-fixed.js
 	@ls -l /tmp/duk-emcc-test*
 	#./duk /tmp/duk-emcc-test-fixed.js
-	./duk /tmp/duk-emcc-test.js
+	./duk /tmp/duk-emcc-test.js | tee /tmp/duk-emcc-test.out
+	if [ `md5sum /tmp/duk-emcc-test.out | cut -f 1 -d ' '` != "a0b2daf2e979e192d9838d976920f213" ]; then false; fi
 # Compile Duktape and hello.c using Emscripten and execute the result with
 # Duktape.
 .PHONY: emscripteninceptiontest
 emscripteninceptiontest: emscripten prep/nondebug duk
-	@echo "### emscripteniceptiontest"
+	@echo "### emscripteninceptiontest"
 	@rm -f /tmp/duk-emcc-test*
-	@echo "NOTE: this emscripten test is incomplete (compiles Duktape and hello.c and runs it, no checks yet)"
 	emscripten/emcc $(EMCCOPTS) -Iprep/nondebug prep/nondebug/duktape.c examples/hello/hello.c -o /tmp/duk-emcc-test.js
 	cat /tmp/duk-emcc-test.js | $(PYTHON) util/fix_emscripten.py > /tmp/duk-emcc-test-fixed.js
 	@ls -l /tmp/duk-emcc-test*
 	#./duk /tmp/duk-emcc-test-fixed.js
-	./duk /tmp/duk-emcc-test.js
+	./duk /tmp/duk-emcc-test.js | tee /tmp/duk-emcc-test.out
+	if [ `md5sum /tmp/duk-emcc-test.out | cut -f 1 -d ' '` != "8521f9d969cdc0a2fa26661a151cef04" ]; then false; fi
 # Compile Duktape with Emscripten and execute it with NodeJS.
 .PHONY: emscriptenduktest
 emscriptenduktest: emscripten prep/emduk
@@ -602,9 +669,10 @@ emscriptenduktest: emscripten prep/emduk
 	emscripten/emcc $(EMCCOPTS_DUKVM) -Iprep/emduk prep/emduk/duktape.c examples/eval/eval.c -o /tmp/duk-emcc-duktest.js
 	"$(NODE)" /tmp/duk-emcc-duktest.js \
 		'print("Hello from Duktape running inside Emscripten/NodeJS");' \
-		'print(Duktape.version, Duktape.env);' \
-		'for(i=0;i++<100;)print((i%3?"":"Fizz")+(i%5?"":"Buzz")||i)'
-	"$(NODE)" /tmp/duk-emcc-duktest.js "eval(new Buffer(Duktape.dec('base64', '$(MAND_BASE64)')).toString())"
+		'for(i=0;i++<100;)print((i%3?"":"Fizz")+(i%5?"":"Buzz")||i)' | tee /tmp/duk-emcc-duktest-1.out
+	if [ `md5sum /tmp/duk-emcc-duktest-1.out | cut -f 1 -d ' '` != "3c22acb0ec822d4c85f5d427e42826dc" ]; then false; fi
+	"$(NODE)" /tmp/duk-emcc-duktest.js "eval(new Buffer(Duktape.dec('base64', '$(MAND_BASE64)')).toString())" | tee /tmp/duk-emcc-duktest-2.out
+	if [ `md5sum /tmp/duk-emcc-duktest-2.out | cut -f 1 -d ' '` != "c78521c68b60065e6ed0652bebd7af0b" ]; then false; fi
 LUASRC=	lapi.c lauxlib.c lbaselib.c lbitlib.c lcode.c lcorolib.c lctype.c \
 	ldblib.c ldebug.c ldo.c ldump.c lfunc.c lgc.c linit.c liolib.c \
 	llex.c lmathlib.c lmem.c loadlib.c lobject.c lopcodes.c loslib.c \
@@ -619,7 +687,8 @@ emscriptenluatest: emscripten duk lua-5.2.3
 	cat /tmp/duk-emcc-luatest.js | $(PYTHON) util/fix_emscripten.py > /tmp/duk-emcc-luatest-fixed.js
 	@ls -l /tmp/duk-emcc-luatest*
 	#./duk /tmp/duk-emcc-luatest-fixed.js
-	./duk /tmp/duk-emcc-luatest.js
+	./duk /tmp/duk-emcc-luatest.js | tee /tmp/duk-emcc-luatest.out
+	if [ `md5sum /tmp/duk-emcc-luatest.out | cut -f 1 -d ' '` != "280db36b7805a00f887d559c1ba8285d" ]; then false; fi
 .PHONY: jsinterpretertest
 jsinterpretertest: JS-Interpreter duk
 	@echo "### jsinterpretertest"
@@ -627,14 +696,16 @@ jsinterpretertest: JS-Interpreter duk
 	echo "window = {};" > /tmp/duk-jsint-test.js
 	cat JS-Interpreter/acorn.js JS-Interpreter/interpreter.js >> /tmp/duk-jsint-test.js
 	cat tests/jsinterpreter/addition.js >> /tmp/duk-jsint-test.js
-	./duk /tmp/duk-jsint-test.js
+	./duk /tmp/duk-jsint-test.js | tee /tmp/duk-jsint-test.out
+	if [ `md5sum /tmp/duk-jsint-test.out | cut -f 1 -d ' '` != "9ae0ea9e3c9c6e1b9b6252c8395efdc1" ]; then false; fi
 .PHONY: luajstest
 luajstest: luajs duk
 	@rm -f /tmp/duk-luajs-mandel.js /tmp/duk-luajs-test.js
 	luajs/lua2js tests/luajs/mandel.lua /tmp/duk-luajs-mandel.js
 	echo "console = { log: function() { print(Array.prototype.join.call(arguments, ' ')); } };" > /tmp/duk-luajs-test.js
 	cat luajs/lua.js /tmp/duk-luajs-mandel.js >> /tmp/duk-luajs-test.js
-	./duk /tmp/duk-luajs-test.js
+	./duk /tmp/duk-luajs-test.js | tee /tmp/duk-luajs-test.out
+	if [ `md5sum /tmp/duk-luajs-test.out | cut -f 1 -d ' '` != "a0b2daf2e979e192d9838d976920f213" ]; then false; fi
 .PHONY: bluebirdtest
 bluebirdtest: bluebird.js duk
 	@rm -f /tmp/duk-bluebird-test.js
@@ -642,13 +713,16 @@ bluebirdtest: bluebird.js duk
 	echo "var myPromise = new Promise(function(resolve, reject) { setTimeout(function () { resolve('resolved 123') }, 1000); });" >> /tmp/duk-bluebird-test.js
 	echo "myPromise.then(function (v) { print('then:', v); });" >> /tmp/duk-bluebird-test.js
 	echo "fakeEventLoop();" >> /tmp/duk-bluebird-test.js
-	./duk /tmp/duk-bluebird-test.js
+	./duk /tmp/duk-bluebird-test.js | tee /tmp/duk-bluebird-test.out
+	if [ `md5sum /tmp/duk-bluebird-test.out | cut -f 1 -d ' '` != "6edf907604d970db7f6f4ca6991127db" ]; then false; fi
 .PHONY: closuretest
 closuretest: compiler.jar duk
 	@echo "### closuretest"
 	@rm -f /tmp/duk-closure-test*
 	$(JAVA) -jar compiler.jar tests/ecmascript/test-dev-mandel2-func.js > /tmp/duk-closure-test.js
-	./duk /tmp/duk-closure-test.js
+	./duk /tmp/duk-closure-test.js | tee /tmp/duk-closure-test.out
+	if [ `md5sum /tmp/duk-closure-test.out | cut -f 1 -d ' '` != "a0b2daf2e979e192d9838d976920f213" ]; then false; fi
+.PHONY: xmldoctest
 xmldoctest: sax-js xmldoc duk
 	@echo "### xmldoctest"
 	@rm -f /tmp/duk-xmldoc-test*
@@ -657,7 +731,14 @@ xmldoctest: sax-js xmldoc duk
 	cat xmldoc/lib/xmldoc.js >> /tmp/duk-xmldoc-test.js
 	echo ";" >> /tmp/duk-xmldoc-test.js  # missing end semicolon causes automatic semicolon problem
 	cat tests/xmldoc/basic.js >> /tmp/duk-xmldoc-test.js
-	./duk /tmp/duk-xmldoc-test.js
+	./duk /tmp/duk-xmldoc-test.js | tee /tmp/duk-xmldoc-test.out
+	if [ `md5sum /tmp/duk-xmldoc-test.out | cut -f 1 -d ' '` != "798cab55f8c62f3cf24f277a8192518a" ]; then false; fi
+.PHONY: errorinjecttest
+errorinjecttest:
+	bash util/error_inject_test.sh
+.PHONY: checklisttest
+checklisttest:
+	bash util/checklist_compile_test.sh
 
 # Third party download/unpack targets, libraries etc.
 linenoise:
@@ -860,6 +941,7 @@ site: duktape-releases dukweb.js jquery-1.11.0.js
 	mkdir site
 	-cd duktape-releases/; git pull --rebase  # get binaries up-to-date, but allow errors for offline use
 	cd website/; $(PYTHON) buildsite.py ../site/
+	for i in site/*.html; do echo "tidy checking $$i"; tidy -q -e -xml -utf8 $$i; done
 	@rm -rf /tmp/site/
 	cp -r site /tmp/  # useful for quick preview
 .PHONY:	dist-site
@@ -897,6 +979,7 @@ codepolicycheck:
 		--check-mixed-indent \
 		--check-nonleading-tab \
 		--check-cpp-comment \
+		--check-ifdef-ifndef \
 		--dump-vim-commands \
 		src-input/*.c src-input/*.h src-input/*.h.in tests/api/*.c
 	@$(PYTHON) util/check_code_policy.py \
@@ -908,7 +991,7 @@ codepolicycheck:
 		--check-mixed-indent \
 		--check-tab-indent \
 		--dump-vim-commands \
-		src-input/*.py tools/*.py util/*.py debugger/*/*.py examples/*/*.py testrunner/*/*.py tests/perf/*.py
+		src-input/*.py tools/*.py util/*.py debugger/*/*.py examples/*/*.py testrunner/*.py tests/perf/*.py
 	@$(PYTHON) util/check_code_policy.py \
 		$(CODEPOLICYOPTS) \
 		--check-debug-log-calls \
@@ -930,6 +1013,7 @@ codepolicycheck:
 		--check-mixed-indent \
 		--check-nonleading-tab \
 		--check-cpp-comment \
+		--check-ifdef-ifndef \
 		--dump-vim-commands \
 		examples/*/*.c examples/*/*.h \
 		extras/*/*.c extras/*/*.h
@@ -941,6 +1025,7 @@ codepolicycheck:
 		--check-trailing-whitespace \
 		--check-mixed-indent \
 		--check-nonleading-tab \
+		--check-ifdef-ifndef \
 		--dump-vim-commands \
 		config/architectures/* config/compilers/* config/platforms/* \
 		config/feature-options/*.yaml \

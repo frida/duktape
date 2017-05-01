@@ -29,14 +29,14 @@ index 12, string: '[object Object]', length 15
 index 12, string: '[object Object]'
 index 13, string: '[object Thread]', length 15
 index 13, string: '[object Thread]'
-index 14, string: '[object ArrayBuffer]', length 20
-index 14, string: '[object ArrayBuffer]'
-index 15, string: '[object ArrayBuffer]', length 20
-index 15, string: '[object ArrayBuffer]'
-index 16, string: '[object ArrayBuffer]', length 20
-index 16, string: '[object ArrayBuffer]'
-index 17, string: '[object ArrayBuffer]', length 20
-index 17, string: '[object ArrayBuffer]'
+index 14, string: '[object Uint8Array]', length 19
+index 14, string: '[object Uint8Array]'
+index 15, string: '[object Uint8Array]', length 19
+index 15, string: '[object Uint8Array]'
+index 16, string: '[object Uint8Array]', length 19
+index 16, string: '[object Uint8Array]'
+index 17, string: '[object Uint8Array]', length 19
+index 17, string: '[object Uint8Array]'
 index 18, string: 'null', length 4
 index 18, string: 'null'
 index 19, string: '0xdeadbeef', length 10
@@ -80,7 +80,7 @@ static duk_ret_t test_1(duk_context *ctx, void *udata) {
 		ptr[i] = (char) ('a' + i);
 	}
 	duk_push_pointer(ctx, (void *) NULL);
-	duk_push_pointer(ctx, (void *) 0xdeadbeef);
+	duk_push_pointer(ctx, (void *) 0xdeadbeefUL);
 
 	n = duk_get_top(ctx);
 	printf("top: %ld\n", (long) n);
@@ -89,7 +89,7 @@ static duk_ret_t test_1(duk_context *ctx, void *udata) {
 		duk_size_t sz;
 
 		duk_dup(ctx, i);
-		sz = (duk_size_t) 0xdeadbeef;
+		sz = (duk_size_t) 0xdeadbeefUL;
 		p = (const unsigned char *) duk_to_lstring(ctx, -1, &sz);
 		printf("index %ld, string: '", (long) i);
 		for (j = 0; j < sz; j++) {
@@ -103,7 +103,7 @@ static duk_ret_t test_1(duk_context *ctx, void *udata) {
 		duk_pop(ctx);
 
 		duk_dup(ctx, i);
-		sz = (duk_size_t) 0xdeadbeef;
+		sz = (duk_size_t) 0xdeadbeefUL;
 		p = (const unsigned char *) duk_to_lstring(ctx, -1, NULL);
 		printf("index %ld, string: '%s'\n", (long) i, (const char *) p);
 		duk_pop(ctx);

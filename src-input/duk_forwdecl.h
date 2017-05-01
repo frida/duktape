@@ -2,7 +2,7 @@
  *  Forward declarations for all Duktape structures.
  */
 
-#ifndef DUK_FORWDECL_H_INCLUDED
+#if !defined(DUK_FORWDECL_H_INCLUDED)
 #define DUK_FORWDECL_H_INCLUDED
 
 /*
@@ -24,8 +24,12 @@ struct duk_hstring_external;
 struct duk_hobject;
 struct duk_hcompfunc;
 struct duk_hnatfunc;
+struct duk_hboundfunc;
 struct duk_hthread;
 struct duk_hbufobj;
+struct duk_hdecenv;
+struct duk_hobjenv;
+struct duk_hproxy;
 struct duk_hbuffer;
 struct duk_hbuffer_fixed;
 struct duk_hbuffer_dynamic;
@@ -44,7 +48,7 @@ struct duk_strcache;
 struct duk_ljstate;
 struct duk_strtab_entry;
 
-#ifdef DUK_USE_DEBUG
+#if defined(DUK_USE_DEBUG)
 struct duk_fixedbuffer;
 #endif
 
@@ -80,8 +84,12 @@ typedef struct duk_hstring_external duk_hstring_external;
 typedef struct duk_hobject duk_hobject;
 typedef struct duk_hcompfunc duk_hcompfunc;
 typedef struct duk_hnatfunc duk_hnatfunc;
-typedef struct duk_hbufobj duk_hbufobj;
+typedef struct duk_hboundfunc duk_hboundfunc;
 typedef struct duk_hthread duk_hthread;
+typedef struct duk_hbufobj duk_hbufobj;
+typedef struct duk_hdecenv duk_hdecenv;
+typedef struct duk_hobjenv duk_hobjenv;
+typedef struct duk_hproxy duk_hproxy;
 typedef struct duk_hbuffer duk_hbuffer;
 typedef struct duk_hbuffer_fixed duk_hbuffer_fixed;
 typedef struct duk_hbuffer_dynamic duk_hbuffer_dynamic;
@@ -100,7 +108,7 @@ typedef struct duk_strcache duk_strcache;
 typedef struct duk_ljstate duk_ljstate;
 typedef struct duk_strtab_entry duk_strtab_entry;
 
-#ifdef DUK_USE_DEBUG
+#if defined(DUK_USE_DEBUG)
 typedef struct duk_fixedbuffer duk_fixedbuffer;
 #endif
 

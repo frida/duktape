@@ -38,11 +38,15 @@ Duktape API to call Ecmascript functions from C code and vice versa.</p>
 <ul>
 <li>Embeddable, portable, compact:
     can run on platforms with 192kB flash and 64kB system RAM</li>
-<li><a href="http://www.ecma-international.org/ecma-262/5.1/">Ecmascript E5/E5.1</a>
-    compliant, some features implemented from
+<li><a href="http://www.ecma-international.org/ecma-262/5.1/">Ecmascript E5/E5.1</a>,
+    with some semantics updated from ES2015+</li>
+<li>Partial support for
     <a href="http://www.ecma-international.org/ecma-262/6.0/index.html">Ecmascript 2015 (E6)</a> and
-    <a href="http://www.ecma-international.org/ecma-262/7.0/index.html">Ecmascript 2016 (E7)</a></li>
-<li>Khronos/ES6 <a href="https://www.khronos.org/registry/typedarray/specs/latest/">TypedArray</a>
+    <a href="http://www.ecma-international.org/ecma-262/7.0/index.html">Ecmascript 2016 (E7)</a>, see
+    <a href="http://wiki.duktape.org/PostEs5Features.html">Post-ES5 feature status</a> and
+    <a href="https://kangax.github.io/compat-table">kangax/compat-table</a>
+</li>
+<li>ES2015 <a href="https://www.khronos.org/registry/typedarray/specs/latest/">TypedArray</a>
     and <a href="https://nodejs.org/docs/v6.9.1/api/buffer.html">Node.js Buffer</a> bindings</li>
 <li><a href="https://encoding.spec.whatwg.org/#api">Encoding API</a> bindings based on the WHATWG Encoding Living Standard</li>
 <li>Built-in debugger</li>
@@ -52,7 +56,7 @@ Duktape API to call Ecmascript functions from C code and vice versa.</p>
 <li>Combined reference counting and mark-and-sweep garbage collection
     with finalization</li>
 <li>Coroutines</li>
-<li>Property virtualization using a subset of Ecmascript E6 Proxy object</li>
+<li>Property virtualization using a subset of Ecmascript ES2015 Proxy object</li>
 <li>Bytecode dump/load for caching compiled functions</li>
 <li>Distributable includes an optional logging framework, CommonJS-based module
     loading implementations, etc</li>
@@ -128,7 +132,7 @@ $ ./test
 here to disable Ecmascript 6 <code>Proxy</code> object support:</p>
 
 <pre>
-$ python2 duktape-2.0.0/tools/configure.py --output-directory src-duktape \
+$ python2 duktape-2.1.0/tools/configure.py --output-directory src-duktape \
       -UDUK_USE_ES6_PROXY
 $ ls src-duktape/
 <span class="index-shell-output">duk_config.h  duk_source_meta.json  duktape.c  duktape.h</span>

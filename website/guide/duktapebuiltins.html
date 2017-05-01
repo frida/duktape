@@ -1,19 +1,37 @@
 <h1 id="duktapebuiltins">Duktape built-ins</h1>
 
-<p>This section describes Duktape-specific built-in objects, methods, and
-values.</p>
+<p>This section summarizes Duktape-specific and non-Ecmascript built-in
+objects, methods, and values.</p>
 
 <h2>Additional global object properties</h2>
 
 <table>
 <thead>
 <tr>
-<th>Property</th><th>Description</th>
+<th>Property</th>
+<th>Description</th>
 </tr>
 </thead>
 <tbody>
-<tr><td class="propname"><a href="#builtin-duktape">Duktape</a></td>
-    <td>The Duktape built-in object.  Contains miscellaneous implementation specific stuff.</td></tr>
+<tr>
+<td class="propname">global</td>
+<td>References the global object itself.
+    See <a href="https://github.com/tc39/proposal-global">proposal-global</a>.</td>
+</tr>
+<tr>
+<td class="propname"><a href="#builtin-duktape">Duktape</a></td>
+<td>The Duktape built-in object.  Contains miscellaneous implementation specific stuff.</td>
+</tr>
+<tr>
+<td class="propname"><a href="#builtin-textencoder">TextEncoder</a></td>
+<td>TextEncoder() from <a href="https://encoding.spec.whatwg.org/">WHATWG Encoding API</a>.
+    Converts a string into a buffer using UTF-8 encoding.</td>
+</tr>
+<tr>
+<td class="propname"><a href="#builtin-textdecoder">TextDecoder</a></td>
+<td>TextDecoder() from <a href="https://encoding.spec.whatwg.org/">WHATWG Encoding API</a>.
+    Converts a buffer into a string using UTF-8 encoding.</td>
+</tr>
 </tbody>
 </table>
 
@@ -37,7 +55,9 @@ values.</p>
 <tr><td class="propname"><a href="#builtin-duktape-dec">dec</a></td>
     <td>Decode a value (hex, base-64, JX, JC): <code>Duktape.dec('base64', 'Zm9v')</code>.</td></tr>
 <tr><td class="propname"><a href="#builtin-duktape-info">info</a></td>
-    <td>Get internal information (such as heap address and alloc size) of a value in a version specific format.</td></tr>
+    <td>Get internal information (such as heap address and alloc size)
+        of a value in a version specific format.  The C API equivalent
+        is <code>duk_inspect_value()</code>.</td></tr>
 <tr><td class="propname"><a href="#builtin-duktape-act">act</a></td>
     <td>Get information about call stack entry.</td></tr>
 <tr><td class="propname"><a href="#builtin-duktape-gc">gc</a></td>
@@ -166,6 +186,13 @@ var result = Duktape.dec('base64', 'Zm9v');
 print(typeof result, result);  // prints 'object foo'
 </pre>
 
+<p>If you prefer a full <code>Uint8Array</code> over a plain buffer, you can
+coerce the result as follows:</p>
+<pre class="ecmascript-code">
+var result = Object(Duktape.dec('base64', 'Zm9v'));
+print(typeof result, result);  // prints 'object foo'
+</pre>
+
 <p>If you wish to get back a string value, you can coerce the plain buffer to
 a string e.g. as follows:</p>
 <pre class="ecmascript-code">
@@ -185,235 +212,31 @@ print(result.foo);  // prints 123
 
 <h3 id="builtin-duktape-info">info()</h3>
 
-<p>When given an arbitrary input value, <code>Duktape.info()</code> returns an
-array of values with internal information related to the value.  The format of
-of the values in the array is version specific.  This is mainly useful for
-debugging and diagnosis, e.g. when estimating rough memory usage of objects.</p>
+<p><code>Duktape.info()</code> returns an object exposing internal information
+related to its argument value.  See
+<code><a href="api.html#duk_inspect_value">duk_inspect_value()</a></code>
+for description of current fields.</p>
 
-<p>The current result array format is described in the table below.  Notes:</p>
-<ul>
-<li>Memory sizes do not include any heap overhead (which may be 8-16 bytes or
-    more, depending on what kind of allocation algorithm is used).</li>
-<li>Reference counts are not adjusted in any way, and include references to
-    the value caused by the <code>info()</code> call.</li>
-<li>"type tag" is a number matching <code>DUK_TYPE_xxx</code> from <code>duktape.h</code>.</li>
-<li>Prop entry count: for objects, number of entries allocated for properties
-    outside the array part.</li>
-<li>Prop entry next: for objects, index where the next new property will be
-    inserted within the entry part.  When "prop entry count" equals "prop entry next",
-    insertion of a new property causes an object resize.
-    Note that this number does <i>not</i> indicate the number of properties actually
-    present in the object because some entries may have been deleted and not yet
-    "compacted".</li>
-<li>Prop array count: for objects, number of entries currently allocated
-    for the array part (if any); there is no value to indicate the number
-    of actually used entries (indices present).</li>
-<li>Prop hash count: for objects, size of entry part hash lookup table or
-    zero if not present.  Typical small objects don't have a hash part.</li>
-<li>Function data contains bytecode instructions, constants, etc.  It is
-    shared between all instances (closures) of a certain function template.</li>
-<li>Internal type tag values may change between versions and are also
-    dependent on the memory layout used for tagged values internally.</li>
-</ul>
-
-<div class="table-wrap">
-<table>
-<thead>
-<tr><th>Type</th><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th></tr>
-</thead>
-<tbody>
-<tr>
-<td>undefined</td>
-<td>type tag</td>
-<td>internal type tag</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>null</td>
-<td>type tag</td>
-<td>internal type tag</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>boolean</td>
-<td>type tag</td>
-<td>internal type tag</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>number</td>
-<td>type tag</td>
-<td>internal type tag</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>string</td>
-<td>type tag</td>
-<td>heap ptr</td>
-<td>refcount</td>
-<td>heap hdr size</td>
-<td>internal type tag</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>object, Ecmascript function</td>
-<td>type tag</td>
-<td>heap ptr</td>
-<td>refcount</td>
-<td>heap hdr size</td>
-<td>prop alloc size</td>
-<td>prop entry count</td>
-<td>prop entry next</td>
-<td>prop array count</td>
-<td>prop hash count</td>
-<td>func data size</td>
-</tr>
-<tr>
-<td>object, Duktape/C function</td>
-<td>type tag</td>
-<td>heap ptr</td>
-<td>refcount</td>
-<td>heap hdr size</td>
-<td>prop alloc size</td>
-<td>prop entry count</td>
-<td>prop entry next</td>
-<td>prop array count</td>
-<td>prop hash count</td>
-<td>-</td>
-</tr>
-<tr>
-<td>object, thread</td>
-<td>type tag</td>
-<td>heap ptr</td>
-<td>refcount</td>
-<td>heap hdr size</td>
-<td>prop alloc size</td>
-<td>prop entry count</td>
-<td>prop entry next</td>
-<td>prop array count</td>
-<td>prop hash count</td>
-<td>-</td>
-</tr>
-<tr>
-<td>object, other</td>
-<td>type tag</td>
-<td>heap ptr</td>
-<td>refcount</td>
-<td>heap hdr size</td>
-<td>prop alloc size</td>
-<td>prop entry count</td>
-<td>prop entry next</td>
-<td>prop array count</td>
-<td>prop hash count</td>
-<td>-</td>
-</tr>
-<tr>
-<td>buffer, fixed</td>
-<td>type tag</td>
-<td>heap ptr</td>
-<td>refcount</td>
-<td>heap hdr size</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>buffer, dynamic</td>
-<td>type tag</td>
-<td>heap ptr</td>
-<td>refcount</td>
-<td>heap hdr size</td>
-<td>curr buf size</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>buffer, external</td>
-<td>type tag</td>
-<td>heap ptr</td>
-<td>refcount</td>
-<td>heap hdr size</td>
-<td>curr buf size</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>pointer</td>
-<td>type tag</td>
-<td>internal type tag</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>lightfunc</td>
-<td>type tag</td>
-<td>internal type tag</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-<td>-</td>
-</tr>
-</tbody>
-</table>
+<div class="note">
+The properties of the result object are not under versioning guarantees and may
+change in an incompatible fashion even in minor versions (but not patch versions).
 </div>
 
 <h3 id="builtin-duktape-act">act()</h3>
 
 <p>Get information about a call stack entry.  Takes a single number argument
-indicating depth in the call stack: -1 is the top entry, -2 is the one below
-that etc.  Returns an object describing the call stack entry, or <code>undefined</code>
-if the entry doesn't exist.  Example:</p>
+indicating depth in the call stack: -1 is the top (innermost) entry, -2 is the
+one below that etc.  Returns an object describing the call stack entry, or
+<code>undefined</code> if the entry doesn't exist.  See
+<code><a href="api.html#duk_inspect_callstack_entry">duk_inspect_callstack_entry()</a></code>
+for description of current fields.</p>
+
+<div class="note">
+The properties of the result object are not under versioning guarantees and may
+change in an incompatible fashion even in minor versions (but not patch versions).
+</div>
+
+<p>Example:</p>
 <pre class="ecmascript-code">
 function dump() {
     var i, t;
@@ -454,17 +277,13 @@ function getCurrentLine() {
 print('running on line:', getCurrentLine());
 </pre>
 
-<div class="note">
-The properties provided for call stack entries may change between versions.
-</div>
-
 <h3 id="builtin-duktape-gc">gc()</h3>
 
-<p>Trigger a forced mark-and-sweep collection.  If mark-and-sweep is disabled,
-this call is a no-op.</p>
+<p>Trigger a forced mark-and-sweep collection.  The call takes an optional
+integer flags field, see <code>duktape.h</code> for constants.</p>
 
 <!-- Return value is undocumented for now, which is probably good for now.
-     Not sure what the best return value would be.  Arguments are undocumented.
+     Not sure what the best return value would be.
 -->
 
 <h3 id="builtin-duktape-compact">compact()</h3>
@@ -562,10 +381,11 @@ ordinary function and as a constructor.  The behavior is the same in both
 cases:</p>
 <ul>
 <li>The first argument is checked to be a function (if not, a <code>TypeError</code>
-    is thrown).  The return value is a new thread whose initial function is
-    recorded to be the argument function (this function will start executing
-    when the new thread is first resumed).  The internal prototype of the
-    newly created Thread will be the <code>Duktape.Thread.prototype</code> object.</li>
+    is thrown).  The function must be an Ecmascript function (bound or non-bound).
+    The return value is a new thread whose initial function is recorded to be the
+    argument function (this function will start executing when the new thread is
+    first resumed).  The internal prototype of the newly created Thread will be the
+    <code>Duktape.Thread.prototype</code> object.</li>
 </ul>
 
 <h2>Duktape.Thread.prototype</h2>
@@ -580,3 +400,33 @@ cases:</p>
 <tr><td colspan="2">No properties at the moment.</td></tr>
 </tbody>
 </table>
+
+<h2 id="builtin-textencoder">TextEncoder</h2>
+
+<p>TextEncoder() is part of the <a href="https://encoding.spec.whatwg.org/">WHATWG Encoding API</a>
+and provides a clean way of encoding a string into a buffer (Uint8Array)
+using UTF-8 encoding.  Surrogate pairs are combined during the process.
+For example:</p>
+
+<pre class="ecmascript-code">
+var str = '\u{1f4a9}';                   // non-BMP codepoint
+print(str.length);                       // length is 2, represented as a surrogate pair
+var u8 = new TextEncoder().encode(str);
+print(u8.length);                        // length is 4, a single UTF-8 codepoint
+print(Duktape.enc('jx', u8));            // |f09f92a9|, UTF-8 bytes F0 9F 92 A9
+</pre>
+
+<h2 id="builtin-textdecoder">TextDecoder</h2>
+
+<p>TextDecoder() is part of the <a href="https://encoding.spec.whatwg.org/">WHATWG Encoding API</a>
+and provides a clean way of decoding a buffer into a string using UTF-8
+encoding.  Non-BMP codepoints are represented as surrogate pairs in the
+resulting string.  For example:</p>
+
+<pre class="ecmascript-code">
+var u8 = new Uint8Array([ 0xf0, 0x9f, 0x92, 0xa9 ]);  // a single non-BMP codepoint
+var str = new TextDecoder().decode(u8);
+print(str.length);                       // length is 2, represented as a surrogate pair
+print(str.charCodeAt(0));                // 55357, high surrogate
+print(str.charCodeAt(1));                // 56489, low surrogate
+</pre>

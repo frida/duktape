@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef NO_SIGNAL
+#if !defined(NO_SIGNAL)
 #include <signal.h>
 #endif
 
@@ -25,7 +25,7 @@ extern duk_ret_t eventloop_run(duk_context *ctx, void *udata);
 
 static int c_evloop = 0;
 
-#ifndef NO_SIGNAL
+#if !defined(NO_SIGNAL)
 static void my_sighandler(int x) {
 	fprintf(stderr, "Got signal %d\n", x);
 	fflush(stderr);
@@ -54,6 +54,19 @@ static void print_error(duk_context *ctx, FILE *f) {
 	fprintf(f, "%s\n", duk_get_string(ctx, -1));
 	fflush(f);
 	duk_pop(ctx);
+}
+
+static duk_ret_t native_print(duk_context *ctx) {
+	duk_push_string(ctx, " ");
+	duk_insert(ctx, 0);
+	duk_join(ctx, duk_get_top(ctx) - 1);
+	printf("%s\n", duk_safe_to_string(ctx, -1));
+	return 0;
+}
+
+static void print_register(duk_context *ctx) {
+	duk_push_c_function(ctx, native_print, DUK_VARARGS);
+	duk_put_global_string(ctx, "print");
 }
 
 duk_ret_t wrapped_compile_execute(duk_context *ctx, void *udata) {
@@ -180,7 +193,7 @@ int main(int argc, char *argv[]) {
 	const char *filename = NULL;
 	int i;
 
-#ifndef NO_SIGNAL
+#if !defined(NO_SIGNAL)
 	set_sigint_handler();
 
 	/* This is useful at the global level; libraries should avoid SIGPIPE though */
@@ -209,6 +222,7 @@ int main(int argc, char *argv[]) {
 
 	ctx = duk_create_heap_default();
 
+	print_register(ctx);
 	poll_register(ctx);
 	ncurses_register(ctx);
 	socket_register(ctx);

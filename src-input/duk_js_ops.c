@@ -64,6 +64,10 @@ DUK_INTERNAL duk_bool_t duk_js_toboolean(duk_tval *tv) {
 		DUK_ASSERT(DUK_TVAL_GET_BOOLEAN(tv) == 0 || DUK_TVAL_GET_BOOLEAN(tv) == 1);
 		return DUK_TVAL_GET_BOOLEAN(tv);
 	case DUK_TAG_STRING: {
+		/* Symbols ToBoolean() coerce to true, regardless of their
+		 * description.  This happens with no explicit check because
+		 * of the symbol representation byte prefix.
+		 */
 		duk_hstring *h = DUK_TVAL_GET_STRING(tv);
 		DUK_ASSERT(h != NULL);
 		return (DUK_HSTRING_GET_BYTELEN(h) > 0 ? 1 : 0);
@@ -72,7 +76,7 @@ DUK_INTERNAL duk_bool_t duk_js_toboolean(duk_tval *tv) {
 		return 1;
 	}
 	case DUK_TAG_BUFFER: {
-		/* Mimic ArrayBuffer semantics: objects coerce true, regardless
+		/* Mimic Uint8Array semantics: objects coerce true, regardless
 		 * of buffer length (zero or not) or context.
 		 */
 		return 1;
@@ -212,7 +216,11 @@ DUK_INTERNAL duk_double_t duk_js_tonumber(duk_hthread *thr, duk_tval *tv) {
 		return 0.0;
 	}
 	case DUK_TAG_STRING: {
+		/* For Symbols ToNumber() is always a TypeError. */
 		duk_hstring *h = DUK_TVAL_GET_STRING(tv);
+		if (DUK_UNLIKELY(DUK_HSTRING_HAS_SYMBOL(h))) {
+			DUK_ERROR_TYPE(thr, DUK_STR_CANNOT_NUMBER_COERCE_SYMBOL);
+		}
 		duk_push_hstring(ctx, h);
 		return duk__tonumber_string_raw(thr);
 	}
@@ -515,7 +523,8 @@ DUK_LOCAL duk_bool_t duk__js_samevalue_number(duk_double_t x, duk_double_t y) {
 
 DUK_INTERNAL duk_bool_t duk_js_equals_helper(duk_hthread *thr, duk_tval *tv_x, duk_tval *tv_y, duk_small_int_t flags) {
 	duk_context *ctx = (duk_context *) thr;
-	duk_tval *tv_tmp;
+	duk_uint_t type_mask_x;
+	duk_uint_t type_mask_y;
 
 	/* If flags != 0 (strict or SameValue), thr can be NULL.  For loose
 	 * equals comparison it must be != NULL.
@@ -568,11 +577,14 @@ DUK_INTERNAL duk_bool_t duk_js_equals_helper(duk_hthread *thr, duk_tval *tv_x, d
 		}
 		case DUK_TAG_STRING:
 		case DUK_TAG_OBJECT: {
-			/* heap pointer comparison suffices */
+			/* Heap pointer comparison suffices for strings and objects.
+			 * Symbols compare equal if they have the same internal
+			 * representation; again heap pointer comparison suffices.
+			 */
 			return DUK_TVAL_GET_HEAPHDR(tv_x) == DUK_TVAL_GET_HEAPHDR(tv_y);
 		}
 		case DUK_TAG_BUFFER: {
-			/* In Duktape 2.x plain buffers mimic ArrayBuffer objects
+			/* In Duktape 2.x plain buffers mimic Uint8Array objects
 			 * so always compare by heap pointer.  In Duktape 1.x
 			 * strict comparison would compare heap pointers and
 			 * non-strict would compare contents.
@@ -619,77 +631,85 @@ DUK_INTERNAL duk_bool_t duk_js_equals_helper(duk_hthread *thr, duk_tval *tv_x, d
 	 *  code size.
 	 */
 
-	/* XXX: here getting a type mask would be useful */
+	type_mask_x = duk_get_type_mask_tval(tv_x);
+	type_mask_y = duk_get_type_mask_tval(tv_y);
 
 	/* Undefined/null are considered equal (e.g. "null == undefined" -> true). */
-	if ((DUK_TVAL_IS_UNDEFINED(tv_x) && DUK_TVAL_IS_NULL(tv_y)) ||
-	    (DUK_TVAL_IS_NULL(tv_x) && DUK_TVAL_IS_UNDEFINED(tv_y))) {
+	if ((type_mask_x & (DUK_TYPE_MASK_UNDEFINED | DUK_TYPE_MASK_NULL)) &&
+	    (type_mask_y & (DUK_TYPE_MASK_NULL | DUK_TYPE_MASK_UNDEFINED))) {
 		return 1;
 	}
 
 	/* Number/string -> coerce string to number (e.g. "'1.5' == 1.5" -> true). */
-	if (DUK_TVAL_IS_NUMBER(tv_x) && DUK_TVAL_IS_STRING(tv_y)) {
-		/* the next 'if' is guaranteed to match after swap */
-		tv_tmp = tv_x;
-		tv_x = tv_y;
-		tv_y = tv_tmp;
+	if ((type_mask_x & DUK_TYPE_MASK_NUMBER) && (type_mask_y & DUK_TYPE_MASK_STRING)) {
+		if (!DUK_TVAL_STRING_IS_SYMBOL(tv_y)) {
+			duk_double_t d1, d2;
+			d1 = DUK_TVAL_GET_NUMBER(tv_x);
+			d2 = duk_to_number_tval(ctx, tv_y);
+			return duk__js_equals_number(d1, d2);
+		}
 	}
-	if (DUK_TVAL_IS_STRING(tv_x) && DUK_TVAL_IS_NUMBER(tv_y)) {
-		/* XXX: this is possible without resorting to the value stack */
-		duk_double_t d1, d2;
-		d2 = DUK_TVAL_GET_NUMBER(tv_y);
-		duk_push_tval(ctx, tv_x);
-		duk_to_number(ctx, -1);
-		d1 = duk_require_number(ctx, -1);
-		duk_pop(ctx);
-		return duk__js_equals_number(d1, d2);
+	if ((type_mask_x & DUK_TYPE_MASK_STRING) && (type_mask_y & DUK_TYPE_MASK_NUMBER)) {
+		if (!DUK_TVAL_STRING_IS_SYMBOL(tv_x)) {
+			duk_double_t d1, d2;
+			d1 = DUK_TVAL_GET_NUMBER(tv_y);
+			d2 = duk_to_number_tval(ctx, tv_x);
+			return duk__js_equals_number(d1, d2);
+		}
 	}
 
 	/* Boolean/any -> coerce boolean to number and try again.  If boolean is
 	 * compared to a pointer, the final comparison after coercion now always
 	 * yields false (as pointer vs. number compares to false), but this is
 	 * not special cased.
+	 *
+	 * ToNumber(bool) is +1.0 or 0.0.  Tagged boolean value is always 0 or 1.
 	 */
-	if (DUK_TVAL_IS_BOOLEAN(tv_x)) {
-		tv_tmp = tv_x;
-		tv_x = tv_y;
-		tv_y = tv_tmp;
+	if (type_mask_x & DUK_TYPE_MASK_BOOLEAN) {
+		DUK_ASSERT(DUK_TVAL_GET_BOOLEAN(tv_x) == 0 || DUK_TVAL_GET_BOOLEAN(tv_x) == 1);
+		duk_push_int(ctx, DUK_TVAL_GET_BOOLEAN(tv_x));
+		duk_push_tval(ctx, tv_y);
+		goto recursive_call;
 	}
-	if (DUK_TVAL_IS_BOOLEAN(tv_y)) {
-		/* ToNumber(bool) is +1.0 or 0.0.  Tagged boolean value is always 0 or 1. */
-		duk_bool_t rc;
+	if (type_mask_y & DUK_TYPE_MASK_BOOLEAN) {
 		DUK_ASSERT(DUK_TVAL_GET_BOOLEAN(tv_y) == 0 || DUK_TVAL_GET_BOOLEAN(tv_y) == 1);
 		duk_push_tval(ctx, tv_x);
 		duk_push_int(ctx, DUK_TVAL_GET_BOOLEAN(tv_y));
-		rc = duk_js_equals_helper(thr,
-		                          DUK_GET_TVAL_NEGIDX(ctx, -2),
-		                          DUK_GET_TVAL_NEGIDX(ctx, -1),
-		                          0 /*flags:nonstrict*/);
-		duk_pop_2(ctx);
-		return rc;
+		goto recursive_call;
 	}
 
-	/* String-number/object -> coerce object to primitive (apparently without hint), then try again. */
-	if ((DUK_TVAL_IS_STRING(tv_x) || DUK_TVAL_IS_NUMBER(tv_x)) && DUK_TVAL_IS_OBJECT(tv_y)) {
-		tv_tmp = tv_x;
-		tv_x = tv_y;
-		tv_y = tv_tmp;
+	/* String-number-symbol/object -> coerce object to primitive (apparently without hint), then try again. */
+	if ((type_mask_x & (DUK_TYPE_MASK_STRING | DUK_TYPE_MASK_NUMBER)) &&
+	    (type_mask_y & DUK_TYPE_MASK_OBJECT)) {
+		/* No symbol check needed because symbols and strings are accepted. */
+		duk_push_tval(ctx, tv_x);
+		duk_push_tval(ctx, tv_y);
+		duk_to_primitive(ctx, -1, DUK_HINT_NONE);  /* apparently no hint? */
+		goto recursive_call;
 	}
-	if (DUK_TVAL_IS_OBJECT(tv_x) && (DUK_TVAL_IS_STRING(tv_y) || DUK_TVAL_IS_NUMBER(tv_y))) {
-		duk_bool_t rc;
+	if ((type_mask_x & DUK_TYPE_MASK_OBJECT) &&
+	    (type_mask_y & (DUK_TYPE_MASK_STRING | DUK_TYPE_MASK_NUMBER))) {
+		/* No symbol check needed because symbols and strings are accepted. */
 		duk_push_tval(ctx, tv_x);
 		duk_push_tval(ctx, tv_y);
 		duk_to_primitive(ctx, -2, DUK_HINT_NONE);  /* apparently no hint? */
-		rc = duk_js_equals_helper(thr,
-		                          DUK_GET_TVAL_NEGIDX(ctx, -2),
-		                          DUK_GET_TVAL_NEGIDX(ctx, -1),
-		                          0 /*flags:nonstrict*/);
-		duk_pop_2(ctx);
-		return rc;
+		goto recursive_call;
 	}
 
 	/* Nothing worked -> not equal. */
 	return 0;
+
+ recursive_call:
+	/* Shared code path to call the helper again with arguments on stack top. */
+	{
+		duk_bool_t rc;
+		rc = duk_js_equals_helper(thr,
+		                          DUK_GET_TVAL_NEGIDX(ctx, -2),
+		                          DUK_GET_TVAL_NEGIDX(ctx, -1),
+		                          0 /*flags:nonstrict*/);
+		duk_pop_2(ctx);
+		return rc;
+	}
 }
 
 /*
@@ -930,45 +950,51 @@ DUK_INTERNAL duk_bool_t duk_js_compare_helper(duk_hthread *thr, duk_tval *tv_x, 
 		DUK_ASSERT(h1 != NULL);
 		DUK_ASSERT(h2 != NULL);
 
-		rc = duk_js_string_compare(h1, h2);
-		duk_pop_2(ctx);
-		if (rc < 0) {
-			return retval ^ 1;
-		} else {
-			return retval;
+		if (DUK_LIKELY(!DUK_HSTRING_HAS_SYMBOL(h1) && !DUK_HSTRING_HAS_SYMBOL(h2))) {
+			rc = duk_js_string_compare(h1, h2);
+			duk_pop_2(ctx);
+			if (rc < 0) {
+				return retval ^ 1;
+			} else {
+				return retval;
+			}
 		}
-	} else {
-		/* Ordering should not matter (E5 Section 11.8.5, step 3.a). */
-#if 0
-		if (flags & DUK_COMPARE_FLAG_EVAL_LEFT_FIRST) {
-			d1 = duk_to_number(ctx, -2);
-			d2 = duk_to_number(ctx, -1);
-		} else {
-			d2 = duk_to_number(ctx, -1);
-			d1 = duk_to_number(ctx, -2);
-		}
-#endif
-		d1 = duk_to_number(ctx, -2);
-		d2 = duk_to_number(ctx, -1);
 
-		/* We want to duk_pop_2(ctx); because the values are numbers
-		 * no decref check is needed.
+		/* One or both are Symbols: fall through to handle in the
+		 * generic path.  Concretely, ToNumber() will fail.
 		 */
+	}
+
+	/* Ordering should not matter (E5 Section 11.8.5, step 3.a). */
+#if 0
+	if (flags & DUK_COMPARE_FLAG_EVAL_LEFT_FIRST) {
+		d1 = duk_to_number_m2(ctx);
+		d2 = duk_to_number_m1(ctx);
+	} else {
+		d2 = duk_to_number_m1(ctx);
+		d1 = duk_to_number_m2(ctx);
+	}
+#endif
+	d1 = duk_to_number_m2(ctx);
+	d2 = duk_to_number_m1(ctx);
+
+	/* We want to duk_pop_2(ctx); because the values are numbers
+	 * no decref check is needed.
+	 */
 #if defined(DUK_USE_PREFER_SIZE)
-		duk_pop_2(ctx);
+	duk_pop_2(ctx);
 #else
-		DUK_ASSERT(!DUK_TVAL_NEEDS_REFCOUNT_UPDATE(duk_get_tval(ctx, -2)));
-		DUK_ASSERT(!DUK_TVAL_NEEDS_REFCOUNT_UPDATE(duk_get_tval(ctx, -1)));
-		DUK_ASSERT(duk_get_top(ctx) >= 2);
-		((duk_hthread *) ctx)->valstack_top -= 2;
-		tv_x = ((duk_hthread *) ctx)->valstack_top;
-		tv_y = tv_x + 1;
-		DUK_TVAL_SET_UNDEFINED(tv_x);  /* Value stack policy */
-		DUK_TVAL_SET_UNDEFINED(tv_y);
+	DUK_ASSERT(!DUK_TVAL_NEEDS_REFCOUNT_UPDATE(duk_get_tval(ctx, -2)));
+	DUK_ASSERT(!DUK_TVAL_NEEDS_REFCOUNT_UPDATE(duk_get_tval(ctx, -1)));
+	DUK_ASSERT(duk_get_top(ctx) >= 2);
+	((duk_hthread *) ctx)->valstack_top -= 2;
+	tv_x = ((duk_hthread *) ctx)->valstack_top;
+	tv_y = tv_x + 1;
+	DUK_TVAL_SET_UNDEFINED(tv_x);  /* Value stack policy */
+	DUK_TVAL_SET_UNDEFINED(tv_y);
 #endif
 
-		return duk__compare_number(retval, d1, d2);
-	}
+	return duk__compare_number(retval, d1, d2);
 }
 
 /*
@@ -997,8 +1023,8 @@ DUK_INTERNAL duk_bool_t duk_js_instanceof(duk_hthread *thr, duk_tval *tv_x, duk_
 	duk_hobject *val;
 	duk_hobject *proto;
 	duk_tval *tv;
-	duk_uint_t sanity;
 	duk_bool_t skip_first;
+	duk_uint_t sanity;
 
 	/*
 	 *  Get the values onto the stack first.  It would be possible to cover
@@ -1013,49 +1039,38 @@ DUK_INTERNAL duk_bool_t duk_js_instanceof(duk_hthread *thr, duk_tval *tv_x, duk_
 	duk_push_tval(ctx, tv_x);
 	duk_push_tval(ctx, tv_y);
 	func = duk_require_hobject(ctx, -1);
+	DUK_ASSERT(func != NULL);
 
 	/*
 	 *  For bound objects, [[HasInstance]] just calls the target function
 	 *  [[HasInstance]].  If that is again a bound object, repeat until
 	 *  we find a non-bound Function object.
+	 *
+	 *  The bound function chain is now "collapsed" so there can be only
+	 *  one bound function in the chain.
 	 */
 
-	/* XXX: this bound function resolution also happens elsewhere,
-	 * move into a shared helper.
-	 */
-
-	sanity = DUK_HOBJECT_BOUND_CHAIN_SANITY;
-	do {
-		/* check func supports [[HasInstance]] (this is checked for every function
-		 * in the bound chain, including the final one)
+	if (!DUK_HOBJECT_IS_CALLABLE(func)) {
+		/*
+		 *  Note: of native Ecmascript objects, only Function instances
+		 *  have a [[HasInstance]] internal property.  Custom objects might
+		 *  also have it, but not in current implementation.
+		 *
+		 *  XXX: add a separate flag, DUK_HOBJECT_FLAG_ALLOW_INSTANCEOF?
 		 */
+		DUK_ERROR_TYPE(thr, "invalid instanceof rval");
+	}
 
-		if (!DUK_HOBJECT_IS_CALLABLE(func)) {
-			/*
-			 *  Note: of native Ecmascript objects, only Function instances
-			 *  have a [[HasInstance]] internal property.  Custom objects might
-			 *  also have it, but not in current implementation.
-			 *
-			 *  XXX: add a separate flag, DUK_HOBJECT_FLAG_ALLOW_INSTANCEOF?
-			 */
-			DUK_ERROR_TYPE(thr, "invalid instanceof rval");
-		}
+	if (DUK_HOBJECT_HAS_BOUNDFUNC(func)) {
+		duk_push_tval(ctx, &((duk_hboundfunc *) func)->target);
+		duk_replace(ctx, -2);
+		func = duk_require_hobject(ctx, -1);  /* lightfunc throws */
 
-		if (!DUK_HOBJECT_HAS_BOUNDFUNC(func)) {
-			break;
-		}
-
-		/* [ ... lval rval ] */
-
-		duk_get_prop_stridx(ctx, -1, DUK_STRIDX_INT_TARGET);         /* -> [ ... lval rval new_rval ] */
-		duk_replace(ctx, -1);                                        /* -> [ ... lval new_rval ] */
-		func = duk_require_hobject(ctx, -1);
-
-		/* func support for [[HasInstance]] checked in the beginning of the loop */
-	} while (--sanity > 0);
-
-	if (sanity == 0) {
-		DUK_ERROR_RANGE(thr, DUK_STR_BOUND_CHAIN_LIMIT);
+		/* Rely on Function.prototype.bind() never creating bound
+		 * functions whose target is not proper.
+		 */
+		DUK_ASSERT(func != NULL);
+		DUK_ASSERT(DUK_HOBJECT_IS_CALLABLE(func));
 	}
 
 	/*
@@ -1064,6 +1079,7 @@ DUK_INTERNAL duk_bool_t duk_js_instanceof(duk_hthread *thr, duk_tval *tv_x, duk_
 	 *  to execute E5 Section 15.3.5.3.
 	 */
 
+	DUK_ASSERT(func != NULL);
 	DUK_ASSERT(!DUK_HOBJECT_HAS_BOUNDFUNC(func));
 	DUK_ASSERT(DUK_HOBJECT_IS_CALLABLE(func));
 
@@ -1080,7 +1096,7 @@ DUK_INTERNAL duk_bool_t duk_js_instanceof(duk_hthread *thr, duk_tval *tv_x, duk_
 		DUK_ASSERT(val != NULL);
 		break;
 	case DUK_TAG_BUFFER:
-		val = thr->builtins[DUK_BIDX_ARRAYBUFFER_PROTOTYPE];
+		val = thr->builtins[DUK_BIDX_UINT8ARRAY_PROTOTYPE];
 		DUK_ASSERT(val != NULL);
 		break;
 	case DUK_TAG_POINTER:
@@ -1097,7 +1113,7 @@ DUK_INTERNAL duk_bool_t duk_js_instanceof(duk_hthread *thr, duk_tval *tv_x, duk_
 	}
 	DUK_ASSERT(val != NULL);  /* Loop doesn't actually rely on this. */
 
-	duk_get_prop_stridx(ctx, -1, DUK_STRIDX_PROTOTYPE);  /* -> [ ... lval rval rval.prototype ] */
+	duk_get_prop_stridx_short(ctx, -1, DUK_STRIDX_PROTOTYPE);  /* -> [ ... lval rval rval.prototype ] */
 	proto = duk_require_hobject(ctx, -1);
 	duk_pop(ctx);  /* -> [ ... lval rval ] */
 
@@ -1127,7 +1143,7 @@ DUK_INTERNAL duk_bool_t duk_js_instanceof(duk_hthread *thr, duk_tval *tv_x, duk_
 
 		DUK_ASSERT(val != NULL);
 #if defined(DUK_USE_ES6_PROXY)
-		val = duk_hobject_resolve_proxy_target(thr, val);
+		val = duk_hobject_resolve_proxy_target(val);
 #endif
 
 		if (skip_first) {
@@ -1140,7 +1156,7 @@ DUK_INTERNAL duk_bool_t duk_js_instanceof(duk_hthread *thr, duk_tval *tv_x, duk_
 		val = DUK_HOBJECT_GET_PROTOTYPE(thr->heap, val);
 	} while (--sanity > 0);
 
-	if (sanity == 0) {
+	if (DUK_UNLIKELY(sanity == 0)) {
 		DUK_ERROR_RANGE(thr, DUK_STR_PROTOTYPE_CHAIN_LIMIT);
 	}
 	DUK_UNREACHABLE();
@@ -1177,7 +1193,7 @@ DUK_INTERNAL duk_bool_t duk_js_in(duk_hthread *thr, duk_tval *tv_x, duk_tval *tv
 	/* XXX: The ES5/5.1/6 specifications require that the key in 'key in obj'
 	 * must be string coerced before the internal HasProperty() algorithm is
 	 * invoked.  A fast path skipping coercion could be safely implemented for
-	 * numbers (as number-to-string coercion has no side effects).  For ES6
+	 * numbers (as number-to-string coercion has no side effects).  For ES2015
 	 * proxy behavior, the trap 'key' argument must be in a string coerced
 	 * form (which is a shame).
 	 */
@@ -1188,7 +1204,8 @@ DUK_INTERNAL duk_bool_t duk_js_in(duk_hthread *thr, duk_tval *tv_x, duk_tval *tv
 	duk_push_tval(ctx, tv_x);
 	duk_push_tval(ctx, tv_y);
 	duk_require_type_mask(ctx, -1, DUK_TYPE_MASK_OBJECT | DUK_TYPE_MASK_LIGHTFUNC | DUK_TYPE_MASK_BUFFER);
-	duk_to_string(ctx, -2);               /* coerce lval with ToString() */
+
+	(void) duk_to_property_key_hstring(ctx, -2);
 
 	retval = duk_hobject_hasprop(thr,
 	                             DUK_GET_TVAL_NEGIDX(ctx, -1),
@@ -1235,7 +1252,16 @@ DUK_INTERNAL duk_small_uint_t duk_js_typeof_stridx(duk_tval *tv_x) {
 		break;
 	}
 	case DUK_TAG_STRING: {
-		stridx = DUK_STRIDX_LC_STRING;
+		duk_hstring *str;
+
+		/* All internal keys are identified as Symbols. */
+		str = DUK_TVAL_GET_STRING(tv_x);
+		DUK_ASSERT(str != NULL);
+		if (DUK_UNLIKELY(DUK_HSTRING_HAS_SYMBOL(str))) {
+			stridx = DUK_STRIDX_LC_SYMBOL;
+		} else {
+			stridx = DUK_STRIDX_LC_STRING;
+		}
 		break;
 	}
 	case DUK_TAG_OBJECT: {
@@ -1251,7 +1277,7 @@ DUK_INTERNAL duk_small_uint_t duk_js_typeof_stridx(duk_tval *tv_x) {
 	case DUK_TAG_BUFFER: {
 		/* Implementation specific.  In Duktape 1.x this would be
 		 * 'buffer', in Duktape 2.x changed to 'object' because plain
-		 * buffers now mimic ArrayBuffer objects.
+		 * buffers now mimic Uint8Array objects.
 		 */
 		stridx = DUK_STRIDX_LC_OBJECT;
 		break;
@@ -1272,7 +1298,7 @@ DUK_INTERNAL duk_small_uint_t duk_js_typeof_stridx(duk_tval *tv_x) {
 	}
 	}
 
-	DUK_ASSERT(stridx >= 0 && stridx < DUK_HEAP_NUM_STRINGS);
+	DUK_ASSERT_STRIDX_VALID(stridx);
 	return stridx;
 }
 
@@ -1281,64 +1307,109 @@ DUK_INTERNAL duk_small_uint_t duk_js_typeof_stridx(duk_tval *tv_x) {
  *
  *  Array index: E5 Section 15.4
  *  Array length: E5 Section 15.4.5.1 steps 3.c - 3.d (array length write)
- *
- *  duk_js_to_arrayindex_string_helper() computes the array index from
- *  string contents alone.  Depending on options it's only called during
- *  string intern (and value stored to duk_hstring) or it's called also
- *  at runtime.
  */
 
-DUK_INTERNAL duk_small_int_t duk_js_to_arrayindex_raw_string(const duk_uint8_t *str, duk_uint32_t blen, duk_uarridx_t *out_idx) {
-	duk_uarridx_t res, new_res;
+/* Compure array index from string context, or return a "not array index"
+ * indicator.
+ */
+DUK_INTERNAL duk_uarridx_t duk_js_to_arrayindex_string(const duk_uint8_t *str, duk_uint32_t blen) {
+	duk_uarridx_t res;
 
-	if (blen == 0 || blen > 10) {
-		goto parse_fail;
-	}
-	if (str[0] == (duk_uint8_t) '0' && blen > 1) {
-		goto parse_fail;
-	}
-
-	/* Accept 32-bit decimal integers, no leading zeroes, signs, etc.
-	 * Leading zeroes are not accepted (zero index "0" is an exception
-	 * handled above).
+	/* Only strings with byte length 1-10 can be 32-bit array indices.
+	 * Leading zeroes (except '0' alone), plus/minus signs are not allowed.
+	 * We could do a lot of prechecks here, but since most strings won't
+	 * start with any digits, it's simpler to just parse the number and
+	 * fail quickly.
 	 */
 
 	res = 0;
-	while (blen-- > 0) {
-		duk_uint8_t c = *str++;
-		if (c >= (duk_uint8_t) '0' && c <= (duk_uint8_t) '9') {
-			new_res = res * 10 + (duk_uint32_t) (c - (duk_uint8_t) '0');
-			if (new_res < res) {
-				/* overflow, more than 32 bits -> not an array index */
-				goto parse_fail;
+	if (blen == 0) {
+		goto parse_fail;
+	}
+	do {
+		duk_uarridx_t dig;
+		dig = (duk_uarridx_t) (*str++) - DUK_ASC_0;
+
+		if (dig <= 9U) {
+			/* Careful overflow handling.  When multiplying by 10:
+			 * - 0x19999998 x 10 = 0xfffffff0: no overflow, and adding
+			 *   0...9 is safe.
+			 * - 0x19999999 x 10 = 0xfffffffa: no overflow, adding
+			 *   0...5 is safe, 6...9 overflows.
+			 * - 0x1999999a x 10 = 0x100000004: always overflow.
+			 */
+			if (DUK_UNLIKELY(res >= 0x19999999UL)) {
+				if (res >= 0x1999999aUL) {
+					/* Always overflow. */
+					goto parse_fail;
+				}
+				DUK_ASSERT(res == 0x19999999UL);
+				if (dig >= 6U) {
+					goto parse_fail;
+				}
+				res = 0xfffffffaUL + dig;
+				DUK_ASSERT(res >= 0xfffffffaUL);
+				DUK_ASSERT_DISABLE(res <= 0xffffffffUL);  /* range */
+			} else {
+				res = res * 10U + dig;
+				if (DUK_UNLIKELY(res == 0)) {
+					/* If 'res' is 0, previous 'res' must
+					 * have been 0 and we scanned in a zero.
+					 * This is only allowed if blen == 1,
+					 * i.e. the exact string '0'.
+					 */
+					if (blen == (duk_uint32_t) 1) {
+						return 0;
+					}
+					goto parse_fail;
+				}
 			}
-			res = new_res;
 		} else {
+			/* Because 'dig' is unsigned, catches both values
+			 * above '9' and below '0'.
+			 */
 			goto parse_fail;
 		}
-	}
+	} while (--blen > 0);
 
-	*out_idx = res;
-	return 1;
+	return res;
 
  parse_fail:
-	*out_idx = DUK_HSTRING_NO_ARRAY_INDEX;
-	return 0;
+	return DUK_HSTRING_NO_ARRAY_INDEX;
 }
 
-/* Called by duk_hstring.h macros */
-DUK_INTERNAL duk_uarridx_t duk_js_to_arrayindex_string_helper(duk_hstring *h) {
+#if !defined(DUK_USE_HSTRING_ARRIDX)
+/* Get array index for a string which is known to be an array index.  This helper
+ * is needed when duk_hstring doesn't concretely store the array index, but strings
+ * are flagged as array indices at intern time.
+ */
+DUK_INTERNAL duk_uarridx_t duk_js_to_arrayindex_hstring_fast_known(duk_hstring *h) {
+	const duk_uint8_t *p;
 	duk_uarridx_t res;
-	duk_small_int_t rc;
+	duk_uint8_t t;
 
+	DUK_ASSERT(h != NULL);
+	DUK_ASSERT(DUK_HSTRING_HAS_ARRIDX(h));
+
+	p = DUK_HSTRING_GET_DATA(h);
+	res = 0;
+	for (;;) {
+		t = *p++;
+		if (DUK_UNLIKELY(t == 0)) {
+			/* Scanning to NUL is always safe for interned strings. */
+			break;
+		}
+		DUK_ASSERT(t >= DUK_ASC_0 && t <= DUK_ASC_9);
+		res = res * 10U + (t - DUK_ASC_0);
+	}
+	return res;
+}
+
+DUK_INTERNAL duk_uarridx_t duk_js_to_arrayindex_hstring_fast(duk_hstring *h) {
+	DUK_ASSERT(h != NULL);
 	if (!DUK_HSTRING_HAS_ARRIDX(h)) {
 		return DUK_HSTRING_NO_ARRAY_INDEX;
 	}
-
-	rc = duk_js_to_arrayindex_raw_string(DUK_HSTRING_GET_DATA(h),
-	                                     DUK_HSTRING_GET_BYTELEN(h),
-	                                     &res);
-	DUK_UNREF(rc);
-	DUK_ASSERT(rc != 0);
-	return res;
+	return duk_js_to_arrayindex_hstring_fast_known(h);
 }
+#endif  /* DUK_USE_HSTRING_ARRIDX */
