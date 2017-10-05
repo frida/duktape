@@ -636,7 +636,7 @@ DUK_LOCAL void duk__sweep_stringtable(duk_heap *heap, duk_size_t *out_count_keep
  *  Sweep heap.
  */
 
-DUK_LOCAL void duk__sweep_heap(duk_heap *heap, duk_int_t flags, duk_size_t *out_count_keep) {
+DUK_LOCAL void duk__sweep_heap(duk_heap *heap, duk_small_uint_t flags, duk_size_t *out_count_keep) {
 	duk_heaphdr *prev;  /* last element that was left in the heap */
 	duk_heaphdr *curr;
 	duk_heaphdr *next;
@@ -647,7 +647,6 @@ DUK_LOCAL void duk__sweep_heap(duk_heap *heap, duk_int_t flags, duk_size_t *out_
 #endif
 	duk_size_t count_keep = 0;
 
-	DUK_UNREF(flags);
 	DUK_DD(DUK_DDPRINT("duk__sweep_heap: %p", (void *) heap));
 
 	prev = NULL;
@@ -727,6 +726,18 @@ DUK_LOCAL void duk__sweep_heap(duk_heap *heap, duk_int_t flags, duk_size_t *out_
 				prev = curr;
 			}
 
+			/*
+			 *  Shrink check for value stacks here.  We're inside
+			 *  ms_prevent_count protection which prevents recursive
+			 *  mark-and-sweep and refzero finalizers, so there are
+			 *  no side effects that would affect the heap lists.
+			 */
+			if (DUK_HEAPHDR_IS_OBJECT(curr) && DUK_HOBJECT_IS_THREAD((duk_hobject *) curr)) {
+				duk_hthread *thr_curr = (duk_hthread *) curr;
+				DUK_DD(DUK_DDPRINT("value stack shrink check for thread: %!O", curr));
+				duk_valstack_shrink_check_nothrow(thr_curr, flags & DUK_MS_FLAG_EMERGENCY /*snug*/);
+			}
+
 			DUK_HEAPHDR_CLEAR_REACHABLE(curr);
 			/* Keep FINALIZED if set, used if rescue decisions are postponed. */
 			/* Keep FINALIZABLE for objects on finalize_list. */
@@ -801,13 +812,13 @@ DUK_LOCAL void duk__sweep_heap(duk_heap *heap, duk_int_t flags, duk_size_t *out_
  *  Compaction is assumed to never throw an error.
  */
 
-DUK_LOCAL int duk__protected_compact_object(duk_context *ctx, void *udata) {
+DUK_LOCAL int duk__protected_compact_object(duk_hthread *thr, void *udata) {
 	duk_hobject *obj;
 	/* XXX: for threads, compact stacks? */
 
 	DUK_UNREF(udata);
-	obj = duk_known_hobject(ctx, -1);
-	duk_hobject_compact_props((duk_hthread *) ctx, obj);
+	obj = duk_known_hobject(thr, -1);
+	duk_hobject_compact_props(thr, obj);
 	return 0;
 }
 
@@ -840,9 +851,9 @@ DUK_LOCAL void duk__compact_object_list(duk_heap *heap, duk_hthread *thr, duk_he
 #endif
 
 		DUK_DD(DUK_DDPRINT("compact object: %p", (void *) obj));
-		duk_push_hobject((duk_context *) thr, obj);
+		duk_push_hobject(thr, obj);
 		/* XXX: disable error handlers for duration of compaction? */
-		duk_safe_call((duk_context *) thr, duk__protected_compact_object, NULL, 1, 0);
+		duk_safe_call(thr, duk__protected_compact_object, NULL, 1, 0);
 
 #if defined(DUK_USE_DEBUG)
 		new_size = DUK_HOBJECT_P_COMPUTE_SIZE(DUK_HOBJECT_GET_ESIZE(obj),
@@ -1035,6 +1046,56 @@ DUK_LOCAL void duk__check_assert_refcounts(duk_heap *heap) {
 #endif  /* DUK_USE_ASSERTIONS */
 
 /*
+ *  Stats dump.
+ */
+
+#if defined(DUK_USE_DEBUG)
+DUK_LOCAL void duk__dump_stats(duk_heap *heap) {
+	DUK_D(DUK_DPRINT("stats executor: opcodes=%ld, interrupt=%ld, throw=%ld",
+	                 (long) heap->stats_exec_opcodes, (long) heap->stats_exec_interrupt,
+	                 (long) heap->stats_exec_throw));
+	DUK_D(DUK_DPRINT("stats call: all=%ld, tailcall=%ld, ecmatoecma=%ld",
+	                 (long) heap->stats_call_all, (long) heap->stats_call_tailcall,
+	                 (long) heap->stats_call_ecmatoecma));
+	DUK_D(DUK_DPRINT("stats safecall: all=%ld, nothrow=%ld, throw=%ld",
+	                 (long) heap->stats_safecall_all, (long) heap->stats_safecall_nothrow,
+	                 (long) heap->stats_safecall_throw));
+	DUK_D(DUK_DPRINT("stats mark-and-sweep: try_count=%ld, skip_count=%ld, emergency_count=%ld",
+	                 (long) heap->stats_ms_try_count, (long) heap->stats_ms_skip_count,
+	                 (long) heap->stats_ms_emergency_count));
+	DUK_D(DUK_DPRINT("stats stringtable: intern_hit=%ld, intern_miss=%ld, resize_check=%ld, resize_grow=%ld, resize_shrink=%ld",
+	                 (long) heap->stats_strtab_intern_hit, (long) heap->stats_strtab_intern_miss,
+	                 (long) heap->stats_strtab_resize_check, (long) heap->stats_strtab_resize_grow,
+	                 (long) heap->stats_strtab_resize_shrink));
+	DUK_D(DUK_DPRINT("stats object: realloc_props=%ld, abandon_array=%ld",
+	                 (long) heap->stats_object_realloc_props, (long) heap->stats_object_abandon_array));
+	DUK_D(DUK_DPRINT("stats getownpropdesc: count=%ld, hit=%ld, miss=%ld",
+	                 (long) heap->stats_getownpropdesc_count, (long) heap->stats_getownpropdesc_hit,
+	                 (long) heap->stats_getownpropdesc_miss));
+	DUK_D(DUK_DPRINT("stats getpropdesc: count=%ld, hit=%ld, miss=%ld",
+	                 (long) heap->stats_getpropdesc_count, (long) heap->stats_getpropdesc_hit,
+	                 (long) heap->stats_getpropdesc_miss));
+	DUK_D(DUK_DPRINT("stats getprop: all=%ld, arrayidx=%ld, bufobjidx=%ld, "
+	                 "bufferidx=%ld, bufferlen=%ld, stringidx=%ld, stringlen=%ld, "
+	                 "proxy=%ld, arguments=%ld",
+	                 (long) heap->stats_getprop_all, (long) heap->stats_getprop_arrayidx,
+	                 (long) heap->stats_getprop_bufobjidx, (long) heap->stats_getprop_bufferidx,
+	                 (long) heap->stats_getprop_bufferlen, (long) heap->stats_getprop_stringidx,
+	                 (long) heap->stats_getprop_stringlen, (long) heap->stats_getprop_proxy,
+	                 (long) heap->stats_getprop_arguments));
+	DUK_D(DUK_DPRINT("stats putprop: all=%ld, arrayidx=%ld, bufobjidx=%ld, "
+	                 "bufferidx=%ld, proxy=%ld",
+	                 (long) heap->stats_putprop_all, (long) heap->stats_putprop_arrayidx,
+	                 (long) heap->stats_putprop_bufobjidx, (long) heap->stats_putprop_bufferidx,
+	                 (long) heap->stats_putprop_proxy));
+	DUK_D(DUK_DPRINT("stats getvar: all=%ld",
+	                 (long) heap->stats_getvar_all));
+	DUK_D(DUK_DPRINT("stats putvar: all=%ld",
+	                 (long) heap->stats_putvar_all));
+}
+#endif  /* DUK_USE_DEBUG */
+
+/*
  *  Main mark-and-sweep function.
  *
  *  'flags' represents the features requested by the caller.  The current
@@ -1049,6 +1110,13 @@ DUK_INTERNAL void duk_heap_mark_and_sweep(duk_heap *heap, duk_small_uint_t flags
 	duk_size_t tmp;
 #endif
 
+	DUK_STATS_INC(heap, stats_ms_try_count);
+#if defined(DUK_USE_DEBUG)
+	if (flags & DUK_MS_FLAG_EMERGENCY) {
+		DUK_STATS_INC(heap, stats_ms_emergency_count);
+	}
+#endif
+
 	/* If debugger is paused, garbage collection is disabled by default.
 	 * This is achieved by bumping ms_prevent_count when becoming paused.
 	 */
@@ -1060,6 +1128,7 @@ DUK_INTERNAL void duk_heap_mark_and_sweep(duk_heap *heap, duk_small_uint_t flags
 	 */
 	if (heap->ms_prevent_count != 0) {
 		DUK_DD(DUK_DDPRINT("reject recursive mark-and-sweep"));
+		DUK_STATS_INC(heap, stats_ms_skip_count);
 		return;
 	}
 	DUK_ASSERT(heap->ms_running == 0);  /* ms_prevent_count is bumped when ms_running is set */
@@ -1259,6 +1328,14 @@ DUK_INTERNAL void duk_heap_mark_and_sweep(duk_heap *heap, duk_small_uint_t flags
 #else
 	DUK_D(DUK_DPRINT("garbage collect (mark-and-sweep) finished: %ld objects kept, %ld strings kept, no voluntary trigger",
 	                 (long) count_keep_obj, (long) count_keep_str));
+#endif
+
+	/*
+	 *  Stats dump
+	 */
+
+#if defined(DUK_USE_DEBUG)
+	duk__dump_stats(heap);
 #endif
 
 	/*

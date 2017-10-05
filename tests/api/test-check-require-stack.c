@@ -12,6 +12,10 @@ final top: 1000
 rc=0
 final top: 0
 ==> rc=0, result='undefined'
+*** check_4 (duk_safe_call)
+rc=0
+final top: 0
+==> rc=0, result='undefined'
 *** require_1 (duk_safe_call)
 final top: 1000
 ==> rc=0, result='undefined'
@@ -19,6 +23,8 @@ final top: 1000
 final top: 1000
 ==> rc=0, result='undefined'
 *** require_3 (duk_safe_call)
+==> rc=1, result='RangeError: valstack limit'
+*** require_4 (duk_safe_call)
 ==> rc=1, result='RangeError: valstack limit'
 ===*/
 
@@ -39,11 +45,9 @@ static duk_ret_t test_1(duk_context *ctx, void *udata) {
 /* demonstrate how using one large duk_check_stack() before such
  * a loop works.
  */
-static duk_ret_t check_1(duk_context *ctx, void *udata) {
+static duk_ret_t check_1_inner(duk_context *ctx) {
 	int i;
 	duk_ret_t rc;
-
-	(void) udata;
 
 	rc = duk_check_stack(ctx, 1000);
 	printf("rc=%d\n", (int) rc);
@@ -53,6 +57,22 @@ static duk_ret_t check_1(duk_context *ctx, void *udata) {
 	}
 
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
+	return 0;
+}
+static duk_ret_t check_1(duk_context *ctx, void *udata) {
+	int i;
+
+	(void) udata;
+
+	/* dummy filler */
+	for (i = 0; i < 10000; i++) {
+		duk_require_stack(ctx, 1);
+		duk_push_uint(ctx, 123);
+	}
+
+	duk_push_c_function(ctx, check_1_inner, 0);
+	duk_call(ctx, 0);
+
 	return 0;
 }
 
@@ -88,11 +108,22 @@ static duk_ret_t check_3(duk_context *ctx, void *udata) {
 	return 0;
 }
 
-/* same as check_1 but with duk_require_stack() */
-static duk_ret_t require_1(duk_context *ctx, void *udata) {
-	int i;
+/* try to extend value stack too much; value is high enough to wrap */
+static duk_ret_t check_4(duk_context *ctx, void *udata) {
+	duk_ret_t rc;
 
 	(void) udata;
+
+	rc = duk_check_stack(ctx, DUK_IDX_MAX);
+	printf("rc=%d\n", (int) rc);  /* should print 0: fail */
+
+	printf("final top: %ld\n", (long) duk_get_top(ctx));
+	return 0;
+}
+
+/* same as check_1 but with duk_require_stack() */
+static duk_ret_t require_1_inner(duk_context *ctx) {
+	int i;
 
 	duk_require_stack(ctx, 1000);
 
@@ -101,6 +132,22 @@ static duk_ret_t require_1(duk_context *ctx, void *udata) {
 	}
 
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
+	return 0;
+}
+static duk_ret_t require_1(duk_context *ctx, void *udata) {
+	int i;
+
+	(void) udata;
+
+	/* dummy filler */
+	for (i = 0; i < 10000; i++) {
+		duk_require_stack(ctx, 1);
+		duk_push_uint(ctx, 123);
+	}
+
+	duk_push_c_function(ctx, require_1_inner, 0);
+	duk_call(ctx, 0);
+
 	return 0;
 }
 
@@ -129,12 +176,24 @@ static duk_ret_t require_3(duk_context *ctx, void *udata) {
 	return 0;
 }
 
+/* same as check_4 but with duk_require_stack */
+static duk_ret_t require_4(duk_context *ctx, void *udata) {
+	(void) udata;
+
+	duk_require_stack(ctx, DUK_IDX_MAX);
+
+	printf("final top: %ld\n", (long) duk_get_top(ctx));
+	return 0;
+}
+
 void test(duk_context *ctx) {
 	TEST_SAFE_CALL(test_1);
 	TEST_SAFE_CALL(check_1);
 	TEST_SAFE_CALL(check_2);
 	TEST_SAFE_CALL(check_3);
+	TEST_SAFE_CALL(check_4);
 	TEST_SAFE_CALL(require_1);
 	TEST_SAFE_CALL(require_2);
 	TEST_SAFE_CALL(require_3);
+	TEST_SAFE_CALL(require_4);
 }

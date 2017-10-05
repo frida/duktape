@@ -312,9 +312,9 @@ DUK_INTERNAL duk_bool_t duk_double_is_nan_or_inf(duk_double_t x) {
 	 */
 #if defined(DUK_USE_64BIT_OPS)
 #if defined(DUK_USE_DOUBLE_ME)
-	return (du.ull[DUK_DBL_IDX_ULL0] & 0x000000007ff00000ULL) == 0x000000007ff00000ULL;
+	return (du.ull[DUK_DBL_IDX_ULL0] & DUK_U64_CONSTANT(0x000000007ff00000)) == DUK_U64_CONSTANT(0x000000007ff00000);
 #else
-	return (du.ull[DUK_DBL_IDX_ULL0] & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL;
+	return (du.ull[DUK_DBL_IDX_ULL0] & DUK_U64_CONSTANT(0x7ff0000000000000)) == DUK_U64_CONSTANT(0x7ff0000000000000);
 #endif
 #else
 	return (du.ui[DUK_DBL_IDX_UI0] & 0x7ff00000UL) == 0x7ff00000UL;
@@ -331,21 +331,21 @@ DUK_INTERNAL duk_bool_t duk_double_is_nan_zero_inf(duk_double_t x) {
 	du.d = x;
 #if defined(DUK_USE_64BIT_OPS)
 #if defined(DUK_USE_DOUBLE_ME)
-	t = du.ull[DUK_DBL_IDX_ULL0] & 0x000000007ff00000ULL;
-	if (t == 0x0000000000000000ULL) {
-		t = du.ull[DUK_DBL_IDX_ULL0] & 0x0000000080000000ULL;
+	t = du.ull[DUK_DBL_IDX_ULL0] & DUK_U64_CONSTANT(0x000000007ff00000);
+	if (t == DUK_U64_CONSTANT(0x0000000000000000)) {
+		t = du.ull[DUK_DBL_IDX_ULL0] & DUK_U64_CONSTANT(0x0000000080000000);
 		return t == 0;
 	}
-	if (t == 0x000000007ff00000UL) {
+	if (t == DUK_U64_CONSTANT(0x000000007ff00000)) {
 		return 1;
 	}
 #else
-	t = du.ull[DUK_DBL_IDX_ULL0] & 0x7ff0000000000000ULL;
-	if (t == 0x0000000000000000ULL) {
-		t = du.ull[DUK_DBL_IDX_ULL0] & 0x8000000000000000ULL;
+	t = du.ull[DUK_DBL_IDX_ULL0] & DUK_U64_CONSTANT(0x7ff0000000000000);
+	if (t == DUK_U64_CONSTANT(0x0000000000000000)) {
+		t = du.ull[DUK_DBL_IDX_ULL0] & DUK_U64_CONSTANT(0x8000000000000000);
 		return t == 0;
 	}
-	if (t == 0x7ff0000000000000ULL) {
+	if (t == DUK_U64_CONSTANT(0x7ff0000000000000)) {
 		return 1;
 	}
 #endif
@@ -369,7 +369,7 @@ DUK_INTERNAL duk_small_uint_t duk_double_signbit(duk_double_t x) {
 
 DUK_INTERNAL duk_double_t duk_double_trunc_towards_zero(duk_double_t x) {
 	/* XXX: optimize */
-	duk_small_int_t s = duk_double_signbit(x);
+	duk_small_uint_t s = duk_double_signbit(x);
 	x = DUK_FLOOR(DUK_FABS(x));  /* truncate towards zero */
 	if (s) {
 		x = -x;
@@ -402,4 +402,23 @@ DUK_INTERNAL duk_double_t duk_double_fmax(duk_double_t x, duk_double_t y) {
 	 * be simplified.
 	 */
 	return (x > y ? x : y);
+}
+
+DUK_INTERNAL duk_bool_t duk_double_is_finite(duk_double_t x) {
+	return !duk_double_is_nan_or_inf(x);
+}
+
+DUK_INTERNAL duk_bool_t duk_double_is_integer(duk_double_t x) {
+	if (duk_double_is_nan_or_inf(x)) {
+		return 0;
+	} else {
+		return duk_js_tointeger_number(x) == x;
+	}
+}
+
+DUK_INTERNAL duk_bool_t duk_double_is_safe_integer(duk_double_t x) {
+	/* >>> 2**53-1
+	 * 9007199254740991
+	 */
+	return duk_double_is_integer(x) && DUK_FABS(x) <= 9007199254740991.0;
 }

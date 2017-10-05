@@ -88,9 +88,8 @@ object.  Plain buffers can be fixed, dynamic, or external:
 * Fixed buffers cannot be resized but have a stable data pointer.
 
 * Dynamic buffers can be resized at the cost of an unstable data pointer.
-  They also have an internal spare area to minimize realloc operations
-  (this spare is currently not exposed to user code).  You can also "steal"
-  the current buffer allocation through the duk_steal_buffer() API call.
+  You can also "steal" the current buffer allocation through the
+  duk_steal_buffer() API call.
 
 * External buffers point to user-allocated external data area whose pointer
   and length can be changed but Duktape won't resize or automatically free
@@ -1228,18 +1227,6 @@ Additional arguments to TypedArray constructor
 
 It would be nice to have offset/length when constructing a TypedArray from
 another TypedArray.
-
-Make the .buffer property virtual
----------------------------------
-
-The ``.buffer`` property required by TypedArray specification is the only
-concrete property on TypedArray instances.  The property points to the
-backing ArrayBuffer object (different from the ``duk_hbuffer *buf`` which
-is used now).
-
-Perhaps change the data structure to support the ``.buffer`` reference
-directly (perhaps instead of ``buf`` or in addition to ``buf``) and make
-it a virtual property.
 
 Node.js .parent property
 ------------------------

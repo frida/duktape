@@ -1759,6 +1759,39 @@ Released
 * Fix module-duktape and module-node handling of a module source which has
   a // comment on the last line without a trailing newline (GH-1394, GH-1395)
 
+1.8.0 (2017-08-02)
+------------------
+
+* Mix in current time to PRNG init in Duktape 1.x too; prior to this change
+  only the allocated duk_heap pointer was used for PRNG init, leading to the
+  same sequence being used on some platforms (GH-1446)
+
+* Fix out-of-memory handling for object property table resize, previously
+  an out-of-memory during property table resize could leave internal state
+  in a state which prevented mark-and-sweep from fully working afterwards
+  (GH-1426, GH-1427)
+
+* Fix RegExp group parsing to reject invalid groups like /(?Xabc)/, previously
+  they were accepted silently (GH-1463)
+
+* Fix potentially stale duk_tval pointer in Proxy deleteProperty handling
+  (GH-1482)
+
+* Fix missing duk_require_stack() in bound function call handling which caused
+  calls to bound functions with a lot of bound arguments to fail with a value
+  stack limit error (GH-1504)
+
+* Fix duk_hbufobj assert in shared slice() handling (GH-1506)
+
+* Fix duk_check_stack_top() and duk_require_stack_top() internal value stack
+  reserve calculation which failed to take into account call stack entries
+  below the current call, leading potentially to a smaller reserve than
+  requested (GH-1536)
+
+* Fix duk_pcall_prop(), duk_safe_call(), and duk_pnew() argument validation,
+  in some cases a negative nargs/nrets argument (which is always invalid)
+  could be accepted (GH-1553)
+
 2.0.0 (2017-01-02)
 ------------------
 
@@ -2518,6 +2551,30 @@ Miscellaneous:
   rather than duk_heaphdr_decref_norz()); however, this function is unused
   unless fast refcount handling is disabled explicitly (GH-1410)
 
+2.0.3 (2017-05-04)
+------------------
+
+* Fix incorrect assert for RETCONSTN opcode when refcounting is disabled,
+  actual behavior is correct however (GH-1432, GH-1433)
+
+* Fix potentially stale duk_tval pointer in duk_inspect_value(), also affects
+  Duktape.info() (GH-1453)
+
+* Fix Symbol Object .valueOf() which returned the Symbol Object rather than
+  the underlying plain Symbol (GH-1459)
+
+* Fix RegExp group parsing to reject invalid groups like /(?Xabc)/, previously
+  they were accepted silently (GH-1463)
+
+* Fix potentially stale duk_tval pointer in Proxy deleteProperty handling
+  (GH-1482)
+
+* Fix missing duk_require_stack() in bound function call handling which caused
+  calls to bound functions with a lot of bound arguments to fail with a value
+  stack limit error (GH-1504)
+
+* Fix duk_hbufobj assert in shared slice() handling (GH-1506)
+
 2.1.0 (2017-04-15)
 ------------------
 
@@ -2662,6 +2719,8 @@ Miscellaneous:
   allowed typos like "-DFOO bar" to be accepted silently (here as "-DFOO" and
   an ignored pain "bar" argument) (GH-1425)
 
+* Add more self tests: fmod()+floor()+div splitting (GH-1657)
+
 * Fix unintuitive refcount triggered finalizer behavior where a finalizer loop
   would happen if the finalizer created a (garbage) object referencing the
   object being finalized (GH-1396, GH-1427)
@@ -2669,7 +2728,7 @@ Miscellaneous:
 * Fix out-of-memory handling for object property table resize, previously
   an out-of-memory during property table resize could leave internal state
   in a state which prevented mark-and-sweep from fully working afterwards
-  (GH-1426, GH-1427)
+  (GH-1426, GH-1427, GH-1650)
 
 * Fix a garbage collection bug where a finalizer triggered by mark-and-sweep
   could cause a recursive entry into mark-and-sweep (leading to memory unsafe
@@ -2798,26 +2857,222 @@ Miscellaneous:
   chaining; this affects string allocation sizes which may matter for manually
   tuned memory pools (GH-1277)
 
-Planned
-=======
-
-1.8.0 (XXXX-XX-XX)
+2.1.1 (2017-07-29)
 ------------------
 
-* Mix in current time to PRNG init in Duktape 1.x too; prior to this change
-  only the allocated duk_heap pointer was used for PRNG init, leading to the
-  same sequence being used on some platforms (GH-1446)
+* Fix missing duk_require_stack() in bound function call handling which caused
+  calls to bound functions with a lot of bound arguments to fail with a value
+  stack limit error (GH-1504)
 
-2.0.3 (XXXX-XX-XX)
+* Fix duk_hbufobj assert in shared slice() handling (GH-1506)
+
+* Fix MSVC cast warning in error augmentation code (GH-1511)
+
+* Fix incorrect .length behavior for function templates loaded by
+  duk_load_function() (GH-1513, GH-1516)
+
+* Fix Reflect.construct() handling for four or more arguments (GH-1517,
+  GH-1518)
+
+* Fix duk_check_stack_top() and duk_require_stack_top() internal value stack
+  reserve calculation which failed to take into account call stack entries
+  below the current call, leading potentially to a smaller reserve than
+  requested (GH-1536)
+
+* Fix potential segfault in debugger GetHeapObjInfo command, caused by
+  key/mask list being out of sync (GH-1540)
+
+* Fix duk_pcall_prop(), duk_safe_call(), and duk_pnew() argument validation,
+  in some cases a negative nargs/nrets argument (which is always invalid)
+  could be accepted (GH-1553)
+
+* Fix incorrect lookahead in RegExp class range dash ('-') parsing which
+  caused RegExp classes ending in a dash (e.g. [abc-]) to be handled
+  incorrectly (GH-1569, GH-1570)
+
+* Fix incorrect handling of register bound unary operation target for
+  unary minus, unary plus, and bitwise NOT (GH-1623, GH-1624)
+
+2.2.0 (2017-09-23)
 ------------------
 
-* TBD
+* Change inheritance for Duktape/C user functions pushed using
+  duk_push_c_function() and duk_push_c_lightfunc(), they now inherit from an
+  intermediate prototype object (function -> %NativeFunctionPrototype% ->
+  Function.prototype) which provides .name and .length getters; the virtual
+  .name and .length properties of Duktape/C and lightfuncs have been removed;
+  this change also allows .name and .length to be overridden using
+  duk_def_prop() or Object.defineProperty() (GH-1493, GH-1494, GH-1515)
 
-2.2.0 (XXXX-XX-XX)
-------------------
+* Add Object.prototype.{__defineGetter__,__defineSetter__} and
+  Object.prototype.{__lookupGetter__,__lookupSetter__} from ES2017 Annex B,
+  they are also used by a lot of existing legacy code (GH-1531, GH-1551)
+
+* Add ES2015 Math.clz32(), Math.imul(), and Math.sign() (GH-1561)
+
+* Handle Function.prototype.call(), Function.prototype.apply(),
+  Reflect.apply(), and Reflect.construct() inline in call handling; as a side
+  effect .call(), .apply(), and .construct() no longer appear in the call stack
+  (tracebacks etc) (GH-1421, GH-1522, GH-1545, GH-1557)
+
+* Function.prototype.call(), Function.prototype.apply(), Reflect.apply(),
+  and Reflect.construct() can now be used in tailcalls (e.g.
+  'return func.call(null, 123);'), don't grow the native C stack when doing an
+  Ecmascript-to-Ecmascript call, and no longer prevent coroutine yielding
+  (GH-1421, GH-1545, GH-1557)
+
+* Constructor calls (new Func()) can be used in tailcalls, don't grow
+  the native C stack when doing an Ecmascript-to-Ecmascript call, and no
+  longer prevent coroutine yielding (GH-1523)
+
+* Increase maximum call argument count from 255 to ~64k (GH-1292, GH-1586)
+
+* Improve error message for property-based call TypeError (e.g. foo.noSuch()),
+  error message now includes the key for easier debugging (GH-1627, GH-1630,
+  GH-1631, GH-1644, GH-1645, GH-1750)
+
+* Add duk_{get,put,has,del}_prop_heapptr() API calls for faster property
+  manipulation when a borrowed heap pointer (typically string) is available
+  (GH-1703)
+
+* Add duk_seal() and duk_freeze() API calls, equivalent to Object.seal()
+  and Object.freeze() (GH-1594)
+
+* Add duk_is_constructable() API call (GH-1523)
+
+* Add duk_require_object() API call for consistency (GH-1731, GH-1732)
 
 * Add duk_push_proxy() API call which allows a Proxy to be created from C
-  code (GH-1500, GH-837)
+  code (GH-1500, GH-837, GH-1680)
+
+* Accept an ArrayBuffer as an argument to duk_push_buffer_object() when
+  creating a view (anything other than an ArrayBuffer) (GH-1236, GH-1710)
+
+* Add DUK_HIDDEN_SYMBOL(), DUK_GLOBAL_SYMBOL(), DUK_LOCAL_SYMBOL(), and
+  DUK_WELLKNOWN_SYMBOL() macros for creating symbol literals (GH-1673)
+
+* Change Duktape internal hidden Symbols to use the 0x82 byte prefix,
+  freeing the 0xFF prefix entirely to application use; there are no longer
+  restrictions on what follows the 0xFF prefix (GH-1721)
+
+* Change initial bytecode format byte from 0xFF to 0xBF to avoid potential
+  to confuse a user hidden Symbol with bytecode, and remove unnecessary
+  bytecode serialization version byte (GH-1733)
+
+* Change duk_bool_t type to unsigned integer (previously signed integer)
+  and make DUK_TYPE_xxx, DUK_TYPE_MASK_xxx, and flags constants unsigned
+  in the API header (GH-1688)
+
+* Add more convenience flag defines for duk_def_prop(), e.g.
+  DUK_DEFPROP_ATTR_WC sets writable and configurable, and clears
+  enumerable (GH-1208)
+
+* Add support for Proxy 'apply' and 'construct' traps (GH-1601)
+
+* Add minimal new.target support; new.target evaluates to undefined for
+  non-constructor calls and to the final non-bound constructor function in
+  constructor calls; explicit newTarget not yet supported and handling of
+  new.target in eval() code is not yet fully correct (GH-1544, GH-1572)
+
+* Add proper string vs. symbol sorting to Reflect.ownKeys() and other
+  enumeration call sites (GH-1460, GH-1607)
+
+* Add an internal type for representing Proxy instances (duk_hproxy) to
+  simplify Proxy operations and improve performance (GH-1500, GH-1136)
+
+* Add an internal type for representing bound functions (duk_hboundfunc) and
+  "collapse" bound function chains so that the target of a duk_hboundfunc is
+  always a non-bound function (GH-1503, GH-1507, GH-1748)
+
+* Make call stack and value stack limits configurable via config options
+  (DUK_USE_CALLSTACK_LIMIT, DUK_USE_VALSTACK_LIMIT) (GH-1526)
+
+* Add a wrap check to duk_{check,require}_stack{_top}() (GH-1537)
+
+* Improve case insensitive RegExp character class compilation performance
+  using a small (256 byte, total footprint impact is about 300-400 bytes)
+  canonicalization lookup bitmap (GH-1616)
+
+* Improve error messages for source code, base-64, hex, UTF-8, and bytecode
+  encoding/decoding (GH-1738)
+
+* Add better symbol summary for e.g. error messages, "[Symbol global '?foo']"
+  instead of just "'?foo'" (GH-1643)
+
+* Make fatal error message formatting buffer longer for uncaught errors
+  (64 -> 128 bytes) and make it configurable via DUK_USE_FATAL_MAXLEN
+  (GH-1652)
+
+* Make error message summary strings longer (32 -> 96 character) to better
+  capture error messages for e.g. uncaught errors (GH-1653)
+
+* Improve error message for instanceof and duk_instanceof() when rval has
+  no .prototype property, which is common for Duktape/C functions (GH-1725)
+
+* Add an explicit buffer size wrap check for Buffer.concat() (GH-1688)
+
+* Reject an attempt to unpack an array with >= 2G elements cleanly with a
+  RangeError rather than failing during the process (GH-1688)
+
+* Add DUK_USE_GET_MONOTONIC_TIME() to allow an application to provide a
+  monotonic time source (similar to clock_gettime() CLOCK_MONOTONIC) which
+  Duktape will then use for performance.now() and internal rate limiting
+  mechanisms; if absent (default), monotonic time defaults to
+  DUK_USE_DATE_GET_NOW() (GH-1659)
+
+* Add monotonic time provider for Windows based on QueryPerformanceCounter(),
+  enabled by default if _WIN32_WINNT indicates Vista or above (GH-1662)
+
+* Add monotonic time provider for Unix platforms using clock_gettime() and
+  CLOCK_MONOTONIC time source; the time provider is disabled by default, enable
+  using -DDUK_USE_GET_MONOTONIC_TIME_CLOCK_GETTIME (GH-1667)
+
+* Use monotonic time (if available) for debugger transport peeking, so that
+  the peek callback is called with the same realtime rate even if the
+  Ecmascript time source jumps or doesn't advance in realtime (GH-1659)
+
+* Allow sub-millisecond resolution for DUK_USE_DATE_GET_NOW() Date provider;
+  the extra resolution is visible through duk_get_now() but not through Date
+  instances because Ecmascript requires Date instances to have integer
+  millisecond timestamps (GH-773, GH-1660, GH-1669)
+
+* Add sub-millisecond resolution to the default POSIX and Windows Date
+  providers (DUK_USE_DATE_GET_NOW); Windows sub-millisecond resolution
+  is available if _WIN32_WINNT indicates Windows 8 or above (GH-1660, GH-1664)
+
+* Add an initial version of the High Resolution Time API, providing
+  performance.now() (which backs to DUK_USE_GET_MONOTONIC_TIME() if
+  available); performance.timeOrigin is intentionally absent for now,
+  until semantics are decided for Duktape (GH-1660)
+
+* Change Unix time provider to tolerate (unlikely) gettimeofday() errors
+  without throwing, as internals are not always expecting to deal with an
+  error when reading current time (GH-1666)
+
+* Add assertion coverage for catching calls into Duktape API from debug
+  transport calls (read, peek, etc) (GH-1681)
+
+* Remove license.spdx from the distributable (GH-1741)
+
+* Fix incorrect handling of register bound unary operation target for
+  unary minus, unary plus, and bitwise NOT (GH-1623, GH-1624)
+
+* Fix incorrect lookahead in RegExp class range dash ('-') parsing which
+  caused RegExp classes ending in a dash (e.g. [abc-]) to be handled
+  incorrectly (GH-1569, GH-1570)
+
+* Fix duk_pcall_prop(), duk_safe_call(), and duk_pnew() argument validation,
+  in some cases a negative nargs/nrets argument (which is always invalid)
+  could be accepted (GH-1553)
+
+* Fix potential segfault in debugger GetHeapObjInfo command, caused by
+  key/mask list being out of sync (GH-1540)
+
+* Fix dangling pointer in instanceof/duk_instanceof() when rval .prototype is
+  a virtualized property coming from a getter or a Proxy trap (GH-1725)
+
+* Fix Reflect.construct() handling for four or more arguments (GH-1517,
+  GH-1518)
 
 * Fix callstack limit bumping for errThrow augmentation calls, the limit might
   be bumped and unbumped for different Duktape threads if coroutines were
@@ -2825,18 +3080,70 @@ Planned
   an errThrow augmentation call to fail due to callstack limit being reached
   (GH-1490)
 
-* Add an internal type for representing Proxy instances (duk_hproxy) to
-  simplify Proxy operations and improve performance (GH-1500, GH-1136)
-
-* Add an internal type for representing bound functions (duk_hboundfunc) and
-  "collapse" bound function chains so that the target of a duk_hboundfunc is
-  always a non-bound function (GH-1503)
+* Fix incorrect .length behavior for function templates loaded by
+  duk_load_function(), caused by not distinguishing between a missing and a
+  zero length _Formals array (GH-1513, GH-1516)
 
 * Fix missing duk_require_stack() in bound function call handling which caused
   calls to bound functions with a lot of bound arguments to fail with a value
   stack limit error (GH-1504)
 
+* Fix duk_check_stack_top() and duk_require_stack_top() internal value stack
+  reserve calculation which failed to take into account call stack entries
+  below the current call, leading potentially to a smaller reserve than
+  requested (GH-1536)
+
+* Fix incorrect pausing by debugger StepOut, StepOver, and StepInto commands
+  when stepping out/over/into a tail call (GH-1684, GH-1685, GH-1726, GH-1734)
+
 * Fix duk_hbufobj assert in shared slice() handling (GH-1506)
+
+* Fix internal debug print opcode name list which was out of sync with previous
+  changes (GH-1509)
+
+* Fix MSVC cast warning in error augmentation code (GH-1511)
+
+* Fix duk_debug.js --source-dirs scanning for file dropdown; the dropdown was
+  empty (GH-1580)
+
+* Fix some compile warnings for duk_error() and duk_throw() in duk_cmdline.c,
+  module-duktape, module-node, and duk-v1-compat extras (GH-1646)
+
+* Fix harmless GCC 7 -Wextra warning in Date built-in (GH-1646)
+
+* Fix -Wsign-conversion warnings for GCC / Clang (GH-1688)
+
+* Fix Clang -Wshorten-64-to-32 warnings and an incorrect uninitialized
+  variable warning (GH-1735)
+
+* Fix pointer size detection for MSVC2015 ARM32/ARM64 (GH-1577, GH-1675)
+
+* Improve support for old MSVC versions without __pragma(), long long, and
+  LL/ULL constants (GH-1559, GH-1562)
+
+* Simplify handling of ENDFIN opcode a bit (GH-1508)
+
+* Rework value stack grow/shrink handling; value stack is now grown when
+  calling a function or reserving value stack space explicitly and only
+  shrunk in mark-and-sweep (GH-1526)
+
+* Remove automatic value stack reserve check from duk_safe_call() to
+  ensure 'nrets' return values fit into the value stack; the check was not
+  guaranteed by the API and is mostly unnecessary (GH-1552)
+
+* Add some statistics dumps to mark-and-sweep with debug logging enabled
+  (GH-1579, GH-1640, GH-1677)
+
+* Add DUK_CONSOLE_FLUSH flag to extras/duktape-console (GH-1587, GH-1588)
+
+* Compile warning fixes and Duktape 1.x compatibility fix to module-node
+  (GH-1605)
+
+* Add print(), console.log() etc bindings to Makefile.dukdebug (GH-1535,
+  GH-1593)
+
+* Internal change: use duk_hthread instead of duk_context in all internal
+  code, removing unnecessary and awkward ctx <-> thr casts (GH-1614)
 
 * Internal change: set REACHABLE for all READONLY objects (relevant when
   using ROM built-ins) so that mark-and-sweep doesn't need an explicit
@@ -2846,12 +3153,65 @@ Planned
   attached to a duk_hthread instead of being a separate, monolithic
   thr->callstack (GH-1487)
 
-* Internal change: duk_catcher structs are now in a single linked list attached
-  to a duk_activation instead of being a separate, monolithic
+* Internal change: duk_catcher structs are now in a single linked list
+  attached to a duk_activation instead of being a separate, monolithic
   thr->catchstack (GH-1449)
 
 * Internal change: simple freelists for duk_activation and duk_catcher
   (GH-1491)
+
+* Internal change: terminology, use 'slack' rather than 'spare' (GH-1615)
+
+* Internal change: DUK_ASSERT_API_ENTRY() assertion for later use (GH-1642)
+
+* Internal change: add a non-functional Promise placeholder, disabled by
+  default (GH-1672)
+
+* Miscellaneous footprint improvements: rework call handling to improve
+  code sharing (GH-1552, GH-1749); optional lazy charlen (GH-1337); remove
+  'thr' argument from Date 'now' providers (GH-1666); prune some objects from
+  thr->bidx[] array (GH-1668)
+
+* Miscellaneous performance improvements: move rare/large opcodes into
+  NOINLINE helpers (GH-1510); duk_harray fast path for internal array
+  unpack for bound functions, .call, and .apply (GH-1525); unsafe internal
+  value stack pops where safe (GH-1583, GH-1584); initial object property
+  table size estimates for NEWOBJ and NEWARR opcodes (object and array
+  literals) (GH-1596, GH-1597); duk_concat_2() internal helper for str+str
+  arithmetic (GH-1599); larger spare for bufwriter in non-lowmem build
+  (GH-1611); faster internal duk_to_number_tval() (GH-1612); minor
+  optimizations to duk_is_callable() and duk_is_constructable() (GH-1631);
+  check entry part before array part in property lookup (GH-1634); optimize
+  duk_propdesc filling in property lookups (GH-1635)
+
+Planned
+=======
+
+2.3.0 (XXXX-XX-XX)
+------------------
+
+* ES2015 Number constructor properties: EPSILON, MIN_SAFE_INTEGER,
+  MAX_SAFE_INTEGER, isFinite(), isInteger(), isNaN(), isSafeInteger(),
+  parseInt(), parseFloat() (GH-1756, GH-1761)
+
+* Fix trailing single line comment handling for Function constructor;
+  new Function('return "foo" //') previously failed with SyntaxError
+  (GH-1757)
+
+* Fix DUK_BOOL_{MIN,MAX} defines for unsigned duk_bool_t (GH-1769)
+
+* Fix 'defined but not used' warning for Windows (GH-1775)
+
+* Fix some Clang warnings (GH-1777)
+
+* Fix a few casts in duk_trans_socket_windows.c to avoid errors in a C++
+  build (GH-1773)
+
+* Add automatic workaround for union aliasing issues with FreeBSD + -m32 +
+  Clang prior to 5.0; the aliasing issues cause packed duk_tval to work
+  incorrectly (see
+  https://github.com/svaarala/duktape/blob/master/misc/clang_aliasing.c),
+  and the workaround is to use unpacked duk_tval prior to Clang 5.0 (GH-1764)
 
 3.0.0 (XXXX-XX-XX)
 ------------------

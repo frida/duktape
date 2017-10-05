@@ -135,7 +135,9 @@
 #define DUK_HSTRING_GET_DATA_END(x) \
 	(DUK_HSTRING_GET_DATA((x)) + (x)->blen)
 
-/* marker value; in E5 2^32-1 is not a valid array index (2^32-2 is highest valid) */
+/* Marker value; in E5 2^32-1 is not a valid array index (2^32-2 is highest
+ * valid).
+ */
 #define DUK_HSTRING_NO_ARRAY_INDEX  (0xffffffffUL)
 
 #if defined(DUK_USE_HSTRING_ARRIDX)
@@ -152,6 +154,12 @@
 #define DUK_HSTRING_GET_ARRIDX_SLOW(h)  \
 	(duk_js_to_arrayindex_hstring_fast((h)))
 #endif
+
+/* XXX: these actually fit into duk_hstring */
+#define DUK_SYMBOL_TYPE_HIDDEN 0
+#define DUK_SYMBOL_TYPE_GLOBAL 1
+#define DUK_SYMBOL_TYPE_LOCAL 2
+#define DUK_SYMBOL_TYPE_WELLKNOWN 3
 
 /*
  *  Misc
@@ -221,6 +229,10 @@ struct duk_hstring_external {
  */
 
 DUK_INTERNAL_DECL duk_ucodepoint_t duk_hstring_char_code_at_raw(duk_hthread *thr, duk_hstring *h, duk_uint_t pos, duk_bool_t surrogate_aware);
+DUK_INTERNAL_DECL duk_bool_t duk_hstring_equals_ascii_cstring(duk_hstring *h, const char *cstr);
 DUK_INTERNAL_DECL duk_size_t duk_hstring_get_charlen(duk_hstring *h);
+#if !defined(DUK_USE_HSTRING_LAZY_CLEN)
+DUK_INTERNAL_DECL void duk_hstring_init_charlen(duk_hstring *h);
+#endif
 
 #endif  /* DUK_HSTRING_H_INCLUDED */

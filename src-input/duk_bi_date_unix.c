@@ -16,18 +16,18 @@
 
 #if defined(DUK_USE_DATE_NOW_GETTIMEOFDAY)
 /* Get current Ecmascript time (= UNIX/Posix time, but in milliseconds). */
-DUK_INTERNAL duk_double_t duk_bi_date_get_now_gettimeofday(duk_context *ctx) {
-	duk_hthread *thr = (duk_hthread *) ctx;
+DUK_INTERNAL duk_double_t duk_bi_date_get_now_gettimeofday(void) {
 	struct timeval tv;
 	duk_double_t d;
 
 	if (gettimeofday(&tv, NULL) != 0) {
-		DUK_ERROR_INTERNAL(thr);
+		DUK_D(DUK_DPRINT("gettimeofday() failed"));
+		return 0.0;
 	}
 
+	/* As of Duktape 2.2.0 allow fractions. */
 	d = ((duk_double_t) tv.tv_sec) * 1000.0 +
-	    ((duk_double_t) (tv.tv_usec / 1000));
-	DUK_ASSERT(DUK_FLOOR(d) == d);  /* no fractions */
+	    ((duk_double_t) tv.tv_usec) / 1000.0;
 
 	return d;
 }
@@ -35,11 +35,14 @@ DUK_INTERNAL duk_double_t duk_bi_date_get_now_gettimeofday(duk_context *ctx) {
 
 #if defined(DUK_USE_DATE_NOW_TIME)
 /* Not a very good provider: only full seconds are available. */
-DUK_INTERNAL duk_double_t duk_bi_date_get_now_time(duk_context *ctx) {
+DUK_INTERNAL duk_double_t duk_bi_date_get_now_time(void) {
 	time_t t;
 
-	DUK_UNREF(ctx);
 	t = time(NULL);
+	if (t == (time_t) -1) {
+		DUK_D(DUK_DPRINT("time() failed"));
+		return 0.0;
+	}
 	return ((duk_double_t) t) * 1000.0;
 }
 #endif  /* DUK_USE_DATE_NOW_TIME */
@@ -195,12 +198,12 @@ DUK_INTERNAL duk_int_t duk_bi_date_get_local_tzoffset_gmtime(duk_double_t d) {
 #endif  /* DUK_USE_DATE_TZO_GMTIME */
 
 #if defined(DUK_USE_DATE_PRS_STRPTIME)
-DUK_INTERNAL duk_bool_t duk_bi_date_parse_string_strptime(duk_context *ctx, const char *str) {
+DUK_INTERNAL duk_bool_t duk_bi_date_parse_string_strptime(duk_hthread *thr, const char *str) {
 	struct tm tm;
 	time_t t;
 	char buf[DUK__STRPTIME_BUF_SIZE];
 
-	/* copy to buffer with spare to avoid Valgrind gripes from strptime */
+	/* Copy to buffer with slack to avoid Valgrind gripes from strptime. */
 	DUK_ASSERT(str != NULL);
 	DUK_MEMZERO(buf, sizeof(buf));  /* valgrind whine without this */
 	DUK_SNPRINTF(buf, sizeof(buf), "%s", (const char *) str);
@@ -220,7 +223,7 @@ DUK_INTERNAL duk_bool_t duk_bi_date_parse_string_strptime(duk_context *ctx, cons
 		t = mktime(&tm);
 		DUK_DDD(DUK_DDDPRINT("mktime() -> %ld", (long) t));
 		if (t >= 0) {
-			duk_push_number(ctx, ((duk_double_t) t) * 1000.0);
+			duk_push_number(thr, ((duk_double_t) t) * 1000.0);
 			return 1;
 		}
 	}
@@ -230,7 +233,7 @@ DUK_INTERNAL duk_bool_t duk_bi_date_parse_string_strptime(duk_context *ctx, cons
 #endif  /* DUK_USE_DATE_PRS_STRPTIME */
 
 #if defined(DUK_USE_DATE_PRS_GETDATE)
-DUK_INTERNAL duk_bool_t duk_bi_date_parse_string_getdate(duk_context *ctx, const char *str) {
+DUK_INTERNAL duk_bool_t duk_bi_date_parse_string_getdate(duk_hthread *thr, const char *str) {
 	struct tm tm;
 	duk_small_int_t rc;
 	time_t t;
@@ -247,7 +250,7 @@ DUK_INTERNAL duk_bool_t duk_bi_date_parse_string_getdate(duk_context *ctx, const
 		t = mktime(&tm);
 		DUK_DDD(DUK_DDDPRINT("mktime() -> %ld", (long) t));
 		if (t >= 0) {
-			duk_push_number(ctx, (duk_double_t) t);
+			duk_push_number(thr, (duk_double_t) t);
 			return 1;
 		}
 	}
@@ -257,7 +260,7 @@ DUK_INTERNAL duk_bool_t duk_bi_date_parse_string_getdate(duk_context *ctx, const
 #endif  /* DUK_USE_DATE_PRS_GETDATE */
 
 #if defined(DUK_USE_DATE_FMT_STRFTIME)
-DUK_INTERNAL duk_bool_t duk_bi_date_format_parts_strftime(duk_context *ctx, duk_int_t *parts, duk_int_t tzoffset, duk_small_uint_t flags) {
+DUK_INTERNAL duk_bool_t duk_bi_date_format_parts_strftime(duk_hthread *thr, duk_int_t *parts, duk_int_t tzoffset, duk_small_uint_t flags) {
 	char buf[DUK__STRFTIME_BUF_SIZE];
 	struct tm tm;
 	const char *fmt;
@@ -303,7 +306,20 @@ DUK_INTERNAL duk_bool_t duk_bi_date_format_parts_strftime(duk_context *ctx, duk_
 	(void) strftime(buf, sizeof(buf) - 1, fmt, &tm);
 	DUK_ASSERT(buf[sizeof(buf) - 1] == 0);
 
-	duk_push_string(ctx, buf);
+	duk_push_string(thr, buf);
 	return 1;
 }
 #endif  /* DUK_USE_DATE_FMT_STRFTIME */
+
+#if defined(DUK_USE_GET_MONOTONIC_TIME_CLOCK_GETTIME)
+DUK_INTERNAL duk_double_t duk_bi_date_get_monotonic_time_clock_gettime(void) {
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+		return (duk_double_t) ts.tv_sec * 1000.0 + (duk_double_t) ts.tv_nsec / 1000000.0;
+	} else {
+		DUK_D(DUK_DPRINT("clock_gettime(CLOCK_MONOTONIC) failed"));
+		return 0.0;
+	}
+}
+#endif

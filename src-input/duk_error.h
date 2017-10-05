@@ -417,6 +417,19 @@
 	DUK_ASSERT(thr->valstack_top < thr->valstack_end)
 
 /*
+ *  Helper to initialize a memory area (e.g. struct) with garbage when
+ *  assertions enabled.
+ */
+
+#if defined(DUK_USE_ASSERTIONS)
+#define DUK_ASSERT_SET_GARBAGE(ptr,size) do { \
+		DUK_MEMSET((void *) (ptr), 0x5a, size); \
+	} while (0)
+#else
+#define DUK_ASSERT_SET_GARBAGE(ptr,size) do {} while (0)
+#endif
+
+/*
  *  Helper for valstack space
  *
  *  Caller of DUK_ASSERT_VALSTACK_SPACE() estimates the number of free stack entries
@@ -455,8 +468,11 @@ DUK_NORETURN(DUK_INTERNAL_DECL void duk_err_create_and_throw(duk_hthread *thr, d
 
 DUK_NORETURN(DUK_INTERNAL_DECL void duk_error_throw_from_negative_rc(duk_hthread *thr, duk_ret_t rc));
 
+#define DUK_AUGMENT_FLAG_NOBLAME_FILELINE  (1U << 0)  /* if set, don't blame C file/line for .fileName and .lineNumber */
+#define DUK_AUGMENT_FLAG_SKIP_ONE          (1U << 1)  /* if set, skip topmost activation in traceback construction */
+
 #if defined(DUK_USE_AUGMENT_ERROR_CREATE)
-DUK_INTERNAL_DECL void duk_err_augment_error_create(duk_hthread *thr, duk_hthread *thr_callstack, const char *filename, duk_int_t line, duk_bool_t noblame_fileline);
+DUK_INTERNAL_DECL void duk_err_augment_error_create(duk_hthread *thr, duk_hthread *thr_callstack, const char *filename, duk_int_t line, duk_small_uint_t flags);
 #endif
 #if defined(DUK_USE_AUGMENT_ERROR_THROW)
 DUK_INTERNAL_DECL void duk_err_augment_error_throw(duk_hthread *thr);

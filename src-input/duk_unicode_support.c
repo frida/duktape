@@ -826,8 +826,8 @@ duk_codepoint_t duk__slow_case_conversion(duk_hthread *thr,
 	duk_codepoint_t start_i;
 	duk_codepoint_t start_o;
 
-	DUK_UNREF(thr);
 	DUK_ASSERT(bd_ctx != NULL);
+	DUK_UNREF(thr);
 
 	DUK_DDD(DUK_DDDPRINT("slow case conversion for codepoint: %ld", (long) cp));
 
@@ -1009,15 +1009,14 @@ duk_codepoint_t duk__case_transform_helper(duk_hthread *thr,
  *  Replace valstack top with case converted version.
  */
 
-DUK_INTERNAL void duk_unicode_case_convert_string(duk_hthread *thr, duk_small_int_t uppercase) {
-	duk_context *ctx = (duk_context *) thr;
+DUK_INTERNAL void duk_unicode_case_convert_string(duk_hthread *thr, duk_bool_t uppercase) {
 	duk_hstring *h_input;
 	duk_bufwriter_ctx bw_alloc;
 	duk_bufwriter_ctx *bw;
 	const duk_uint8_t *p, *p_start, *p_end;
 	duk_codepoint_t prev, curr, next;
 
-	h_input = duk_require_hstring(ctx, -1);  /* Accept symbols. */
+	h_input = duk_require_hstring(thr, -1);  /* Accept symbols. */
 	DUK_ASSERT(h_input != NULL);
 
 	bw = &bw_alloc;
@@ -1064,9 +1063,9 @@ DUK_INTERNAL void duk_unicode_case_convert_string(duk_hthread *thr, duk_small_in
 	}
 
 	DUK_BW_COMPACT(thr, bw);
-	(void) duk_buffer_to_string(ctx, -1);  /* Safe, output is encoded. */
+	(void) duk_buffer_to_string(thr, -1);  /* Safe, output is encoded. */
 	/* invalidates h_buf pointer */
-	duk_remove_m2(ctx);
+	duk_remove_m2(thr);
 }
 
 #if defined(DUK_USE_REGEXP_SUPPORT)

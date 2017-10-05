@@ -330,7 +330,9 @@ def main():
         'duk_bi_math.c',
         'duk_bi_number.c',
         'duk_bi_object.c',
+        'duk_bi_performance.c',
         'duk_bi_pointer.c',
+        'duk_bi_promise.c',
         'duk_bi_protos.h',
         'duk_bi_proxy.c',
         'duk_bi_reflect.c',
@@ -519,7 +521,8 @@ def main():
     copy_files([
         'README.rst',
         'duk_cmdline.c',
-        'duk_cmdline_ajduk.c'
+        'duk_cmdline.h',
+        'duk_cmdline_lowmem.c'
     ], os.path.join('examples', 'cmdline'), os.path.join(dist, 'examples', 'cmdline'))
 
     copy_files([

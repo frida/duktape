@@ -1,8 +1,9 @@
 /*
  *  Heap thread object representation.
  *
- *  duk_hthread is also the 'context' (duk_context) for exposed APIs
- *  which mostly operate on the topmost frame of the value stack.
+ *  duk_hthread is also the 'context' for public API functions via a
+ *  different typedef.  Most API calls operate on the topmost frame
+ *  of the value stack only.
  */
 
 #if !defined(DUK_HTHREAD_H_INCLUDED)
@@ -12,46 +13,39 @@
  *  Stack constants
  */
 
-#define DUK_VALSTACK_GROW_STEP          128     /* roughly 1 kiB */
-#define DUK_VALSTACK_SHRINK_THRESHOLD   256     /* roughly 2 kiB */
-#define DUK_VALSTACK_SHRINK_SPARE       64      /* roughly 0.5 kiB */
-#define DUK_VALSTACK_INITIAL_SIZE       128     /* roughly 1.0 kiB -> but rounds up to DUK_VALSTACK_GROW_STEP in practice */
-#define DUK_VALSTACK_INTERNAL_EXTRA     64      /* internal extra elements assumed on function entry,
-                                                 * always added to user-defined 'extra' for e.g. the
-                                                 * duk_check_stack() call.
-                                                 */
-#define DUK_VALSTACK_API_ENTRY_MINIMUM  DUK_API_ENTRY_STACK
-                                                /* number of elements guaranteed to be user accessible
-                                                 * (in addition to call arguments) on Duktape/C function entry.
-                                                 */
+/* Initial valstack size, roughly 0.7kiB. */
+#define DUK_VALSTACK_INITIAL_SIZE       96U
 
-/* Note: DUK_VALSTACK_INITIAL_SIZE must be >= DUK_VALSTACK_API_ENTRY_MINIMUM
- * + DUK_VALSTACK_INTERNAL_EXTRA so that the initial stack conforms to spare
- * requirements.
+/* Internal extra elements assumed on function entry, always added to
+ * user-defined 'extra' for e.g. the duk_check_stack() call.
  */
+#define DUK_VALSTACK_INTERNAL_EXTRA     32U
 
-#define DUK_VALSTACK_DEFAULT_MAX        1000000L
-
-#define DUK_CALLSTACK_DEFAULT_MAX       10000L
+/* Number of elements guaranteed to be user accessible (in addition to call
+ * arguments) on Duktape/C function entry.  This is the major public API
+ * commitment.
+ */
+#define DUK_VALSTACK_API_ENTRY_MINIMUM  DUK_API_ENTRY_STACK
 
 /*
  *  Activation defines
  */
 
-#define DUK_ACT_FLAG_STRICT             (1 << 0)  /* function executes in strict mode */
-#define DUK_ACT_FLAG_TAILCALLED         (1 << 1)  /* activation has tail called one or more times */
-#define DUK_ACT_FLAG_CONSTRUCT          (1 << 2)  /* function executes as a constructor (called via "new") */
-#define DUK_ACT_FLAG_PREVENT_YIELD      (1 << 3)  /* activation prevents yield (native call or "new") */
-#define DUK_ACT_FLAG_DIRECT_EVAL        (1 << 4)  /* activation is a direct eval call */
-#define DUK_ACT_FLAG_BREAKPOINT_ACTIVE  (1 << 5)  /* activation has active breakpoint(s) */
+#define DUK_ACT_FLAG_STRICT             (1U << 0)  /* function executes in strict mode */
+#define DUK_ACT_FLAG_TAILCALLED         (1U << 1)  /* activation has tail called one or more times */
+#define DUK_ACT_FLAG_CONSTRUCT          (1U << 2)  /* function executes as a constructor (called via "new") */
+#define DUK_ACT_FLAG_PREVENT_YIELD      (1U << 3)  /* activation prevents yield (native call or "new") */
+#define DUK_ACT_FLAG_DIRECT_EVAL        (1U << 4)  /* activation is a direct eval call */
+#define DUK_ACT_FLAG_CONSTRUCT_PROXY    (1U << 5)  /* activation is for Proxy 'construct' call, special return value handling */
+#define DUK_ACT_FLAG_BREAKPOINT_ACTIVE  (1U << 6)  /* activation has active breakpoint(s) */
 
-#define DUK_ACT_GET_FUNC(act)        ((act)->func)
+#define DUK_ACT_GET_FUNC(act)           ((act)->func)
 
 /*
  *  Flags for __FILE__ / __LINE__ registered into tracedata
  */
 
-#define DUK_TB_FLAG_NOBLAME_FILELINE   (1 << 0)  /* don't report __FILE__ / __LINE__ as fileName/lineNumber */
+#define DUK_TB_FLAG_NOBLAME_FILELINE    (1U << 0)  /* don't report __FILE__ / __LINE__ as fileName/lineNumber */
 
 /*
  *  Catcher defines
@@ -66,10 +60,10 @@
 #define DUK_CAT_LABEL_BITS           24
 #define DUK_CAT_LABEL_SHIFT          8
 
-#define DUK_CAT_FLAG_CATCH_ENABLED          (1 << 4)   /* catch part will catch */
-#define DUK_CAT_FLAG_FINALLY_ENABLED        (1 << 5)   /* finally part will catch */
-#define DUK_CAT_FLAG_CATCH_BINDING_ENABLED  (1 << 6)   /* request to create catch binding */
-#define DUK_CAT_FLAG_LEXENV_ACTIVE          (1 << 7)   /* catch or with binding is currently active */
+#define DUK_CAT_FLAG_CATCH_ENABLED          (1U << 4)   /* catch part will catch */
+#define DUK_CAT_FLAG_FINALLY_ENABLED        (1U << 5)   /* finally part will catch */
+#define DUK_CAT_FLAG_CATCH_BINDING_ENABLED  (1U << 6)   /* request to create catch binding */
+#define DUK_CAT_FLAG_LEXENV_ACTIVE          (1U << 7)   /* catch or with binding is currently active */
 
 #define DUK_CAT_TYPE_UNKNOWN         0
 #define DUK_CAT_TYPE_TCF             1
@@ -150,13 +144,6 @@
  *  diagnose behavior so it's worth checking even when the check is not 100%.
  */
 
-#if defined(DUK_USE_PREFER_SIZE)
-#define DUK_ASSERT_CTX_VSSIZE(ctx)  /*nop*/
-#else
-#define DUK_ASSERT_CTX_VSSIZE(ctx) \
-	DUK_ASSERT((duk_size_t) (((duk_hthread *) (ctx))->valstack_end - ((duk_hthread *) (ctx))->valstack) == \
-		((duk_hthread *) (ctx))->valstack_size)
-#endif
 /* Assertions for internals. */
 #define DUK_ASSERT_HTHREAD_VALID(thr) do { \
 		DUK_ASSERT((thr) != NULL); \
@@ -165,16 +152,31 @@
 		DUK_ASSERT((thr)->unused1 == 0); \
 		DUK_ASSERT((thr)->unused2 == 0); \
 	} while (0)
+
 /* Assertions for public API calls; a bit stronger. */
-#define DUK_ASSERT_CTX_VALID(ctx) do { \
-		DUK_ASSERT((ctx) != NULL); \
-		DUK_ASSERT_HTHREAD_VALID((duk_hthread *) (ctx)); \
-		DUK_ASSERT(((duk_hthread *) (ctx))->valstack != NULL); \
-		DUK_ASSERT(((duk_hthread *) (ctx))->valstack_end >= ((duk_hthread *) (ctx))->valstack); \
-		DUK_ASSERT(((duk_hthread *) (ctx))->valstack_top >= ((duk_hthread *) (ctx))->valstack); \
-		DUK_ASSERT(((duk_hthread *) (ctx))->valstack_top >= ((duk_hthread *) (ctx))->valstack_bottom); \
-		DUK_ASSERT(((duk_hthread *) (ctx))->valstack_end >= ((duk_hthread *) (ctx))->valstack_top); \
-		DUK_ASSERT_CTX_VSSIZE((ctx)); \
+#define DUK_ASSERT_CTX_VALID(thr) do { \
+		DUK_ASSERT((thr) != NULL); \
+		DUK_ASSERT_HTHREAD_VALID((thr)); \
+		DUK_ASSERT((thr)->valstack != NULL); \
+		DUK_ASSERT((thr)->valstack_bottom != NULL); \
+		DUK_ASSERT((thr)->valstack_top != NULL); \
+		DUK_ASSERT((thr)->valstack_end != NULL); \
+		DUK_ASSERT((thr)->valstack_alloc_end != NULL); \
+		DUK_ASSERT((thr)->valstack_alloc_end >= (thr)->valstack); \
+		DUK_ASSERT((thr)->valstack_end >= (thr)->valstack); \
+		DUK_ASSERT((thr)->valstack_top >= (thr)->valstack); \
+		DUK_ASSERT((thr)->valstack_top >= (thr)->valstack_bottom); \
+		DUK_ASSERT((thr)->valstack_end >= (thr)->valstack_top); \
+		DUK_ASSERT((thr)->valstack_alloc_end >= (thr)->valstack_end); \
+	} while (0)
+
+/* Assertions for API call entry specifically.  Checks 'ctx' but also may
+ * check internal state (e.g. not in a debugger transport callback).
+ */
+#define DUK_ASSERT_API_ENTRY(thr) do { \
+		DUK_ASSERT_CTX_VALID((thr)); \
+		DUK_ASSERT((thr)->heap != NULL); \
+		DUK_ASSERT((thr)->heap->dbg_calling_transport == 0); \
 	} while (0)
 
 /*
@@ -204,8 +206,8 @@
 /* Fields are ordered for alignment/packing. */
 struct duk_activation {
 	duk_tval tv_func;       /* borrowed: full duk_tval for function being executed; for lightfuncs */
-	duk_activation *parent; /* previous (parent) activation (or NULL if none) */
 	duk_hobject *func;      /* borrowed: function being executed; for bound function calls, this is the final, real function, NULL for lightfuncs */
+	duk_activation *parent; /* previous (parent) activation (or NULL if none) */
 	duk_hobject *var_env;   /* current variable environment (may be NULL if delayed) */
 	duk_hobject *lex_env;   /* current lexical environment (may be NULL if delayed) */
 	duk_catcher *cat;       /* current catcher (or NULL) */
@@ -219,37 +221,42 @@ struct duk_activation {
 
 	duk_instr_t *curr_pc;   /* next instruction to execute (points to 'func' bytecode, stable pointer), NULL for native calls */
 
-	/* idx_bottom and idx_retval are only used for book-keeping of
-	 * Ecmascript-initiated calls, to allow returning to an Ecmascript
-	 * function properly.  They are duk_size_t to match the convention
-	 * that value stack sizes are duk_size_t and local frame indices
-	 * are duk_idx_t.
+	/* bottom_byteoff and retval_byteoff are only used for book-keeping
+	 * of Ecmascript-initiated calls, to allow returning to an Ecmascript
+	 * function properly.
 	 */
 
 	/* Bottom of valstack for this activation, used to reset
-	 * valstack_bottom on return; index is absolute.  Note:
-	 * idx_top not needed because top is set to 'nregs' always
-	 * when returning to an Ecmascript activation.
+	 * valstack_bottom on return; offset is absolute.  There's
+	 * no need to track 'top' because native call handling deals
+	 * with that using locals, and for Ecmascript returns 'nregs'
+	 * indicates the necessary top.
 	 */
-	duk_size_t idx_bottom;
+	duk_size_t bottom_byteoff;
 
 	/* Return value when returning to this activation (points to caller
-	 * reg, not callee reg); index is absolute (only set if activation is
+	 * reg, not callee reg); offset is absolute (only set if activation is
 	 * not topmost).
 	 *
-	 * Note: idx_bottom is always set, while idx_retval is only applicable
-	 * for activations below the topmost one.  Currently idx_retval for
-	 * the topmost activation is considered garbage (and it not initialized
-	 * on entry or cleared on return; may contain previous or garbage
-	 * values).
+	 * Note: bottom_byteoff is always set, while retval_byteoff is only
+	 * applicable for activations below the topmost one.  Currently
+	 * retval_byteoff for the topmost activation is considered garbage
+	 * (and it not initialized on entry or cleared on return; may contain
+	 * previous or garbage values).
 	 */
-	duk_size_t idx_retval;
+	duk_size_t retval_byteoff;
 
-	/* Current 'this' binding is the value just below idx_bottom.
+	/* Current 'this' binding is the value just below bottom.
 	 * Previously, 'this' binding was handled with an index to the
 	 * (calling) valstack.  This works for everything except tail
 	 * calls, which must not "accumulate" valstack temps.
 	 */
+
+	/* Value stack reserve (valstack_end) byte offset to be restored
+	 * when returning to this activation.  Only used by the bytecode
+	 * executor.
+	 */
+	duk_size_t reserve_byteoff;
 
 #if defined(DUK_USE_DEBUGGER_SUPPORT)
 	duk_uint32_t prev_line; /* needed for stepping */
@@ -297,17 +304,36 @@ struct duk_hthread {
 	 * perhaps for terminated threads).
 	 */
 
-	/* Value stack: these are expressed as pointers for faster stack manipulation.
-	 * [valstack,valstack_top[ is GC-reachable, [valstack_top,valstack_end[ is
-	 * not GC-reachable but kept initialized as 'undefined'.
+	/* Value stack: these are expressed as pointers for faster stack
+	 * manipulation.  [valstack,valstack_top[ is GC-reachable,
+	 * [valstack_top,valstack_alloc_end[ is not GC-reachable but kept
+	 * initialized as 'undefined'.  [valstack,valstack_end[ is the
+	 * guaranteed/reserved space and the valstack cannot be resized to
+	 * a smaller size.  [valstack_end,valstack_alloc_end[ is currently
+	 * allocated slack that can be used to grow the current guaranteed
+	 * space but may be shrunk away without notice.
+	 *
+	 *
+	 * <----------------------- guaranteed --->
+	 *                                        <---- slack --->
+	 *               <--- frame --->
+	 * .-------------+=============+----------+--------------.
+	 * |xxxxxxxxxxxxx|yyyyyyyyyyyyy|uuuuuuuuuu|uuuuuuuuuuuuuu|
+	 * `-------------+=============+----------+--------------'
+	 *
+	 * ^             ^             ^          ^              ^
+	 * |             |             |          |              |
+	 * valstack      bottom        top        end            alloc_end
+	 *
+	 *     xxx = arbitrary values, below current frame
+	 *     yyy = arbitrary values, inside current frame
+	 *     uuu = outside active value stack, initialized to 'undefined'
 	 */
 	duk_tval *valstack;                     /* start of valstack allocation */
-	duk_tval *valstack_end;                 /* end of valstack allocation (exclusive) */
+	duk_tval *valstack_end;                 /* end of valstack reservation/guarantee (exclusive) */
+	duk_tval *valstack_alloc_end;           /* end of valstack allocation */
 	duk_tval *valstack_bottom;              /* bottom of current frame */
 	duk_tval *valstack_top;                 /* top of current frame (exclusive) */
-#if !defined(DUK_USE_PREFER_SIZE)
-	duk_size_t valstack_size;               /* cached: valstack_end - valstack (in entries, not bytes) */
-#endif
 
 	/* Call stack, represented as a linked list starting from the current
 	 * activation (or NULL if nothing is active).

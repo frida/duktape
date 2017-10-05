@@ -1606,9 +1606,11 @@ Example::
     REQ 20 EOM
     REP EOM
 
-Resume execution and pause when execution exits the current line.  If a
-function call occurs before that, go into the function and pause execution
-there.
+Resume execution and pause when execution exits the current line, enters
+another function, exits the current function, or an error is thrown past
+the current function (in which case execution pauses in the error catcher,
+if any).  If the current function doesn't have line information (e.g. it is
+native), pauses on function entry/exit or error throw.
 
 StepOver request (0x15)
 -----------------------
@@ -1623,8 +1625,11 @@ Example::
     REQ 21 EOM
     REP EOM
 
-Resume execution and pause when execution exits the current line.  Don't pause
-on function calls occuring before that.
+Resume execution and pause when execution exits the current line, exits the
+current function, or an error is thrown past the current function (in which
+case execution pauses in the error catcher, if any).  If the current function
+doesn't have line information (e.g. it is native), pauses on function exit or
+error throw.
 
 StepOut request (0x16)
 ----------------------
@@ -1639,15 +1644,9 @@ Example::
     REQ 22 EOM
     REP EOM
 
-Resume execution and pause when execution exits the current function.  This can
-happen because:
-
-* The current function returns, in which case execution resumes in the calling
-  function.
-
-* The current function, or any function called by it, throws an error which is
-  not caught before it unwinds past the current function.  Execution resumes
-  in the error catcher.
+Resume execution and pause when execution exits the current function or an
+error is thrown past the current function (in which case execution pauses
+in the error catcher, if any).
 
 ListBreak request (0x17)
 ------------------------
@@ -2078,8 +2077,10 @@ The flags field is an unsigned integer bitmask with the following bits:
 +---------+-----------------------------------------------------------------+
 | 0x10    | Property is virtual, matches DUK_PROPDESC_FLAG_VIRTUAL.         |
 +---------+-----------------------------------------------------------------+
-| 0x100   | Property is internal, and not visible to ordinary Ecmascript    |
-|         | code.  Currently set when initial key byte is 0xFF.             |
+| 0x100   | Property key is a Symbol.                                       |
++---------+-----------------------------------------------------------------+
+| 0x200   | Property is a hidden Symbol which is not visible to ordinary    |
+|         | Ecmascript code.                                                |
 +---------+-----------------------------------------------------------------+
 
 For artificial properties (returned by GetHeapObjInfo) the property attributes
@@ -2368,6 +2369,8 @@ The following list describes artificial keys included in Duktape 1.5.0, see
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``constructable``               | ``duk_hobject``           | DUK_HOBJECT_FLAG_CONSTRUCTABLE                          |
 +---------------------------------+---------------------------+---------------------------------------------------------+
+| ``callable``                    | ``duk_hobject``           | DUK_HOBJECT_FLAG_CALLABLE                               |
++---------------------------------+---------------------------+---------------------------------------------------------+
 | ``bound``                       | ``duk_hobject``           | DUK_HOBJECT_FLAG_BOUND                                  |
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``compfunc``                    | ``duk_hobject``           | DUK_HOBJECT_FLAG_COMPFUNC                               |
@@ -2398,9 +2401,9 @@ The following list describes artificial keys included in Duktape 1.5.0, see
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``exotic_arguments``            | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXOTIC_ARGUMENTS                       |
 +---------------------------------+---------------------------+---------------------------------------------------------+
-| ``exotic_dukfunc``              | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXOTIC_DUKFUNC                         |
-+---------------------------------+---------------------------+---------------------------------------------------------+
 | ``exotic_proxyobj``             | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXOTIC_PROXYOBJ                        |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``special_call``                | ``duk_hobject``           | DUK_HOBJECT_FLAG_SPECIAL_CALL                           |
 +---------------------------------+---------------------------+---------------------------------------------------------+
 | ``class_number``                | ``duk_hobject``           | Duktape internal class number (same as object dvalue).  |
 +---------------------------------+---------------------------+---------------------------------------------------------+
@@ -3104,8 +3107,7 @@ Transport neutrality
 --------------------
 
 The debug protocol should be transport neutral to support embedding in very
-different environments and communication links (Wi-Fi, Bluetooth, serial,
-embedding into protocols like AllJoyn, etc).
+different environments and communication links (Wi-Fi, Bluetooth, serial, etc).
 
 * Concrete solution is to use assume a reliable (TCP-like) byte stream,
   with user code providing the concrete transport.

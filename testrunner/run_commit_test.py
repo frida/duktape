@@ -24,6 +24,7 @@
 import os
 import sys
 import re
+import json
 import optparse
 import subprocess
 import time
@@ -147,10 +148,15 @@ def format_size_diff(newsz, oldsz):
         newsz['total'] - oldsz['total']
     )
 
-output_description = None
-def set_output_description(desc):
-    global output_description
-    output_description = desc
+def format_size(sz):
+    return '%d %d %d' % (sz['text'], sz['data'], sz['bss'])
+
+output_result_json = {}
+def set_output_result(doc):
+    for k in doc.keys():
+        output_result_json[k] = doc[k]
+def set_output_field(key, value):
+    output_result_json[key] = value
 
 def prep(options=None, options_yaml=None):
     cwd = os.getcwd()
@@ -285,7 +291,13 @@ def context_linux_x64_octane():
         if m is not None:
             scores.append(float(m.group(1)))
         print('scores so far: min=%f, max=%f, avg=%f: %r' % (min(scores), max(scores), sum(scores) / float(len(scores)), scores))
-    print('TESTRUNNER_DESCRIPTION: %.1f (%d-%d)' % (float(sum(scores) / float(len(scores))), int(min(scores)), int(max(scores))))
+    set_output_result({
+        'description': '%.1f (%d-%d)' % (float(sum(scores) / float(len(scores))), int(min(scores)), int(max(scores))),
+        'score_avg': float(sum(scores) / float(len(scores))),
+        'score_min': int(min(scores)),
+        'score_max': int(max(scores))
+    })
+
     return True
 
 def context_linux_x64_duk_clang():
@@ -320,7 +332,11 @@ def context_helper_get_binary_size_diff(compfn):
     execute([ 'make', 'clean' ])
     compfn()
     oldsz = get_binary_size(os.path.join(cwd, 'duk'))
-    set_output_description(format_size_diff(newsz, oldsz))
+    set_output_result({
+        'description': format_size_diff(newsz, oldsz),
+        'oldsz': oldsz,
+        'newsz': newsz
+    })
     return True
 
 def context_linux_x64_gcc_defsize_makeduk():
@@ -329,13 +345,14 @@ def context_linux_x64_gcc_defsize_makeduk():
         execute([ 'make', 'duk' ])
     return context_helper_get_binary_size_diff(comp)
 
-def context_linux_x64_gcc_defsize_fltoetc():
+def context_helper_defsize_fltoetc(archopt):
     cwd = os.getcwd()
     def comp():
         execute([ 'make', 'dist' ])
         execute([
-            'gcc', '-oduk',
+            'gcc', '-oduk', archopt,
             '-Os', '-fomit-frame-pointer',
+            '-fno-stack-protector',
             '-flto', '-fno-asynchronous-unwind-tables',
             '-ffunction-sections', '-Wl,--gc-sections',
             '-I' + os.path.join('dist', 'src'),
@@ -345,6 +362,17 @@ def context_linux_x64_gcc_defsize_fltoetc():
             '-lm'
         ])
     return context_helper_get_binary_size_diff(comp)
+
+def context_linux_x64_gcc_defsize_fltoetc():
+    return context_helper_defsize_fltoetc('-m64')
+def context_linux_x86_gcc_defsize_fltoetc():
+    return context_helper_defsize_fltoetc('-m32')
+def context_linux_x32_gcc_defsize_fltoetc():
+    return context_helper_defsize_fltoetc('-mx32')
+def context_linux_arm_gcc_defsize_fltoetc():
+    return context_helper_defsize_fltoetc('-marm')
+def context_linux_thumb_gcc_defsize_fltoetc():
+    return context_helper_defsize_fltoetc('-mthumb')
 
 def context_helper_minsize_fltoetc(archopt, strip):
     cwd = os.getcwd()
@@ -369,6 +397,7 @@ def context_helper_minsize_fltoetc(archopt, strip):
         execute([
             'gcc', '-oduk', archopt,
             '-Os', '-fomit-frame-pointer',
+            '-fno-stack-protector',
             '-flto', '-fno-asynchronous-unwind-tables',
             '-ffunction-sections', '-Wl,--gc-sections',
             '-I' + os.path.join('prep'),
@@ -385,21 +414,25 @@ def context_helper_minsize_fltoetc(archopt, strip):
 
 def context_linux_x64_gcc_minsize_fltoetc():
     return context_helper_minsize_fltoetc('-m64', False)
-
 def context_linux_x86_gcc_minsize_fltoetc():
     return context_helper_minsize_fltoetc('-m32', False)
-
 def context_linux_x32_gcc_minsize_fltoetc():
     return context_helper_minsize_fltoetc('-mx32', False)
+def context_linux_arm_gcc_minsize_fltoetc():
+    return context_helper_minsize_fltoetc('-marm', False)
+def context_linux_thumb_gcc_minsize_fltoetc():
+    return context_helper_minsize_fltoetc('-mthumb', False)
 
 def context_linux_x64_gcc_stripsize_fltoetc():
     return context_helper_minsize_fltoetc('-m64', True)
-
 def context_linux_x86_gcc_stripsize_fltoetc():
     return context_helper_minsize_fltoetc('-m32', True)
-
 def context_linux_x32_gcc_stripsize_fltoetc():
     return context_helper_minsize_fltoetc('-mx32', True)
+def context_linux_arm_gcc_stripsize_fltoetc():
+    return context_helper_minsize_fltoetc('-marm', True)
+def context_linux_thumb_gcc_stripsize_fltoetc():
+    return context_helper_minsize_fltoetc('-mthumb', True)
 
 def context_linux_x64_cpp_exceptions():
     # For now rather simple: compile, run, and grep for my_class
@@ -432,41 +465,41 @@ def context_linux_x64_cpp_exceptions():
         print('C++ exceptions don\'t seem to be working')
         return False
 
-def context_linux_x86_ajduk():
+def context_linux_x86_duklow():
     cwd = os.getcwd()
-    execute([ 'make', 'ajduk' ])
+    execute([ 'make', 'duk-low' ])
     res = execute([
-        os.path.join(cwd, 'ajduk'),
+        os.path.join(cwd, 'duk-low'),
         '-e', 'print("hello world!");'
     ])
     return 'hello world!\n' in res['stdout']
 
-def context_linux_x86_ajduk_norefc():
+def context_linux_x86_duklow_norefc():
     cwd = os.getcwd()
-    execute([ 'make', 'ajduk-norefc' ])
+    execute([ 'make', 'duk-low-norefc' ])
     res = execute([
-        os.path.join(cwd, 'ajduk-norefc'),
+        os.path.join(cwd, 'duk-low-norefc'),
         '-e', 'print("hello world!");'
     ])
     return 'hello world!\n' in res['stdout']
 
-def context_linux_x86_ajduk_rombuild():
+def context_linux_x86_duklow_rombuild():
     cwd = os.getcwd()
 
-    execute([ 'make', 'ajduk-rom' ])
+    execute([ 'make', 'duk-low-rom' ])
 
     got_hello = False
     got_startrek = False
 
     res = execute([
-        os.path.join(cwd, 'ajduk-rom'),
+        os.path.join(cwd, 'duk-low-rom'),
         '-e', 'print("hello world!");'
     ])
-    got_hello = ('hello world!\n' in res['stdout'])  # ajduk stdout has pool dumps etc
+    got_hello = ('hello world!\n' in res['stdout'])  # duk-low-rom stdout has pool dumps etc
     print('Got hello: %r' % got_hello)
 
     res = execute([
-        os.path.join(cwd, 'ajduk-rom'),
+        os.path.join(cwd, 'duk-low-rom'),
         '-e', 'print("StarTrek.ent:", StarTrek.ent);'
     ])
     got_startrek = ('StarTrek.ent: true\n' in res['stdout'])
@@ -518,6 +551,7 @@ DUK_USE_DEBUG_WRITE:
         'gcc', '-oduk',
         '-DDUK_CMDLINE_PRINTALERT_SUPPORT',
         '-I' + os.path.join(cwd, 'prep'),
+        '-I' + os.path.join(cwd, 'examples', 'cmdline'),
         '-I' + os.path.join(cwd, 'extras', 'print-alert'),
         os.path.join(cwd, 'prep', 'duktape.c'),
         os.path.join(cwd, 'examples', 'cmdline', 'duk_cmdline.c'),
@@ -552,6 +586,7 @@ def context_linux_x64_duk_separate_src():
         'gcc', '-oduk',
         '-DDUK_CMDLINE_PRINTALERT_SUPPORT',
         '-I' + os.path.join(cwd, 'dist', 'src-separate'),
+        '-I' + os.path.join(cwd, 'dist', 'examples', 'cmdline'),
         '-I' + os.path.join(cwd, 'dist', 'extras', 'print-alert')
     ] + cfiles + [
         '-lm'
@@ -574,6 +609,7 @@ def context_linux_x86_packed_tval():
         'gcc', '-oduk', '-m32',
         '-DDUK_CMDLINE_PRINTALERT_SUPPORT',
         '-I' + os.path.join(cwd, 'dist', 'src'),
+        '-I' + os.path.join(cwd, 'dist', 'examples', 'cmdline'),
         '-I' + os.path.join(cwd, 'dist', 'extras', 'print-alert'),
         os.path.join(cwd, 'dist', 'src', 'duktape.c'),
         os.path.join(cwd, 'dist', 'examples', 'cmdline', 'duk_cmdline.c'),
@@ -611,6 +647,7 @@ def context_linux_x86_dist_genconfig():
         'gcc', '-oduk',
         '-DDUK_CMDLINE_PRINTALERT_SUPPORT',
         '-I' + os.path.join(cwd, 'dist', 'src'),
+        '-I' + os.path.join(cwd, 'dist', 'examples', 'cmdline'),
         '-I' + os.path.join(cwd, 'dist', 'extras', 'print-alert'),
         os.path.join(cwd, 'dist', 'src', 'duktape.c'),
         os.path.join(cwd, 'dist', 'examples', 'cmdline', 'duk_cmdline.c'),
@@ -657,6 +694,7 @@ def context_linux_x64_error_variants():
             'gcc', '-o' + params['binary_name'],
             '-DDUK_CMDLINE_PRINTALERT_SUPPORT',
             '-I' + os.path.join(cwd, 'dist', 'src'),
+            '-I' + os.path.join(cwd, 'dist', 'examples', 'cmdline'),
             '-I' + os.path.join(cwd, 'dist', 'extras', 'print-alert'),
             os.path.join(cwd, 'dist', 'src', 'duktape.c'),
             os.path.join(cwd, 'dist', 'examples', 'cmdline', 'duk_cmdline.c'),
@@ -709,6 +747,7 @@ def context_helper_hello_ram(archopt):
         execute([
             'gcc', '-ohello', archopt,
             '-Os', '-fomit-frame-pointer',
+            '-fno-stack-protector',
             '-flto', '-fno-asynchronous-unwind-tables',
             '-ffunction-sections', '-Wl,--gc-sections',
             '-I' + os.path.join('prep'),
@@ -768,16 +807,19 @@ def context_helper_hello_ram(archopt):
         '-UDUK_USE_HSTRING_ARRIDX'
     ])
 
-    set_output_description('%s %s %s (kB)' % (kb_default, kb_nobufobj, kb_rom))
+    set_output_result({
+        'description': '%s %s %s (kB)' % (kb_default, kb_nobufobj, kb_rom),
+        'kb_default': kb_default,
+        'kb_nobufobj': kb_nobufobj,
+        'kb_rom': kb_rom
+    })
 
     return True
 
 def context_linux_x64_hello_ram():
     return context_helper_hello_ram('-m64')
-
 def context_linux_x86_hello_ram():
     return context_helper_hello_ram('-m32')
-
 def context_linux_x32_hello_ram():
     return context_helper_hello_ram('-mx32')
 
@@ -794,10 +836,12 @@ def mandel_test(archopt, genconfig_opts):
     execute([
         'gcc', '-oduk', archopt,
         '-Os', '-fomit-frame-pointer',
+        '-fno-stack-protector',
         '-flto', '-fno-asynchronous-unwind-tables',
         '-ffunction-sections', '-Wl,--gc-sections',
         '-DDUK_CMDLINE_PRINTALERT_SUPPORT',
         '-I' + os.path.join('dist', 'src'),
+        '-I' + os.path.join(cwd, 'dist', 'examples', 'cmdline'),
         '-I' + os.path.join(cwd, 'dist', 'extras', 'print-alert'),
         '-I' + os.path.join('dist', 'examples', 'cmdline'),
         os.path.join(cwd, 'dist', 'src', 'duktape.c'),
@@ -906,6 +950,78 @@ def context_linux_x64_dukluv():
 
     return True
 
+def context_linux_graph_hello_size_helper(archopt):
+    cwd = os.getcwd()
+    cmd = [
+        'python2', os.path.join(cwd, 'tools', 'configure.py'),
+        '--source-directory', os.path.join(cwd, 'src-input'),
+        '--output-directory', os.path.join(cwd, 'prep'),
+        '--config-metadata', os.path.join(cwd, 'config'),
+        '--option-file', os.path.join(cwd, 'config', 'examples', 'low_memory.yaml')
+    ]
+    execute(cmd)
+    execute([
+        'gcc', '-ohello', archopt,
+        '-std=c99', '-Wall',
+        '-Os', '-fomit-frame-pointer',
+        '-flto', '-fno-asynchronous-unwind-tables',
+        '-ffunction-sections', '-Wl,--gc-sections',
+        '-fno-stack-protector',
+        '-I' + os.path.join('prep'),
+        os.path.join(cwd, 'prep', 'duktape.c'),
+        os.path.join(cwd, 'examples', 'hello', 'hello.c'),
+        '-lm'
+    ])
+    sz = get_binary_size(os.path.join(cwd, 'hello'))
+    set_output_result({
+        'description': format_size(sz),
+        'newsz': sz
+    })
+    return True
+
+def context_linux_x64_graph_hello_size():
+    return context_linux_graph_hello_size_helper('-m64')
+def context_linux_x86_graph_hello_size():
+    return context_linux_graph_hello_size_helper('-m32')
+def context_linux_x32_graph_hello_size():
+    return context_linux_graph_hello_size_helper('-mx32')
+def context_linux_arm_graph_hello_size():
+    return context_linux_graph_hello_size_helper('-marm')
+def context_linux_thumb_graph_hello_size():
+    return context_linux_graph_hello_size_helper('-mthumb')
+
+def context_codemetrics():
+    def scandir(path):
+        count = 0
+        lines = 0
+        for fn in os.listdir(path):
+            count += 1
+            with open(os.path.join(path, fn), 'rb') as f:
+                data = f.read()
+                lines += data.count('\n')  # assume trailing newline on last line
+        return count, lines
+
+    if os.path.exists(os.path.join('.', 'src')):
+        source_files, source_lines = scandir(os.path.join('.', 'src'))
+    else:
+        source_files, source_lines = scandir(os.path.join('.', 'src-input'))
+    ecma_test_files, ecma_test_lines = scandir(os.path.join('.', 'tests/ecmascript'))
+    api_test_files, api_test_lines = scandir(os.path.join('.', 'tests/api'))
+
+    set_output_result({
+        'source_files': source_files,
+        'source_lines': source_lines,
+        'ecma_test_files': ecma_test_files,
+        'ecma_test_lines': ecma_test_lines,
+        'api_test_files': api_test_files,
+        'api_test_lines': api_test_lines
+    })
+
+    # Counts for markers like XXX
+    # Repo clone size
+
+    return True
+
 context_handlers = {
     # Linux
 
@@ -939,19 +1055,35 @@ context_handlers = {
     'linux-x64-duk-gxx': context_linux_x64_duk_gxx,
 
     'linux-x64-gcc-defsize-makeduk': context_linux_x64_gcc_defsize_makeduk,
+
     'linux-x64-gcc-defsize-fltoetc': context_linux_x64_gcc_defsize_fltoetc,
+    'linux-x86-gcc-defsize-fltoetc': context_linux_x86_gcc_defsize_fltoetc,
+    'linux-x32-gcc-defsize-fltoetc': context_linux_x32_gcc_defsize_fltoetc,
+    'linux-arm-gcc-defsize-fltoetc': context_linux_arm_gcc_defsize_fltoetc,
+    'linux-thumb-gcc-defsize-fltoetc': context_linux_thumb_gcc_defsize_fltoetc,
     'linux-x64-gcc-minsize-fltoetc': context_linux_x64_gcc_minsize_fltoetc,
     'linux-x86-gcc-minsize-fltoetc': context_linux_x86_gcc_minsize_fltoetc,
     'linux-x32-gcc-minsize-fltoetc': context_linux_x32_gcc_minsize_fltoetc,
+    'linux-arm-gcc-minsize-fltoetc': context_linux_arm_gcc_minsize_fltoetc,
+    'linux-thumb-gcc-minsize-fltoetc': context_linux_thumb_gcc_minsize_fltoetc,
     'linux-x64-gcc-stripsize-fltoetc': context_linux_x64_gcc_stripsize_fltoetc,
     'linux-x86-gcc-stripsize-fltoetc': context_linux_x86_gcc_stripsize_fltoetc,
     'linux-x32-gcc-stripsize-fltoetc': context_linux_x32_gcc_stripsize_fltoetc,
+    'linux-arm-gcc-stripsize-fltoetc': context_linux_arm_gcc_stripsize_fltoetc,
+    'linux-thumb-gcc-stripsize-fltoetc': context_linux_thumb_gcc_stripsize_fltoetc,
+
+    # Jobs matching previous graphs.html data points.
+    'linux-x64-graph-hello-size': context_linux_x64_graph_hello_size,
+    'linux-x86-graph-hello-size': context_linux_x86_graph_hello_size,
+    'linux-x32-graph-hello-size': context_linux_x32_graph_hello_size,
+    'linux-arm-graph-hello-size': context_linux_arm_graph_hello_size,
+    'linux-thumb-graph-hello-size': context_linux_thumb_graph_hello_size,
 
     'linux-x64-cpp-exceptions': context_linux_x64_cpp_exceptions,
 
-    'linux-x86-ajduk': context_linux_x86_ajduk,
-    'linux-x86-ajduk-norefc': context_linux_x86_ajduk_norefc,
-    'linux-x86-ajduk-rombuild': context_linux_x86_ajduk_rombuild,
+    'linux-x86-duklow': context_linux_x86_duklow,
+    'linux-x86-duklow-norefc': context_linux_x86_duklow_norefc,
+    'linux-x86-duklow-rombuild': context_linux_x86_duklow_rombuild,
 
     'linux-x64-v8-bench-pass': context_linux_x64_v8_bench_pass,
     'linux-x64-octane': context_linux_x64_octane,
@@ -972,6 +1104,8 @@ context_handlers = {
 
     'linux-x64-minisphere': context_linux_x64_minisphere,
     'linux-x64-dukluv': context_linux_x64_dukluv,
+
+    'codemetrics': context_codemetrics,
 
     # OS X: can currently share Linux handlers
 
@@ -1031,8 +1165,6 @@ def main():
     execute([ 'git', 'config', 'core.filemode', 'false' ])  # avoid perm issues on Windows
 
     for fn in [
-        'alljoyn-72930212134129ae0464df93c526a6d110cb82f7.tar.gz',
-        'ajtcl-cf47440914f31553a0064f3dabbbf337921ea357.tar.gz',
         'closure-20160317.tar.gz',
         'uglifyjs2-20160317.tar.gz',
         'runtests-node-modules-20160320.tar.gz'
@@ -1063,14 +1195,14 @@ def main():
     print('*** Running test for context: ' + context)
     print('')
 
+    test_start_time = time.time()
     success = fn()
+    test_end_time = time.time()
+    set_output_field('test_time', test_end_time - test_start_time)
 
     print('')
     print('*** Finished test for context: ' + context + ', success: ' + repr(success))
     print('')
-
-    if output_description is not None:
-        print('TESTRUNNER_DESCRIPTION: ' + output_description)
 
     if success == True:
         # Testcase successful
@@ -1084,22 +1216,33 @@ def main():
         raise Exception('context handler returned a non-boolean: %r' % success)
 
 if __name__ == '__main__':
-    start_time = time.time()
+    total_start_time = time.time()
 
     try:
         try:
             main()
+            raise Exception('internal error, should never be here')
         except SystemExit:
+            # Test script success.
             raise
         except:
-            # Test script failed, automatic retry is useful
+            # Test script failed, automatic retry is useful.
             print('')
             print('*** Test script failed')
             print('')
             traceback.print_exc()
-            print('TESTRUNNER_DESCRIPTION: Test script error')
+            set_output_result({
+                'description': 'Test script error',
+                'error': True,
+                'traceback': traceback.format_exc()
+            })
             sys.exit(2)
     finally:
-        end_time = time.time()
+        total_end_time = time.time()
+        set_output_field('total_time', total_end_time - total_start_time)
         print('')
-        print('Test took %.2f minutes' % ((end_time - start_time) / 60.0))
+        print('Test took %.2f minutes' % ((total_end_time - total_start_time) / 60.0))
+
+        if output_result_json is not None:
+            print('TESTRUNNER_DESCRIPTION: ' + output_result_json.get('description', ''))
+            print('TESTRUNNER_RESULT_JSON: ' + json.dumps(output_result_json))

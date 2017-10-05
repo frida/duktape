@@ -65,7 +65,12 @@ DUK_INTERNAL void duk_free_hobject(duk_heap *heap, duk_hobject *h) {
 		 * to be unwound to update the 'caller' properties of
 		 * functions in the callstack.
 		 */
+	} else if (DUK_HOBJECT_IS_BOUNDFUNC(h)) {
+		duk_hboundfunc *f = (duk_hboundfunc *) h;
+
+		DUK_FREE(heap, f->args);
 	}
+
 	DUK_FREE(heap, (void *) h);
 }
 
@@ -180,6 +185,7 @@ DUK_INTERNAL void duk_heap_free_freelists(duk_heap *heap) {
 #if defined(DUK_USE_CACHE_CATCHER)
 	count_cat = duk__heap_free_catcher_freelist(heap);
 #endif
+	DUK_UNREF(heap);
 	DUK_UNREF(count_act);
 	DUK_UNREF(count_cat);
 
@@ -896,7 +902,6 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 	/* explicit NULL inits */
 #if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	res->heap_udata = NULL;
-	res->global_access_funcs = NULL;
 	res->heap_allocated = NULL;
 #if defined(DUK_USE_REFERENCE_COUNTING)
 	res->refzero_list = NULL;
@@ -943,7 +948,7 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 	res->dbg_write_flush_cb = NULL;
 	res->dbg_request_cb = NULL;
 	res->dbg_udata = NULL;
-	res->dbg_step_act = NULL;
+	res->dbg_pause_act = NULL;
 #endif
 #endif  /* DUK_USE_EXPLICIT_NULL_INIT */
 
@@ -1105,14 +1110,14 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 
 #if !defined(DUK_USE_GET_RANDOM_DOUBLE)
 #if defined(DUK_USE_PREFER_SIZE) || !defined(DUK_USE_64BIT_OPS)
-	res->rnd_state = (duk_uint32_t) DUK_USE_DATE_GET_NOW((duk_context *) res->heap_thread);
+	res->rnd_state = (duk_uint32_t) duk_time_get_ecmascript_time(res->heap_thread);
 	duk_util_tinyrandom_prepare_seed(res->heap_thread);
 #else
-	res->rnd_state[0] = (duk_uint64_t) DUK_USE_DATE_GET_NOW((duk_context *) res->heap_thread);
+	res->rnd_state[0] = (duk_uint64_t) duk_time_get_ecmascript_time(res->heap_thread);
 	DUK_ASSERT(res->rnd_state[1] == 0);  /* Not filled here, filled in by seed preparation. */
 #if 0  /* Manual test values matching misc/xoroshiro128plus_test.c. */
-	res->rnd_state[0] = 0xdeadbeef12345678ULL;
-	res->rnd_state[1] = 0xcafed00d12345678ULL;
+	res->rnd_state[0] = DUK_U64_CONSTANT(0xdeadbeef12345678);
+	res->rnd_state[1] = DUK_U64_CONSTANT(0xcafed00d12345678);
 #endif
 	duk_util_tinyrandom_prepare_seed(res->heap_thread);
 	/* Mix in heap pointer: this ensures that if two Duktape heaps are

@@ -802,6 +802,10 @@ key: valueOf
 key: hasOwnProperty
 key: isPrototypeOf
 key: propertyIsEnumerable
+key: __defineGetter__
+key: __defineSetter__
+key: __lookupGetter__
+key: __lookupSetter__
 top: 1
 enum own
 top: 1

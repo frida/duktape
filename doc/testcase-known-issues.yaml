@@ -61,10 +61,6 @@
   knownissue: "corner cases for 'new Function()' when arguments and code are given as strings"
   # Moved
 -
-  test: "test-dev-yield-after-callapply.js"
-  knownissue: "yield() not allowed when function called via Function.prototype.(call|apply)()"
-  # Moved
--
   test: "test-lex-unterminated-hex-uni-escape.js"
   knownissue: "unterminated hex escapes should be parsed leniently, e.g. '\\uX' -> 'uX' but Duktape now refuses to parse them"
   # Moved
@@ -124,6 +120,12 @@
   test: "test-bi-typedarray-misc-inherited-accessors.js"
   knownissue: "typed array .length etc not yet inherited accessors (ES2015 requirement)"
   # Moved
+-
+  test: "test-expr-newtarget-eval-code.js"
+  knownissue: "new.target eval handling limitations"
+-
+  test: "test-bi-proxy-construct-newtarget.js"
+  knownissue: "for Proxy without 'construct' trap, new.target evaluates to Proxy target rather than Proxy in target constructor"
 
 # Ecmascript testcases that need special options or environment to work
 

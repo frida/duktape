@@ -384,6 +384,7 @@ DUK_LOCAL duk_uint_t duk__selftest_double_rounding(void) {
 DUK_LOCAL duk_uint_t duk__selftest_fmod(void) {
 	duk_uint_t error_count = 0;
 	duk__test_double_union u1, u2;
+	volatile duk_double_t t1, t2, t3;
 
 	/* fmod() with integer argument and exponent 2^32 is used by e.g.
 	 * ToUint32() and some Duktape internals.
@@ -398,6 +399,22 @@ DUK_LOCAL duk_uint_t duk__selftest_fmod(void) {
 
 	u1.d = DUK_FMOD(73014444042.0, 4294967296.0);
 	u2.d = 10.0;
+	DUK__DBLUNION_CMP_TRUE(&u1, &u2);
+
+	/* 52-bit integer split into two parts:
+	 * >>> 0x1fedcba9876543
+	 * 8987183256397123
+	 * >>> float(0x1fedcba9876543) / float(2**53)
+	 * 0.9977777777777778
+	 */
+	u1.d = DUK_FMOD(8987183256397123.0, 4294967296.0);
+	u2.d = (duk_double_t) 0xa9876543UL;
+	DUK__DBLUNION_CMP_TRUE(&u1, &u2);
+	t1 = 8987183256397123.0;
+	t2 = 4294967296.0;
+	t3 = t1 / t2;
+	u1.d = DUK_FLOOR(t3);
+	u2.d = (duk_double_t) 0x1fedcbUL;
 	DUK__DBLUNION_CMP_TRUE(&u1, &u2);
 
 	/* C99 behavior is for fmod() result sign to mathc argument sign. */
@@ -458,7 +475,7 @@ DUK_LOCAL duk_uint_t duk__selftest_64bit_arithmetic(void) {
 	/* Catch a double-to-int64 cast issue encountered in practice. */
 	d = 2147483648.0;
 	i = (duk_int64_t) d;
-	if (i != 0x80000000LL) {
+	if (i != DUK_I64_CONSTANT(0x80000000)) {
 		DUK__FAILED("casting 2147483648.0 to duk_int64_t failed");
 	}
 #else
@@ -553,7 +570,7 @@ DUK_LOCAL duk_uint_t duk__selftest_alloc_funcs(duk_alloc_function alloc_func,
 	}
 
 	for (i = 1; i <= 256; i++) {
-		ptr = alloc_func(udata, i);
+		ptr = alloc_func(udata, (duk_size_t) i);
 		if (ptr == NULL) {
 			DUK_D(DUK_DPRINT("alloc failed, ignore"));
 			continue;  /* alloc failed, ignore */

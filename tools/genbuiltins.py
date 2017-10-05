@@ -320,8 +320,10 @@ def format_symbol(sym):
         # Well known symbols use an empty suffix which never occurs for
         # runtime local symbols.
         return '\x81' + sym['string'] + '\xff'
-    elif variant == 'hidden':
+    elif variant == 'userhidden':
         return '\xff' + sym['string']
+    elif variant == 'hidden':  # hidden == Duktape hidden Symbol
+        return '\x82' + sym['string']
     raise Exception('invalid symbol variant %r' % variant)
 
 def metadata_normalize_symbol_strings(meta):
@@ -423,8 +425,9 @@ def metadata_normalize_shorthand(meta):
         obj['magic'] = val.get('magic', 0)
         obj['internal_prototype'] = 'bi_function_prototype'
         obj['class'] = 'Function'
-        obj['callable'] = True
+        obj['callable'] = val.get('callable', True)
         obj['constructable'] = val.get('constructable', False)
+        obj['special_call'] = val.get('special_call', False)
         fun_name = val.get('name', funprop['key'])
         props.append({ 'key': 'length', 'value': val['length'], 'attributes': 'c' })  # Configurable in ES2015
         props.append({ 'key': 'name', 'value': fun_name, 'attributes': 'c' })   # Configurable in ES2015
@@ -440,8 +443,9 @@ def metadata_normalize_shorthand(meta):
         obj['magic'] = magic
         obj['internal_prototype'] = 'bi_function_prototype'
         obj['class'] = 'Function'
-        obj['callable'] = True
-        obj['constructable'] = False
+        obj['callable'] = val.get('callable', True)
+        obj['constructable'] = val.get('constructable', False)
+        assert(obj.get('special_call', False) == False)
         # Shorthand accessors are minimal and have no .length or .name
         # right now.  Use longhand if these matter.
         #props.append({ 'key': 'length', 'value': length, 'attributes': 'c' })
@@ -512,7 +516,7 @@ def metadata_normalize_shorthand(meta):
 
     def clonePropShared(prop):
         res = {}
-        for k in [ 'key', 'attributes', 'autoLightfunc' ]:
+        for k in [ 'key', 'attributes', 'auto_lightfunc' ]:
             if prop.has_key(k):
                 res[k] = prop[k]
         return res
@@ -745,7 +749,7 @@ def metadata_convert_lightfuncs(meta):
                 if p2['key'] not in [ 'length', 'name' ]:
                     reasons.append('nonallowed-property')
 
-            if not p.get('autoLightfunc', True):
+            if not p.get('auto_lightfunc', True):
                 logger.debug('Automatic lightfunc conversion rejected for key %s, explicitly requested in metadata' % p['key'])
                 reasons.append('no-auto-lightfunc')
 
@@ -822,6 +826,7 @@ def metadata_remove_orphan_objects(meta):
         for o in meta['objects']:
             if not reachable.has_key(o['id']):
                 continue
+            _markId(o.get('internal_prototype', None))
             for p in o['properties']:
                 # Shorthand has been normalized so no need
                 # to support it here.
@@ -866,7 +871,7 @@ def metadata_add_string_define_names(strlist, special_defs):
             s['define'] = 'DUK_STRIDX_' + special_defs[v]
             continue
 
-        if len(v) >= 1 and v[0] == '\xff':
+        if len(v) >= 1 and v[0] == '\x82':
             pfx = 'DUK_STRIDX_INT_'
             v = v[1:]
         else:
@@ -1134,7 +1139,7 @@ def load_metadata(opts, rom=False, build_info=None, active_opts=None):
     for i,o in enumerate(meta['objects']):
         if i < len(meta['objects_bidx']):
             assert(meta['objects_bidx'][i] == meta['objects'][i])
-        if o.has_key('bidx'):
+        if o.get('bidx', False):
             assert(o['bidx'] == i)
 
     # Create a set of helper lists and maps now that the metadata is
@@ -1190,6 +1195,7 @@ def load_metadata(opts, rom=False, build_info=None, active_opts=None):
     for i,o in enumerate(meta['objects_bidx']):
         assert(o.get('bidx_used', False) == True)
         meta['_objid_to_bidx'][o['id']] = i
+        assert(meta['_objid_to_bidx'][o['id']] == meta['_objid_to_idx'][o['id']])
         meta['_bidx_to_objid'][i] = o['id']
         meta['_bidx_to_object'][i] = o
     if meta.has_key('objects_ram_toplevel'):
@@ -1349,10 +1355,11 @@ def resolve_magic(elem, objid_to_bidx):
 
 # Helper to find a property from a property list, remove it from the
 # property list, and return the removed property.
-def steal_prop(props, key):
+def steal_prop(props, key, allow_accessor=True):
     for idx,prop in enumerate(props):
         if prop['key'] == key:
-            return props.pop(idx)
+            if not (isinstance(prop['value'], dict) and prop['value']['type'] == 'accessor') or allow_accessor:
+                return props.pop(idx)
     return None
 
 #
@@ -1451,7 +1458,7 @@ def bitpack_string(be, s, stats=None):
     SWITCH = 29
     UNUSED1 = 30
     EIGHTBIT = 31
-    LOOKUP = '0123456789_ \xff\x80"{'  # special characters
+    LOOKUP = '0123456789_ \x82\x80"{'  # special characters
     assert(len(LOOKUP) == 16)
 
     # support up to 256 byte strings now, cases above ~30 bytes are very
@@ -1653,8 +1660,8 @@ def gen_ramobj_initdata_for_object(meta, be, bi, string_to_stridx, natfunc_name_
 
     prop_proto = steal_prop(props, 'prototype')
     prop_constr = steal_prop(props, 'constructor')
-    prop_name = steal_prop(props, 'name')
-    prop_length = steal_prop(props, 'length')
+    prop_name = steal_prop(props, 'name', allow_accessor=False)
+    prop_length = steal_prop(props, 'length', allow_accessor=False)
 
     length = -1  # default value -1 signifies varargs
     if prop_length is not None:
@@ -1711,6 +1718,7 @@ def gen_ramobj_initdata_for_object(meta, be, bi, string_to_stridx, natfunc_name_
             be.bits(1, 1)    # flag: constructable
         else:
             be.bits(0, 1)    # flag: not constructable
+        # DUK_HOBJECT_FLAG_SPECIAL_CALL is handled at runtime without init data.
 
         # Convert signed magic to 16-bit unsigned for encoding
         magic = resolve_magic(bi.get('magic'), objid_to_bidx) & 0xffff
@@ -1774,13 +1782,13 @@ def gen_ramobj_initdata_for_props(meta, be, bi, string_to_stridx, natfunc_name_t
 
     # name: encoded specially for function objects, so steal and ignore here
     if bi['class'] == 'Function':
-        prop_name = steal_prop(props, 'name')
+        prop_name = steal_prop(props, 'name', allow_accessor=False)
         assert(prop_name is not None)
         assert(isinstance(prop_name['value'], str))
         assert(prop_name['attributes'] == 'c')
 
     # length: encoded specially, so steal and ignore
-    prop_proto = steal_prop(props, 'length')
+    prop_proto = steal_prop(props, 'length', allow_accessor=False)
 
     # Date.prototype.toGMTString needs special handling and is handled
     # directly in duk_hthread_builtins.c; so steal and ignore here.
@@ -2327,9 +2335,9 @@ def rom_emit_strings_source(genc, meta):
                 flags.append('DUK_HSTRING_FLAG_ASCII')
             if is_arridx:
                 flags.append('DUK_HSTRING_FLAG_ARRIDX')
-            if len(v) >= 1 and v[0] in [ '\x80', '\x81', '\xff' ]:
+            if len(v) >= 1 and v[0] in [ '\x80', '\x81', '\x82', '\xff' ]:
                 flags.append('DUK_HSTRING_FLAG_SYMBOL')
-            if len(v) >= 1 and v[0] in [ '\xff' ]:
+            if len(v) >= 1 and v[0] in [ '\x82', '\xff' ]:
                 flags.append('DUK_HSTRING_FLAG_HIDDEN')
             if v in [ 'eval', 'arguments' ]:
                 flags.append('DUK_HSTRING_FLAG_EVAL_OR_ARGUMENTS')
@@ -2746,10 +2754,14 @@ def rom_emit_objects(genc, meta, bi_str_map):
             flags.append('DUK_HOBJECT_FLAG_NATFUNC')
             flags.append('DUK_HOBJECT_FLAG_STRICT')
             flags.append('DUK_HOBJECT_FLAG_NEWENV')
+        if obj.get('callable', False):
+            flags.append('DUK_HOBJECT_FLAG_CALLABLE')
         if obj.get('constructable', False):
             flags.append('DUK_HOBJECT_FLAG_CONSTRUCTABLE')
         if obj.get('class') == 'Array':
             flags.append('DUK_HOBJECT_FLAG_EXOTIC_ARRAY')
+        if obj.get('special_call', False):
+            flags.append('DUK_HOBJECT_FLAG_SPECIAL_CALL')
         flags.append('DUK_HOBJECT_CLASS_AS_FLAGS(%d)' % class_to_number(obj['class']))  # XXX: use constant, not number
 
         refcount = 1  # refcount is faked to be always 1

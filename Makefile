@@ -79,10 +79,13 @@ CONFIGOPTS_NONDEBUG=--option-file util/makeduk_base.yaml
 CONFIGOPTS_NONDEBUG_SCANBUILD=--option-file util/makeduk_base.yaml --option-file util/makeduk_scanbuild.yaml
 CONFIGOPTS_NONDEBUG_PERF=--option-file config/examples/performance_sensitive.yaml
 CONFIGOPTS_NONDEBUG_SIZE=--option-file config/examples/low_memory.yaml
-CONFIGOPTS_NONDEBUG_AJDUK=--option-file util/makeduk_ajduk.yaml --fixup-file util/makeduk_ajduk_fixup.h
 CONFIGOPTS_NONDEBUG_ROM=--rom-support --rom-auto-lightfunc --option-file util/makeduk_base.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX
-CONFIGOPTS_NONDEBUG_AJDUK_ROM=--rom-support --rom-auto-lightfunc --option-file util/makeduk_ajduk.yaml --fixup-file util/makeduk_ajduk_fixup.h --builtin-file util/example_user_builtins1.yaml --builtin-file util/example_user_builtins2.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX -UDUK_USE_DEBUG
-CONFIGOPTS_NONDEBUG_AJDUK_NOREFC=--option-file util/makeduk_base.yaml --option-file util/makeduk_ajduk.yaml --fixup-file util/makeduk_ajduk_fixup.h -UDUK_USE_REFERENCE_COUNTING -UDUK_USE_DOUBLE_LINKED_HEAP
+CONFIGOPTS_NONDEBUG_DUKLOW=--option-file config/examples/low_memory.yaml --option-file util/makeduk_duklow.yaml --fixup-file util/makeduk_duklow_fixup.h
+CONFIGOPTS_DEBUG_DUKLOW=$(CONFIGOPTS_NONDEBUG_DUKLOW) -DDUK_USE_ASSERTIONS -DDUK_USE_SELF_TESTS
+CONFIGOPTS_NONDEBUG_DUKLOW_ROM=--rom-support --rom-auto-lightfunc --option-file config/examples/low_memory.yaml --option-file util/makeduk_duklow.yaml --fixup-file util/makeduk_duklow_fixup.h --builtin-file util/example_user_builtins1.yaml --builtin-file util/example_user_builtins2.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX -UDUK_USE_DEBUG
+CONFIGOPTS_DEBUG_DUKLOW_ROM=$(CONFIGOPTS_NONDEBUG_DUKLOW_ROM) -DDUK_USE_ASSERTIONS -DDUK_USE_SELF_TESTS
+CONFIGOPTS_NONDEBUG_DUKLOW_NOREFC=--option-file config/examples/low_memory.yaml --option-file util/makeduk_duklow.yaml --fixup-file util/makeduk_duklow_fixup.h -UDUK_USE_REFERENCE_COUNTING -UDUK_USE_DOUBLE_LINKED_HEAP
+CONFIGOPTS_DEBUG_DUKLOW_NOREFC=$(CONFIGOPTS_NONDEBUG_DUKLOW_NOREFC) -DDUK_USE_ASSERTIONS -DDUK_USE_SELF_TESTS
 CONFIGOPTS_DEBUG=--option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml
 CONFIGOPTS_DEBUG_SCANBUILD=--option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml --option-file util/makeduk_scanbuild.yaml
 CONFIGOPTS_DEBUG_ROM=--rom-support --rom-auto-lightfunc --option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX
@@ -126,8 +129,10 @@ CCOPTS_SHARED += -Wunreachable-code  # on some compilers unreachable code is an 
 CCOPTS_SHARED += -Wmissing-prototypes
 # -Wfloat-equal is too picky, there's no apparent way to compare floats
 # (even when you know it's safe) without triggering warnings
+CCOPTS_SHARED += -Wsign-conversion
 CCOPTS_SHARED += -fmax-errors=3  # prevent floods of errors if e.g. parenthesis missing
 CCOPTS_SHARED += -I./linenoise
+CCOPTS_SHARED += -I./examples/cmdline
 CCOPTS_SHARED += -I./examples/alloc-logging
 CCOPTS_SHARED += -I./examples/alloc-torture
 CCOPTS_SHARED += -I./examples/alloc-hybrid
@@ -136,16 +141,21 @@ CCOPTS_SHARED += -I./extras/print-alert
 CCOPTS_SHARED += -I./extras/console
 CCOPTS_SHARED += -I./extras/logging
 CCOPTS_SHARED += -I./extras/module-duktape
-#CCOPTS_SHARED += -m32                             # force 32-bit compilation on a 64-bit host
-#CCOPTS_SHARED += -mx32                            # force X32 compilation on a 64-bit host
+#CCOPTS_SHARED += -m32   # force 32-bit compilation on a 64-bit host
+#CCOPTS_SHARED += -mx32  # force X32 compilation on a 64-bit host
+#CCOPTS_SHARED += -fstack-usage  # enable manually, then e.g. $ make clean duk; python util/pretty_stack_usage.py duktape.su
 
 CCOPTS_NONDEBUG = $(CCOPTS_SHARED) $(CCOPTS_FEATURES)
-CCOPTS_NONDEBUG += -Os -fomit-frame-pointer
+CCOPTS_NONDEBUG += -Os -fomit-frame-pointer -fno-stack-protector
 CCOPTS_NONDEBUG += -g -ggdb
 
 CCOPTS_DEBUG = $(CCOPTS_SHARED) $(CCOPTS_FEATURES)
 CCOPTS_DEBUG += -O0
 CCOPTS_DEBUG += -g -ggdb
+
+CLANG_CCOPTS_NONDEBUG = $(CCOPTS_NONDEBUG)
+CLANG_CCOPTS_NONDEBUG += -Wshorten-64-to-32
+CLANG_CCOPTS_NONDEBUG += -Wcomma
 
 GXXOPTS_SHARED = -pedantic -ansi -std=c++11 -fstrict-aliasing -Wall -Wextra -Wunused-result -Wunused-function
 GXXOPTS_SHARED += -DDUK_CMDLINE_PRINTALERT_SUPPORT
@@ -154,17 +164,27 @@ GXXOPTS_NONDEBUG += -I./examples/alloc-logging -I./examples/alloc-torture -I./ex
 GXXOPTS_DEBUG = $(GXXOPTS_SHARED) -O0 -g -ggdb
 GXXOPTS_DEBUG += -I./examples/alloc-logging -I./examples/alloc-torture -I./examples/alloc-hybrid -I./extras/print-alert -I./extras/console -I./extras/logging -I./extras/module-duktape
 
-CCOPTS_AJDUK = -m32
-#CCOPTS_AJDUK += '-fpack-struct=1'
-CCOPTS_AJDUK += -Wno-unused-parameter -Wno-pedantic -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-result
-CCOPTS_AJDUK += -UDUK_CMDLINE_FANCY -DDUK_CMDLINE_AJSHEAP -D_POSIX_C_SOURCE=200809L
-CCOPTS_AJDUK += -UDUK_CMDLINE_LOGGING_SUPPORT  # extras/logger init writes to Duktape.Logger, problem with ROM build
-CCOPTS_AJDUK += -UDUK_CMDLINE_MODULE_SUPPORT  # extras/module-duktape init writes to Duktape.Logger, problem with ROM build
+CCOPTS_DUKLOW = -m32
+CCOPTS_DUKLOW += -flto -fno-asynchronous-unwind-tables -ffunction-sections -Wl,--gc-sections
+#CCOPTS_DUKLOW += '-fpack-struct=1'
+CCOPTS_DUKLOW += -Wno-unused-parameter -Wno-pedantic -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-result
+CCOPTS_DUKLOW += -UDUK_CMDLINE_FANCY -DDUK_CMDLINE_LOWMEM -D_POSIX_C_SOURCE=200809L
+CCOPTS_DUKLOW += -UDUK_CMDLINE_LOGGING_SUPPORT  # extras/logger init writes to Duktape.Logger, problem with ROM build
+CCOPTS_DUKLOW += -UDUK_CMDLINE_MODULE_SUPPORT  # extras/module-duktape init writes to Duktape.Logger, problem with ROM build
+CCOPTS_DUKLOW += -UDUK_CMDLINE_CONSOLE_SUPPORT
+CCOPTS_DUKLOW += -UDUK_CMDLINE_ALLOC_LOGGING
+CCOPTS_DUKLOW += -UDUK_CMDLINE_ALLOC_TORTURE
+CCOPTS_DUKLOW += -UDUK_CMDLINE_ALLOC_HYBRID
+CCOPTS_DUKLOW += -UDUK_CMDLINE_DEBUGGER_SUPPORT
+CCOPTS_DUKLOW += -UDUK_CMDLINE_FILEIO
+#CCOPTS_DUKLOW += -DDUK_ALLOC_POOL_DEBUG
+CCOPTS_DUKLOW += -DDUK_ALLOC_POOL_TRACK_WASTE  # quite fast, but not free so disable for performance comparison
+#CCOPTS_DUKLOW += -DDUK_ALLOC_POOL_TRACK_HIGHWATER  # VERY SLOW, just for manual testing
 
 ifdef SYSTEMROOT  # Windows
-CCLIBS  = -lm -lws2_32
+CCLIBS = -lm -lws2_32
 else
-CCLIBS	= -lm
+CCLIBS = -lm
 endif
 
 # Emscripten options:
@@ -203,12 +223,19 @@ checksetup:
 .PHONY:	clean
 clean:
 	@rm -f *.gcda
+	@rm -f *.su
 	@rm -rf dist/
 	@rm -rf prep/
 	@rm -rf site/
 	@rm -f duk duk-rom dukd dukd-rom duk.O2 duk.O3 duk.O4
-	@rm -f duk-clang duk-g++ dukd-g++
-	@rm -f ajduk ajduk-rom ajdukd
+	@rm -f duk-pgo duk-pgo.O2
+	@rm -f duk-perf duk-perf.O2 duk-perf.O3 duk-perf.O4
+	@rm -f duk-perf-pgo duk-perf-pgo.O2 duk-perf-pgo.O3 duk-perf-pgo.O4
+	@rm -f duk-size
+	@rm -f duk-rom dukd-rom
+	@rm -f duk-clang duk-perf-clang
+	@rm -f duk-g++ dukd-g++ duk-perf-g++
+	@rm -f duk-low duk-low-norefc duk-low-rom
 	@rm -f emduk emduk.js
 	@rm -f libduktape*.so*
 	@rm -f duktape-*.tar.*
@@ -259,7 +286,7 @@ cleanall: clean
 	@rm -f lua-5.2.3.tar.gz
 	@rm -f luajs.zip
 	@rm -f bluebird.js
-	@rm -f jquery-1.11.0.js
+	@rm -f jquery-1.11.*.js
 	@rm -rf coffee-script
 	@rm -rf LiveScript
 	@rm -rf coco
@@ -268,9 +295,9 @@ cleanall: clean
 	@rm -rf FlameGraph
 	@rm -rf dtrace4linux
 	@rm -rf flow
+	@rm -rf lz-string
 	@rm -rf 3883a2e9063b0a5f2705bdac3263577a03913c94.zip
 	@rm -rf es5-tests.zip
-	@rm -rf alljoyn-js ajtcl
 	@rm -f v1.3.5.tar.gz
 	@rm -f "references/ECMA-262 5th edition December 2009.pdf"
 	@rm -f "references/ECMA-262 5.1 edition June 2011.pdf"
@@ -309,15 +336,24 @@ prep/emduk: prep
 prep/dukweb: prep
 	@rm -rf ./prep/dukweb
 	$(PYTHON) tools/configure.py --output-directory ./prep/dukweb --source-directory src-input --config-metadata config $(CONFIGOPTS_DUKWEB) --line-directives
-prep/ajduk-nondebug: prep
-	@rm -rf ./prep/ajduk-nondebug
-	$(PYTHON) tools/configure.py --output-directory ./prep/ajduk-nondebug --source-directory src-input --config-metadata config $(CONFIGOPTS_NONDEBUG_AJDUK) --line-directives
-prep/ajduk-nondebug-rom: prep
-	@rm -rf ./prep/ajduk-nondebug-rom
-	$(PYTHON) tools/configure.py --output-directory ./prep/ajduk-nondebug-rom --source-directory src-input --config-metadata config $(CONFIGOPTS_NONDEBUG_AJDUK_ROM) --line-directives
-prep/ajduk-nondebug-norefc: prep
-	@rm -rf ./prep/ajduk-nondebug-norefc
-	$(PYTHON) tools/configure.py --output-directory ./prep/ajduk-nondebug-norefc --source-directory src-input --config-metadata config $(CONFIGOPTS_NONDEBUG_AJDUK_NOREFC) --line-directives
+prep/duklow-nondebug: prep
+	@rm -rf ./prep/duklow-nondebug
+	$(PYTHON) tools/configure.py --output-directory ./prep/duklow-nondebug --source-directory src-input --config-metadata config $(CONFIGOPTS_NONDEBUG_DUKLOW) --line-directives
+prep/duklow-debug: prep
+	@rm -rf ./prep/duklow-debug
+	$(PYTHON) tools/configure.py --output-directory ./prep/duklow-debug --source-directory src-input --config-metadata config $(CONFIGOPTS_DEBUG_DUKLOW) --line-directives
+prep/duklow-nondebug-rom: prep
+	@rm -rf ./prep/duklow-nondebug-rom
+	$(PYTHON) tools/configure.py --output-directory ./prep/duklow-nondebug-rom --source-directory src-input --config-metadata config $(CONFIGOPTS_NONDEBUG_DUKLOW_ROM) --line-directives
+prep/duklow-debug-rom: prep
+	@rm -rf ./prep/duklow-debug-rom
+	$(PYTHON) tools/configure.py --output-directory ./prep/duklow-debug-rom --source-directory src-input --config-metadata config $(CONFIGOPTS_DEBUG_DUKLOW_ROM) --line-directives
+prep/duklow-nondebug-norefc: prep
+	@rm -rf ./prep/duklow-nondebug-norefc
+	$(PYTHON) tools/configure.py --output-directory ./prep/duklow-nondebug-norefc --source-directory src-input --config-metadata config $(CONFIGOPTS_NONDEBUG_DUKLOW_NOREFC) --line-directives
+prep/duklow-debug-norefc: prep
+	@rm -rf ./prep/duklow-debug-norefc
+	$(PYTHON) tools/configure.py --output-directory ./prep/duklow-debug-norefc --source-directory src-input --config-metadata config $(CONFIGOPTS_DEBUG_DUKLOW_NOREFC) --line-directives
 
 # Library targets.
 libduktape.so.1.0.0: prep/nondebug
@@ -422,11 +458,11 @@ duk-clang: linenoise prep/nondebug
 	# Use -Wcast-align to trigger issues like: https://github.com/svaarala/duktape/issues/270
 	# Use -Wshift-sign-overflow to trigger issues like: https://github.com/svaarala/duktape/issues/812
 	# -Weverything
-	clang -o $@ -Wcast-align -Wshift-sign-overflow -Iprep/nondebug $(CCOPTS_NONDEBUG) prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
+	clang -o $@ -Wcast-align -Wshift-sign-overflow -Iprep/nondebug $(CLANG_CCOPTS_NONDEBUG) prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 	@ls -l $@
 	-@size $@
 duk-perf-clang: linenoise prep/nondebug-perf
-	clang -o $@ -Wcast-align -Wshift-sign-overflow -Iprep/nondebug-perf $(CCOPTS_NONDEBUG) prep/nondebug-perf/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
+	clang -o $@ -Wcast-align -Wshift-sign-overflow -Iprep/nondebug-perf $(CLANG_CCOPTS_NONDEBUG) prep/nondebug-perf/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 	@ls -l $@
 	-@size $@
 duk-g++: linenoise prep/nondebug
@@ -447,38 +483,71 @@ dukscanbuild: prep/nondebug-scanbuild
 .PHONY: dukdscanbuild
 dukdscanbuild: prep/debug-scanbuild
 	scan-build gcc -o/tmp/dukd.scanbuild -Iprep/debug-scanbuild $(CCOPTS_DEBUG) prep/debug-scanbuild/*.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
-# Command line with Alljoyn.js pool allocator, for low memory testing.
+# Command line with a simple pool allocator, for low memory testing.
 # The pool sizes only make sense with -m32, so force that.  This forces
 # us to use barebones cmdline too.
-ajduk: alljoyn-js ajtcl linenoise prep/ajduk-nondebug
+duk-low: linenoise prep/duklow-nondebug
 	$(CC) -o $@ \
-		-Ialljoyn-js/src -Iajtcl/inc/ -Iajtcl/src/target/linux/ -Iprep/ajduk-nondebug \
-		$(CCOPTS_NONDEBUG) $(CCOPTS_AJDUK) \
-		prep/ajduk-nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
-		examples/cmdline/duk_cmdline_ajduk.c \
-		alljoyn-js/src/ajs_heap.c ajtcl/src/aj_debug.c ajtcl/src/target/linux/aj_target_util.c \
+		-Iextras/alloc-pool/ -Iprep/duklow-nondebug \
+		$(CCOPTS_NONDEBUG) $(CCOPTS_DUKLOW) \
+		prep/duklow-nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
+		examples/cmdline/duk_cmdline_lowmem.c \
+		extras/alloc-pool/duk_alloc_pool.c \
 		-lm -lpthread
 	@echo "*** SUCCESS:"
 	@ls -l $@
 	-@size $@
-ajduk-rom: alljoyn-js ajtcl linenoise prep/ajduk-nondebug-rom
+dukd-low: linenoise prep/duklow-debug
 	$(CC) -o $@ \
-		-Ialljoyn-js/src -Iajtcl/inc/ -Iajtcl/src/target/linux/ -Iprep/ajduk-nondebug-rom \
-		$(CCOPTS_NONDEBUG) $(CCOPTS_AJDUK) \
-		prep/ajduk-nondebug-rom/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
-		examples/cmdline/duk_cmdline_ajduk.c \
-		alljoyn-js/src/ajs_heap.c ajtcl/src/aj_debug.c ajtcl/src/target/linux/aj_target_util.c \
+		-Iextras/alloc-pool/ -Iprep/duklow-debug \
+		$(CCOPTS_DEBUG) $(CCOPTS_DUKLOW) \
+		prep/duklow-debug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
+		examples/cmdline/duk_cmdline_lowmem.c \
+		extras/alloc-pool/duk_alloc_pool.c \
 		-lm -lpthread
 	@echo "*** SUCCESS:"
 	@ls -l $@
 	-@size $@
-ajduk-norefc: alljoyn-js ajtcl linenoise prep/ajduk-nondebug-norefc
+duk-low-rom: linenoise prep/duklow-nondebug-rom
 	$(CC) -o $@ \
-		-Ialljoyn-js/src -Iajtcl/inc/ -Iajtcl/src/target/linux/ -Iprep/ajduk-nondebug-norefc \
-		$(CCOPTS_NONDEBUG) $(CCOPTS_AJDUK) \
-		prep/ajduk-nondebug-norefc/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
-		examples/cmdline/duk_cmdline_ajduk.c \
-		alljoyn-js/src/ajs_heap.c ajtcl/src/aj_debug.c ajtcl/src/target/linux/aj_target_util.c \
+		-Iextras/alloc-pool/ -Iprep/duklow-nondebug-rom \
+		$(CCOPTS_NONDEBUG) $(CCOPTS_DUKLOW) \
+		prep/duklow-nondebug-rom/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
+		examples/cmdline/duk_cmdline_lowmem.c \
+		extras/alloc-pool/duk_alloc_pool.c \
+		-lm -lpthread
+	@echo "*** SUCCESS:"
+	@ls -l $@
+	-@size $@
+dukd-low-rom: linenoise prep/duklow-debug-rom
+	$(CC) -o $@ \
+		-Iextras/alloc-pool/ -Iprep/duklow-debug-rom \
+		$(CCOPTS_DEBUG) $(CCOPTS_DUKLOW) \
+		prep/duklow-debug-rom/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
+		examples/cmdline/duk_cmdline_lowmem.c \
+		extras/alloc-pool/duk_alloc_pool.c \
+		-lm -lpthread
+	@echo "*** SUCCESS:"
+	@ls -l $@
+	-@size $@
+duk-low-norefc: linenoise prep/duklow-nondebug-norefc
+	$(CC) -o $@ \
+		-Iextras/alloc-pool/ -Iprep/duklow-nondebug-norefc \
+		$(CCOPTS_NONDEBUG) $(CCOPTS_DUKLOW) \
+		prep/duklow-nondebug-norefc/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
+		examples/cmdline/duk_cmdline_lowmem.c \
+		extras/alloc-pool/duk_alloc_pool.c \
+		-lm -lpthread
+	@echo "*** SUCCESS:"
+	@ls -l $@
+	-@size $@
+dukd-low-norefc: linenoise prep/duklow-debug-norefc
+	$(CC) -o $@ \
+		-Iextras/alloc-pool/ -Iprep/duklow-debug-norefc \
+		$(CCOPTS_DEBUG) $(CCOPTS_DUKLOW) \
+		prep/duklow-debug-norefc/duktape.c $(DUKTAPE_CMDLINE_SOURCES) \
+		examples/cmdline/duk_cmdline_lowmem.c \
+		extras/alloc-pool/duk_alloc_pool.c \
 		-lm -lpthread
 	@echo "*** SUCCESS:"
 	@ls -l $@
@@ -577,11 +646,11 @@ apitest: apiprep
 
 # Dukweb.js test.
 .PHONY: dukwebtest
-dukwebtest: dukweb.js jquery-1.11.0.js
+dukwebtest: dukweb.js jquery-1.11.2.js
 	@echo "### dukwebtest"
 	@rm -rf /tmp/dukweb-test/
 	mkdir /tmp/dukweb-test/
-	cp dukweb.js jquery-1.11.0.js dukweb/dukweb.html dukweb/dukweb.css /tmp/dukweb-test/
+	cp dukweb.js jquery-1.11.2.js dukweb/dukweb.html dukweb/dukweb.css /tmp/dukweb-test/
 	@echo "Now point your browser to: file:///tmp/dukweb-test/dukweb.html"
 
 # Third party tests.
@@ -786,8 +855,8 @@ emscripten:
 	# http://kripken.github.io/emscripten-site/docs/building_from_source/building_fastcomp_manually_from_source.html
 	$(GIT) clone --depth 1 https://github.com/kripken/emscripten.git
 	cd emscripten; ./emconfigure
-jquery-1.11.0.js:
-	$(WGET) http://code.jquery.com/jquery-1.11.0.js -O $@
+jquery-1.11.2.js:
+	$(WGET) http://code.jquery.com/jquery-1.11.2.js -O $@
 lua-5.2.3.tar.gz:
 	$(WGET) http://www.lua.org/ftp/lua-5.2.3.tar.gz -O $@
 lua-5.2.3: lua-5.2.3.tar.gz
@@ -879,16 +948,10 @@ dtrace4linux:
 flow:
 	# https://github.com/facebook/flow
 	$(GIT) clone --depth 1 https://github.com/facebook/flow.git
-alljoyn-js:
-	# https://git.allseenalliance.org/cgit/core/alljoyn-js.git/
-	# no --depth 1 ("dumb http transport does not support --depth")
-	$(GIT) clone https://git.allseenalliance.org/gerrit/core/alljoyn-js.git
-ajtcl:
-	# https://git.allseenalliance.org/cgit/core/ajtcl.git/
-	# no --depth 1 ("dumb http transport does not support --depth")
-	$(GIT) clone https://git.allseenalliance.org/gerrit/core/ajtcl.git/
-	ln -s . ajtcl/inc/ajtcl  # workaround for #include <ajtcl/xxx.h>
-	ln -s . ajtcl/src/target/linux/ajtcl
+lz-string:
+	# https://github.com/pieroxy/lz-string.git
+	$(GIT) clone --depth 1 https://github.com/pieroxy/lz-string.git
+
 # Duktape binary releases are in a separate repo.
 duktape-releases:
 	$(GIT) clone https://github.com/svaarala/duktape-releases.git
@@ -914,7 +977,7 @@ doc/%.html: doc/%.txt
 # Source distributable for end users.
 dist:
 	@make codepolicycheck
-	$(PYTHON) util/dist.py --create-spdx
+	$(PYTHON) util/dist.py
 .PHONY:	dist-src
 dist-src:	dist
 	rm -rf duktape-$(DUK_VERSION_FORMATTED)
@@ -936,7 +999,7 @@ dist-iso:	dist-src
 .PHONY: tidy-site
 tidy-site:
 	for i in website/*/*.html; do echo "*** Checking $$i"; tidy -q -e -xml $$i; done
-site: duktape-releases dukweb.js jquery-1.11.0.js
+site: duktape-releases dukweb.js jquery-1.11.2.js lz-string
 	rm -rf site
 	mkdir site
 	-cd duktape-releases/; git pull --rebase  # get binaries up-to-date, but allow errors for offline use
@@ -980,6 +1043,7 @@ codepolicycheck:
 		--check-nonleading-tab \
 		--check-cpp-comment \
 		--check-ifdef-ifndef \
+		--check-longlong-constants \
 		--dump-vim-commands \
 		src-input/*.c src-input/*.h src-input/*.h.in tests/api/*.c
 	@$(PYTHON) util/check_code_policy.py \
@@ -1088,58 +1152,3 @@ massif-%: tests/ecmascript/%.js duk
 massif-helloworld: massif-test-dev-hello-world
 massif-deepmerge: massif-test-dev-deepmerge
 massif-arcfour: massif-test-dev-arcfour
-
-# Simple performance test, minimum time for N runs
-# - Duktape is interpreted and uses reference counting
-# - Python and Perl are interpreted and also use reference counting
-# - Ruby and Lua are interpreted but don't use reference counting
-# - Mujs is interpreted but doesn't use reference counting
-# - Rhino compiles to Java bytecode and is ultimately JITed
-# - Node.js (V8) is JITed
-# - Luajit is JITed
-
-#TIME=$(PYTHON) util/time_multi.py --count 1 --sleep 0 --sleep-factor 2.0 --mode min # Take minimum time of N
-#TIME=$(PYTHON) util/time_multi.py --count 3 --sleep 0 --sleep-factor 2.0 --mode min # Take minimum time of N
-TIME=$(PYTHON) util/time_multi.py --count 5 --sleep 0 --sleep-factor 2.0 --mode min # Take minimum time of N
-
-# Blocks: optimization variants, previous versions, other interpreting engines,
-# other JIT engines.
-perftest: duk duk.O2 duk.O3 duk.O4
-	for i in tests/perf/*.js; do \
-		printf '%-36s:' "`basename $$i`"; \
-		printf ' duk.Os %5s' "`$(TIME) ./duk $$i`"; \
-		printf ' duk.O2 %5s' "`$(TIME) ./duk.O2 $$i`"; \
-		printf ' duk.O3 %5s' "`$(TIME) ./duk.O3 $$i`"; \
-		printf ' duk.O4 %5s' "`$(TIME) ./duk.O4 $$i`"; \
-		printf ' |'; \
-		printf ' duk.O2.150 %5s' "`$(TIME) ./duk.O2.150 $$i`"; \
-		printf ' duk.O2.140 %5s' "`$(TIME) ./duk.O2.140 $$i`"; \
-		printf ' duk.O2.130 %5s' "`$(TIME) ./duk.O2.130 $$i`"; \
-		printf ' duk.O2.124 %5s' "`$(TIME) ./duk.O2.124 $$i`"; \
-		printf ' duk.O2.113 %5s' "`$(TIME) ./duk.O2.113 $$i`"; \
-		printf ' duk.O2.102 %5s' "`$(TIME) ./duk.O2.102 $$i`"; \
-		printf ' |'; \
-		printf ' mujs %5s' "`$(TIME) mujs $$i`"; \
-		printf ' jerry %5s' "`$(TIME) jerry $$i`"; \
-		printf ' lua %5s' "`$(TIME) lua $${i%%.js}.lua`"; \
-		printf ' python %5s' "`$(TIME) $(PYTHON) $${i%%.js}.py`"; \
-		printf ' perl %5s' "`$(TIME) perl $${i%%.js}.pl`"; \
-		printf ' ruby %5s' "`$(TIME) ruby $${i%%.js}.rb`"; \
-		printf ' |'; \
-		printf ' rhino %5s' "`$(TIME) rhino $$i`"; \
-		printf ' node %5s' "`$(TIME) node $$i`"; \
-		printf ' luajit %5s' "`$(TIME) luajit $${i%%.js}.lua`"; \
-		printf '\n'; \
-	done
-perftestduk: duk.O2 duk-perf.O2
-	for i in tests/perf/*.js; do \
-		printf '%-36s:' "`basename $$i`"; \
-		printf ' duk-perf.O2 %5s' "`$(TIME) ./duk-perf.O2 $$i`"; \
-		printf ' duk.O2 %5s' "`$(TIME) ./duk.O2 $$i`"; \
-		printf ' |'; \
-		printf ' mujs %5s' "`$(TIME) mujs $$i`"; \
-		printf ' jerry %5s' "`$(TIME) jerry $$i`"; \
-		printf ' duk.O2.master %5s' "`$(TIME) ./duk.O2.master $$i`"; \
-		printf ' duk.O2.150 %5s' "`$(TIME) ./duk.O2.150 $$i`"; \
-		printf '\n'; \
-	done

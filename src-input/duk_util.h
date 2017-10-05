@@ -105,10 +105,10 @@ struct duk_bitencoder_ctx {
 /*
  *  Buffer writer (dynamic buffer only)
  *
- *  Helper for writing to a dynamic buffer with a concept of a "spare" area
+ *  Helper for writing to a dynamic buffer with a concept of a "slack" area
  *  to reduce resizes.  You can ensure there is enough space beforehand and
  *  then write for a while without further checks, relying on a stable data
- *  pointer.  Spare handling is automatic so call sites only indicate how
+ *  pointer.  Slack handling is automatic so call sites only indicate how
  *  much data they need right now.
  *
  *  There are several ways to write using bufwriter.  The best approach
@@ -134,8 +134,13 @@ struct duk_bufwriter_ctx {
 	duk_hbuffer_dynamic *buf;
 };
 
-#define DUK_BW_SPARE_ADD           64
-#define DUK_BW_SPARE_SHIFT         4    /* 2^4 -> 1/16 = 6.25% spare */
+#if defined(DUK_USE_PREFER_SIZE)
+#define DUK_BW_SLACK_ADD           64
+#define DUK_BW_SLACK_SHIFT         4    /* 2^4 -> 1/16 = 6.25% slack */
+#else
+#define DUK_BW_SLACK_ADD           64
+#define DUK_BW_SLACK_SHIFT         2    /* 2^2 -> 1/4 = 25% slack */
+#endif
 
 /* Initialization and finalization (compaction), converting to other types. */
 
@@ -150,7 +155,7 @@ struct duk_bufwriter_ctx {
 		duk_bw_compact((thr), (bw_ctx)); \
 	} while (0)
 #define DUK_BW_PUSH_AS_STRING(thr,bw_ctx) do { \
-		duk_push_lstring((duk_context *) (thr), \
+		duk_push_lstring((thr), \
 		                 (const char *) (bw_ctx)->p_base, \
 		                 (duk_size_t) ((bw_ctx)->p - (bw_ctx)->p_base)); \
 	} while (0)
@@ -233,7 +238,7 @@ struct duk_bufwriter_ctx {
 		duk_bw_compact((thr), (bw_ctx)); \
 	} while (0)
 
-/* Fast write calls which assume you control the spare beforehand.
+/* Fast write calls which assume you control the slack beforehand.
  * Multibyte write variants exist and use a temporary write pointer
  * because byte writes alias with anything: with a stored pointer
  * explicit pointer load/stores get generated (e.g. gcc -Os).
@@ -296,7 +301,7 @@ struct duk_bufwriter_ctx {
 #define DUK_BW_WRITE_RAW_XUTF8(thr,bw_ctx,cp) do { \
 		duk_ucodepoint_t duk__cp; \
 		duk_small_int_t duk__enc_len; \
-		duk__cp = (cp); \
+		duk__cp = (duk_ucodepoint_t) (cp); \
 		DUK_BW_ASSERT_SPACE((thr), (bw_ctx), duk_unicode_get_xutf8_length(duk__cp)); \
 		duk__enc_len = duk_unicode_encode_xutf8(duk__cp, (bw_ctx)->p); \
 		(bw_ctx)->p += duk__enc_len; \
@@ -555,5 +560,8 @@ DUK_INTERNAL_DECL duk_double_t duk_double_trunc_towards_zero(duk_double_t x);
 DUK_INTERNAL_DECL duk_bool_t duk_double_same_sign(duk_double_t x, duk_double_t y);
 DUK_INTERNAL_DECL duk_double_t duk_double_fmin(duk_double_t x, duk_double_t y);
 DUK_INTERNAL_DECL duk_double_t duk_double_fmax(duk_double_t x, duk_double_t y);
+DUK_INTERNAL_DECL duk_bool_t duk_double_is_finite(duk_double_t x);
+DUK_INTERNAL_DECL duk_bool_t duk_double_is_integer(duk_double_t x);
+DUK_INTERNAL_DECL duk_bool_t duk_double_is_safe_integer(duk_double_t x);
 
 #endif  /* DUK_UTIL_H_INCLUDED */

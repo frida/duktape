@@ -60,7 +60,6 @@
 
 #if defined(DUK_USE_ERRTHROW) || defined(DUK_USE_ERRCREATE)
 DUK_LOCAL void duk__err_augment_user(duk_hthread *thr, duk_small_uint_t stridx_cb) {
-	duk_context *ctx = (duk_context *) thr;
 	duk_tval *tv_hnd;
 	duk_int_t rc;
 
@@ -104,13 +103,13 @@ DUK_LOCAL void duk__err_augment_user(duk_hthread *thr, duk_small_uint_t stridx_c
 	}
 	DUK_DDD(DUK_DDDPRINT("error handler dump (callability not checked): %!T",
 	                     (duk_tval *) tv_hnd));
-	duk_push_tval(ctx, tv_hnd);
+	duk_push_tval(thr, tv_hnd);
 
 	/* [ ... errval errhandler ] */
 
-	duk_insert(ctx, -2);  /* -> [ ... errhandler errval ] */
-	duk_push_undefined(ctx);
-	duk_insert(ctx, -2);  /* -> [ ... errhandler undefined(= this) errval ] */
+	duk_insert(thr, -2);  /* -> [ ... errhandler errval ] */
+	duk_push_undefined(thr);
+	duk_insert(thr, -2);  /* -> [ ... errhandler undefined(= this) errval ] */
 
 	/* [ ... errhandler undefined errval ] */
 
@@ -126,7 +125,7 @@ DUK_LOCAL void duk__err_augment_user(duk_hthread *thr, duk_small_uint_t stridx_c
 	DUK_ASSERT(thr->heap->augmenting_error == 0);
 	thr->heap->augmenting_error = 1;
 
-	rc = duk_handle_call_protected(thr, 1, 0 /*call_flags*/);
+	rc = duk_pcall_method(thr, 1);
 	DUK_UNREF(rc);  /* no need to check now: both success and error are OK */
 
 	DUK_ASSERT(thr->heap->augmenting_error == 1);
@@ -141,10 +140,9 @@ DUK_LOCAL void duk__err_augment_user(duk_hthread *thr, duk_small_uint_t stridx_c
  */
 
 #if defined(DUK_USE_TRACEBACKS)
-DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, const char *c_filename, duk_int_t c_line, duk_bool_t noblame_fileline) {
-	duk_context *ctx = (duk_context *) thr;
+DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, const char *c_filename, duk_int_t c_line, duk_small_uint_t flags) {
 	duk_activation *act;
-	duk_small_uint_t depth;
+	duk_int_t depth;
 	duk_int_t arr_size;
 	duk_tval *tv;
 	duk_hstring *s;
@@ -153,7 +151,6 @@ DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, 
 
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(thr_callstack != NULL);
-	DUK_ASSERT(ctx != NULL);
 
 	/* [ ... error ] */
 
@@ -166,13 +163,25 @@ DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, 
 	 */
 
 	DUK_DDD(DUK_DDDPRINT("adding traceback to object: %!T",
-	                     (duk_tval *) duk_get_tval(ctx, -1)));
+	                     (duk_tval *) duk_get_tval(thr, -1)));
 
 	/* Preallocate array to correct size, so that we can just write out
 	 * the _Tracedata values into the array part.
 	 */
+	act = thr->callstack_curr;
 	depth = DUK_USE_TRACEBACK_DEPTH;
-	arr_size = (duk_int_t) (thr_callstack->callstack_top <= depth ? thr_callstack->callstack_top : depth) * 2;
+	DUK_ASSERT(thr_callstack->callstack_top <= DUK_INT_MAX);  /* callstack limits */
+	if (depth > (duk_int_t) thr_callstack->callstack_top) {
+		depth = (duk_int_t) thr_callstack->callstack_top;
+	}
+	if (depth > 0) {
+		if (flags & DUK_AUGMENT_FLAG_SKIP_ONE) {
+			DUK_ASSERT(act != NULL);
+			act = act->parent;
+			depth--;
+		}
+	}
+	arr_size = depth * 2;
 	if (thr->compile_ctx != NULL && thr->compile_ctx->h_filename != NULL) {
 		arr_size += 2;
 	}
@@ -181,13 +190,13 @@ DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, 
 		 * array part pointer to avoid any GC interference while the
 		 * array part is populated.
 		 */
-		duk_push_string(ctx, c_filename);
+		duk_push_string(thr, c_filename);
 		arr_size += 2;
 	}
 
 	/* XXX: uninitialized would be OK */
 	DUK_D(DUK_DPRINT("preallocated _Tracedata to %ld items", (long) arr_size));
-	tv = duk_push_harray_with_size_outptr(ctx, (duk_uint32_t) arr_size);
+	tv = duk_push_harray_with_size_outptr(thr, (duk_uint32_t) arr_size);
 	DUK_ASSERT(arr_size == 0 || tv != NULL);
 
 	/* Compiler SyntaxErrors (and other errors) come first, and are
@@ -219,7 +228,7 @@ DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, 
 		DUK_HSTRING_INCREF(thr, s);
 		tv++;
 
-		d = (noblame_fileline ? ((duk_double_t) DUK_TB_FLAG_NOBLAME_FILELINE) * DUK_DOUBLE_2TO32 : 0.0) +
+		d = ((flags & DUK_AUGMENT_FLAG_NOBLAME_FILELINE) ? ((duk_double_t) DUK_TB_FLAG_NOBLAME_FILELINE) * DUK_DOUBLE_2TO32 : 0.0) +
 		    (duk_double_t) c_line;
 		DUK_TVAL_SET_DOUBLE(tv, d);
 		tv++;
@@ -228,12 +237,7 @@ DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, 
 	/* Traceback depth doesn't take into account the filename/line
 	 * special handling above (intentional).
 	 */
-	DUK_ASSERT(thr_callstack->callstack_top <= DUK_INT_MAX);  /* callstack limits */
-	depth = DUK_USE_TRACEBACK_DEPTH;
-	if (depth > thr_callstack->callstack_top) {
-		depth = (duk_small_uint_t) thr_callstack->callstack_top;
-	}
-	for (act = thr_callstack->callstack_curr; depth-- > 0; act = act->parent) {
+	for (; depth-- > 0; act = act->parent) {
 		duk_uint32_t pc;
 		duk_tval *tv_src;
 
@@ -254,7 +258,7 @@ DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, 
 		 * PC points to next instruction, find offending PC.  Note that
 		 * PC == 0 for native code.
 		 */
-		pc = duk_hthread_get_act_prev_pc(thr_callstack, act);
+		pc = (duk_uint32_t) duk_hthread_get_act_prev_pc(thr_callstack, act);
 		DUK_ASSERT_DISABLE(pc >= 0);  /* unsigned */
 		DUK_ASSERT((duk_double_t) pc < DUK_DOUBLE_2TO32);  /* assume PC is at most 32 bits and non-negative */
 		d = ((duk_double_t) act->flags) * DUK_DOUBLE_2TO32 + (duk_double_t) pc;
@@ -265,7 +269,7 @@ DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, 
 #if defined(DUK_USE_ASSERTIONS)
 	{
 		duk_harray *a;
-		a = (duk_harray *) duk_known_hobject(ctx, -1);
+		a = (duk_harray *) duk_known_hobject(thr, -1);
 		DUK_ASSERT(a != NULL);
 		DUK_ASSERT((duk_uint32_t) (tv - DUK_HOBJECT_A_GET_BASE(thr->heap, (duk_hobject *) a)) == a->length);
 		DUK_ASSERT(a->length == (duk_uint32_t) arr_size);
@@ -275,12 +279,12 @@ DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, 
 	/* [ ... error c_filename? arr ] */
 
 	if (c_filename) {
-		duk_remove_m2(ctx);
+		duk_remove_m2(thr);
 	}
 
 	/* [ ... error arr ] */
 
-	duk_xdef_prop_stridx_short_wec(ctx, -2, DUK_STRIDX_INT_TRACEDATA);  /* -> [ ... error ] */
+	duk_xdef_prop_stridx_short_wec(thr, -2, DUK_STRIDX_INT_TRACEDATA);  /* -> [ ... error ] */
 }
 #endif  /* DUK_USE_TRACEBACKS */
 
@@ -289,15 +293,13 @@ DUK_LOCAL void duk__add_traceback(duk_hthread *thr, duk_hthread *thr_callstack, 
  */
 
 #if defined(DUK_USE_AUGMENT_ERROR_CREATE) && !defined(DUK_USE_TRACEBACKS)
-DUK_LOCAL void duk__add_fileline(duk_hthread *thr, duk_hthread *thr_callstack, const char *c_filename, duk_int_t c_line, duk_bool_t noblame_fileline) {
-	duk_context *ctx;
+DUK_LOCAL void duk__add_fileline(duk_hthread *thr, duk_hthread *thr_callstack, const char *c_filename, duk_int_t c_line, duk_small_uint_t flags) {
 #if defined(DUK_USE_ASSERTIONS)
 	duk_int_t entry_top;
 #endif
 
-	ctx = (duk_context *) thr;
 #if defined(DUK_USE_ASSERTIONS)
-	entry_top = duk_get_top(ctx);
+	entry_top = duk_get_top(thr);
 #endif
 
 	/*
@@ -312,15 +314,15 @@ DUK_LOCAL void duk__add_fileline(duk_hthread *thr, duk_hthread *thr_callstack, c
 		/* Compiler SyntaxError (or other error) gets the primary blame.
 		 * Currently no flag to prevent blaming.
 		 */
-		duk_push_uint(ctx, (duk_uint_t) thr->compile_ctx->curr_token.start_line);
-		duk_push_hstring(ctx, thr->compile_ctx->h_filename);
-	} else if (c_filename && !noblame_fileline) {
+		duk_push_uint(thr, (duk_uint_t) thr->compile_ctx->curr_token.start_line);
+		duk_push_hstring(thr, thr->compile_ctx->h_filename);
+	} else if (c_filename && (flags & DUK_AUGMENT_FLAG_NOBLAME_FILELINE) == 0) {
 		/* C call site gets blamed next, unless flagged not to do so.
 		 * XXX: file/line is disabled in minimal builds, so disable this
 		 * too when appropriate.
 		 */
-		duk_push_int(ctx, c_line);
-		duk_push_string(ctx, c_filename);
+		duk_push_int(thr, c_line);
+		duk_push_string(thr, c_filename);
 	} else {
 		/* Finally, blame the innermost callstack entry which has a
 		 * .fileName property.
@@ -354,13 +356,13 @@ DUK_LOCAL void duk__add_fileline(duk_hthread *thr, duk_hthread *thr_callstack, c
 			DUK_ASSERT((duk_double_t) pc < DUK_DOUBLE_2TO32);  /* assume PC is at most 32 bits and non-negative */
 			act = NULL;  /* invalidated by pushes, so get out of the way */
 
-			duk_push_hobject(ctx, func);
+			duk_push_hobject(thr, func);
 
 			/* [ ... error func ] */
 
-			duk_get_prop_stridx_short(ctx, -1, DUK_STRIDX_FILE_NAME);
-			if (!duk_is_string_notsymbol(ctx, -1)) {
-				duk_pop_2(ctx);
+			duk_get_prop_stridx_short(thr, -1, DUK_STRIDX_FILE_NAME);
+			if (!duk_is_string_notsymbol(thr, -1)) {
+				duk_pop_2(thr);
 				continue;
 			}
 
@@ -369,16 +371,16 @@ DUK_LOCAL void duk__add_fileline(duk_hthread *thr, duk_hthread *thr_callstack, c
 			ecma_line = 0;
 #if defined(DUK_USE_PC2LINE)
 			if (DUK_HOBJECT_IS_COMPFUNC(func)) {
-				ecma_line = duk_hobject_pc2line_query(ctx, -2, (duk_uint_fast32_t) pc);
+				ecma_line = duk_hobject_pc2line_query(thr, -2, (duk_uint_fast32_t) pc);
 			} else {
 				/* Native function, no relevant lineNumber. */
 			}
 #endif  /* DUK_USE_PC2LINE */
-			duk_push_u32(ctx, ecma_line);
+			duk_push_u32(thr, ecma_line);
 
 			/* [ ... error func fileName lineNumber ] */
 
-			duk_replace(ctx, -3);
+			duk_replace(thr, -3);
 
 			/* [ ... error lineNumber fileName ] */
 			goto define_props;
@@ -388,17 +390,17 @@ DUK_LOCAL void duk__add_fileline(duk_hthread *thr, duk_hthread *thr_callstack, c
 		 * .lineNumber (matches what we do with a _Tracedata based
 		 * no-match lookup.
 		 */
-		duk_push_undefined(ctx);
-		duk_push_undefined(ctx);
+		duk_push_undefined(thr);
+		duk_push_undefined(thr);
 	}
 
  define_props:
 	/* [ ... error lineNumber fileName ] */
 #if defined(DUK_USE_ASSERTIONS)
-	DUK_ASSERT(duk_get_top(ctx) == entry_top + 2);
+	DUK_ASSERT(duk_get_top(thr) == entry_top + 2);
 #endif
-	duk_xdef_prop_stridx_short(ctx, -3, DUK_STRIDX_FILE_NAME, DUK_PROPDESC_FLAGS_C | DUK_PROPDESC_FLAG_NO_OVERWRITE);
-	duk_xdef_prop_stridx_short(ctx, -2, DUK_STRIDX_LINE_NUMBER, DUK_PROPDESC_FLAGS_C | DUK_PROPDESC_FLAG_NO_OVERWRITE);
+	duk_xdef_prop_stridx_short(thr, -3, DUK_STRIDX_FILE_NAME, DUK_PROPDESC_FLAGS_C | DUK_PROPDESC_FLAG_NO_OVERWRITE);
+	duk_xdef_prop_stridx_short(thr, -2, DUK_STRIDX_LINE_NUMBER, DUK_PROPDESC_FLAGS_C | DUK_PROPDESC_FLAG_NO_OVERWRITE);
 }
 #endif  /* DUK_USE_AUGMENT_ERROR_CREATE && !DUK_USE_TRACEBACKS */
 
@@ -408,7 +410,6 @@ DUK_LOCAL void duk__add_fileline(duk_hthread *thr, duk_hthread *thr_callstack, c
 
 #if defined(DUK_USE_AUGMENT_ERROR_CREATE)
 DUK_LOCAL void duk__add_compiler_error_line(duk_hthread *thr) {
-	duk_context *ctx;
 
 	/* Append a "(line NNN)" to the "message" property of any error
 	 * thrown during compilation.  Usually compilation errors are
@@ -418,26 +419,25 @@ DUK_LOCAL void duk__add_compiler_error_line(duk_hthread *thr) {
 
 	/* [ ... error ] */
 
-	ctx = (duk_context *) thr;
-	DUK_ASSERT(duk_is_object(ctx, -1));
+	DUK_ASSERT(duk_is_object(thr, -1));
 
 	if (!(thr->compile_ctx != NULL && thr->compile_ctx->h_filename != NULL)) {
 		return;
 	}
 
 	DUK_DDD(DUK_DDDPRINT("compile error, before adding line info: %!T",
-	                     (duk_tval *) duk_get_tval(ctx, -1)));
+	                     (duk_tval *) duk_get_tval(thr, -1)));
 
-	if (duk_get_prop_stridx_short(ctx, -1, DUK_STRIDX_MESSAGE)) {
-		duk_push_sprintf(ctx, " (line %ld)", (long) thr->compile_ctx->curr_token.start_line);
-		duk_concat(ctx, 2);
-		duk_put_prop_stridx_short(ctx, -2, DUK_STRIDX_MESSAGE);
+	if (duk_get_prop_stridx_short(thr, -1, DUK_STRIDX_MESSAGE)) {
+		duk_push_sprintf(thr, " (line %ld)", (long) thr->compile_ctx->curr_token.start_line);
+		duk_concat(thr, 2);
+		duk_put_prop_stridx_short(thr, -2, DUK_STRIDX_MESSAGE);
 	} else {
-		duk_pop(ctx);
+		duk_pop(thr);
 	}
 
 	DUK_DDD(DUK_DDDPRINT("compile error, after adding line info: %!T",
-	                     (duk_tval *) duk_get_tval(ctx, -1)));
+	                     (duk_tval *) duk_get_tval(thr, -1)));
 }
 #endif  /* DUK_USE_AUGMENT_ERROR_CREATE */
 
@@ -447,19 +447,17 @@ DUK_LOCAL void duk__add_compiler_error_line(duk_hthread *thr) {
  */
 
 #if defined(DUK_USE_AUGMENT_ERROR_CREATE)
-DUK_LOCAL void duk__err_augment_builtin_create(duk_hthread *thr, duk_hthread *thr_callstack, const char *c_filename, duk_int_t c_line, duk_small_int_t noblame_fileline, duk_hobject *obj) {
-	duk_context *ctx = (duk_context *) thr;
+DUK_LOCAL void duk__err_augment_builtin_create(duk_hthread *thr, duk_hthread *thr_callstack, const char *c_filename, duk_int_t c_line, duk_hobject *obj, duk_small_uint_t flags) {
 #if defined(DUK_USE_ASSERTIONS)
 	duk_int_t entry_top;
 #endif
 
 #if defined(DUK_USE_ASSERTIONS)
-	entry_top = duk_get_top(ctx);
+	entry_top = duk_get_top(thr);
 #endif
 	DUK_ASSERT(obj != NULL);
 
 	DUK_UNREF(obj);  /* unreferenced w/o tracebacks */
-	DUK_UNREF(ctx);  /* unreferenced w/o asserts */
 
 	duk__add_compiler_error_line(thr);
 
@@ -471,17 +469,17 @@ DUK_LOCAL void duk__err_augment_builtin_create(duk_hthread *thr, duk_hthread *th
 	if (duk_hobject_hasprop_raw(thr, obj, DUK_HTHREAD_STRING_INT_TRACEDATA(thr))) {
 		DUK_DDD(DUK_DDDPRINT("error value already has a '_Tracedata' property, not modifying it"));
 	} else {
-		duk__add_traceback(thr, thr_callstack, c_filename, c_line, noblame_fileline);
+		duk__add_traceback(thr, thr_callstack, c_filename, c_line, flags);
 	}
 #else
 	/* Without tracebacks the concrete .fileName and .lineNumber need
 	 * to be added directly.
 	 */
-	duk__add_fileline(thr, thr_callstack, c_filename, c_line, noblame_fileline);
+	duk__add_fileline(thr, thr_callstack, c_filename, c_line, flags);
 #endif
 
 #if defined(DUK_USE_ASSERTIONS)
-	DUK_ASSERT(duk_get_top(ctx) == entry_top);
+	DUK_ASSERT(duk_get_top(thr) == entry_top);
 #endif
 }
 #endif  /* DUK_USE_AUGMENT_ERROR_CREATE */
@@ -495,22 +493,18 @@ DUK_LOCAL void duk__err_augment_builtin_create(duk_hthread *thr, duk_hthread *th
  *  thr_callstack: thread which should be used for generating callstack etc.
  *  c_filename: C __FILE__ related to the error
  *  c_line: C __LINE__ related to the error
- *  noblame_fileline: if true, don't fileName/line as error source, otherwise use traceback
- *                    (needed because user code filename/line are reported but internal ones
- *                    are not)
- *
- *  XXX: rename noblame_fileline to flags field; combine it to some existing
- *  field (there are only a few call sites so this may not be worth it).
+ *  flags & DUK_AUGMENT_FLAG_NOBLAME_FILELINE:
+ *      if true, don't fileName/line as error source, otherwise use traceback
+ *      (needed because user code filename/line are reported but internal ones
+ *      are not)
  */
 
 #if defined(DUK_USE_AUGMENT_ERROR_CREATE)
-DUK_INTERNAL void duk_err_augment_error_create(duk_hthread *thr, duk_hthread *thr_callstack, const char *c_filename, duk_int_t c_line, duk_bool_t noblame_fileline) {
-	duk_context *ctx = (duk_context *) thr;
+DUK_INTERNAL void duk_err_augment_error_create(duk_hthread *thr, duk_hthread *thr_callstack, const char *c_filename, duk_int_t c_line, duk_small_uint_t flags) {
 	duk_hobject *obj;
 
 	DUK_ASSERT(thr != NULL);
 	DUK_ASSERT(thr_callstack != NULL);
-	DUK_ASSERT(ctx != NULL);
 
 	/* [ ... error ] */
 
@@ -526,7 +520,7 @@ DUK_INTERNAL void duk_err_augment_error_create(duk_hthread *thr, duk_hthread *th
 	 *   - error value is an extensible object
 	 */
 
-	obj = duk_get_hobject(ctx, -1);
+	obj = duk_get_hobject(thr, -1);
 	if (!obj) {
 		DUK_DDD(DUK_DDDPRINT("value is not an object, skip both built-in and user augment"));
 		return;
@@ -541,7 +535,7 @@ DUK_INTERNAL void duk_err_augment_error_create(duk_hthread *thr, duk_hthread *th
 	}
 	if (DUK_HOBJECT_HAS_EXTENSIBLE(obj)) {
 		DUK_DDD(DUK_DDDPRINT("error meets criteria, built-in augment"));
-		duk__err_augment_builtin_create(thr, thr_callstack, c_filename, c_line, noblame_fileline, obj);
+		duk__err_augment_builtin_create(thr, thr_callstack, c_filename, c_line, obj, flags);
 	} else {
 		DUK_DDD(DUK_DDDPRINT("error does not meet criteria, no built-in augment"));
 	}

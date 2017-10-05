@@ -44,8 +44,8 @@ function bufferConcatLenTest() {
 
     var s = makeString(32768);
     var t = s.substring(0, 32767);
-    s = Duktape.Buffer(s);
-    t = Duktape.Buffer(t);
+    s = Uint8Array.allocPlain(s);
+    t = Uint8Array.allocPlain(t);
     print(s.length);
     print(t.length);
     var justok = s + t;    // 65535 exactly
@@ -57,9 +57,9 @@ function bufferConcatLenTest() {
 function bufferConstructTest() {
     var b;
 
-    b = new Duktape.Buffer(65535);  // ok
+    b = new Uint8Array(65535);  // ok
     print(b.length);
-    b = new Duktape.Buffer(65536);  // overflow
+    b = new Uint8Array(65536);  // overflow
     print(b.length);
 }
 
@@ -77,7 +77,7 @@ function objectPropertyLimitTest() {
     //
     // To test the object property limit, define OBJSIZES16 but don't define
     // BUFLEN16.  Even in this case the property limit is triggered before
-    // 65536 because the "spare" allocated during a property table resize is
+    // 65536 because the "slack" allocated during a property table resize is
     // counted towards the limit.  (Right now the highest property count
     // reached is 64231 but that limit depends on tuning.)
 
