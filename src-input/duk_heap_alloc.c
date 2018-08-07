@@ -907,6 +907,7 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 	/* explicit NULL inits */
 #if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	res->heap_udata = NULL;
+	res->global_access_funcs = NULL;
 	res->heap_allocated = NULL;
 #if defined(DUK_USE_REFERENCE_COUNTING)
 	res->refzero_list = NULL;
