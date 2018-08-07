@@ -67,7 +67,7 @@ into bytecode::
 
     ./duk -c /tmp/program.bin program.js
 
-The input source is compiled as an Ecmascript program and the bytecode
+The input source is compiled as an ECMAScript program and the bytecode
 will be for the "program function".  The command line tool doesn't support
 compiling individual functions, and is mostly useful for playing with
 bytecode.
@@ -81,11 +81,15 @@ executed::
 When to use bytecode dump/load
 ==============================
 
-There are two main motivations for using bytecode dump/load:
+Generally speaking, there are two main motivations for using a bytecode
+dump/load mechanism:
 
 * Performance
 
 * Obfuscation
+
+Duktape's bytecode format improves performance compared to compilation, but
+is not ideal for obfuscation as discussed in more detail below.
 
 Performance
 -----------
@@ -155,7 +159,7 @@ Distributing code
 -----------------
 
 It's awkward to use a version specific bytecode format for code distribution.
-This is especially true for Ecmascript, because the language itself is
+This is especially true for ECMAScript, because the language itself is
 otherwise well suited for writing backwards compatible code, detecting
 features at run-time, etc.
 
@@ -377,7 +381,7 @@ Design notes
 Eval and program code
 ---------------------
 
-Ecmascript specification recognizes three different types of code: program
+ECMAScript specification recognizes three different types of code: program
 code, eval code, and function code, with slightly different scope and variable
 binding semantics.  The serialization mechanism supports all three types.
 

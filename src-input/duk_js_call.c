@@ -3,7 +3,7 @@
  *
  *  duk_handle_call_unprotected():
  *
- *    - Unprotected call to Ecmascript or Duktape/C function, from native
+ *    - Unprotected call to ECMAScript or Duktape/C function, from native
  *      code or bytecode executor.
  *
  *    - Also handles Ecma-to-Ecma calls which reuses a currently running
@@ -57,6 +57,7 @@ DUK_LOCAL DUK_NOINLINE void duk__call_c_recursion_limit_check_slowpath(duk_hthre
 
 	DUK_D(DUK_DPRINT("call prevented because C recursion limit reached"));
 	DUK_ERROR_RANGE(thr, DUK_STR_C_CALLSTACK_LIMIT);
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL DUK_ALWAYS_INLINE void duk__call_c_recursion_limit_check(duk_hthread *thr) {
@@ -92,6 +93,7 @@ DUK_LOCAL DUK_NOINLINE void duk__call_callstack_limit_check_slowpath(duk_hthread
 	 */
 	DUK_D(DUK_DPRINT("call prevented because call stack limit reached"));
 	DUK_ERROR_RANGE(thr, DUK_STR_CALLSTACK_LIMIT);
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL DUK_ALWAYS_INLINE void duk__call_callstack_limit_check(duk_hthread *thr) {
@@ -505,6 +507,7 @@ DUK_INTERNAL void duk_call_construct_postprocess(duk_hthread *thr, duk_small_uin
 		if (DUK_UNLIKELY(proxy_invariant != 0U)) {
 			/* Proxy 'construct' return value invariant violated. */
 			DUK_ERROR_TYPE_INVALID_TRAP_RESULT(thr);
+			DUK_WO_NORETURN(return;);
 		}
 		/* XXX: direct value stack access */
 		duk_pop(thr);
@@ -565,7 +568,7 @@ DUK_LOCAL void duk__handle_bound_chain_for_call(duk_hthread *thr,
 			duk_tval *tv_args;
 			duk_tval *tv_gap;
 
-			h_bound = (duk_hboundfunc *) func;
+			h_bound = (duk_hboundfunc *) (void *) func;
 			tv_args = h_bound->args;
 			len = h_bound->nargs;
 			DUK_ASSERT(len == 0 || tv_args != NULL);
@@ -605,6 +608,7 @@ DUK_LOCAL void duk__handle_bound_chain_for_call(duk_hthread *thr,
 	} else {
 		/* Shouldn't happen, so ugly error is enough. */
 		DUK_ERROR_INTERNAL(thr);
+		DUK_WO_NORETURN(return;);
 	}
 
 	DUK_ASSERT(duk_get_top(thr) >= idx_func + 2);
@@ -780,11 +784,13 @@ DUK_LOCAL duk_bool_t duk__handle_specialfuncs_for_call(duk_hthread *thr, duk_idx
 		if (top < idx_func + 3) {
 			/* argArray is a mandatory argument for Reflect.construct(). */
 			DUK_ERROR_TYPE_INVALID_ARGS(thr);
+			DUK_WO_NORETURN(return 0;);
 		}
 		if (top > idx_func + 3) {
 			if (!duk_strict_equals(thr, idx_func, idx_func + 3)) {
 				/* XXX: [[Construct]] newTarget currently unsupported */
 				DUK_ERROR_UNSUPPORTED(thr);
+				DUK_WO_NORETURN(return 0;);
 			}
 			duk_set_top_unsafe(thr, idx_func + 3);  /* remove any args beyond argArray */
 		}
@@ -1321,6 +1327,7 @@ DUK_LOCAL duk_hobject *duk__resolve_target_func_and_this_binding(duk_hthread *th
 		if (duk_hobject_find_existing_entry_tval_ptr(thr->heap, DUK_TVAL_GET_OBJECT(tv_func), DUK_HTHREAD_STRING_INT_TARGET(thr)) != NULL) {
 			duk_push_tval(thr, tv_func);
 			(void) duk_throw(thr);
+			DUK_WO_NORETURN(return NULL;);
 		}
 	}
 #endif
@@ -1334,8 +1341,7 @@ DUK_LOCAL duk_hobject *duk__resolve_target_func_and_this_binding(duk_hthread *th
 #else
 	DUK_ERROR_TYPE(thr, DUK_STR_NOT_CALLABLE);
 #endif
-	DUK_UNREACHABLE();
-	return NULL;  /* never executed */
+	DUK_WO_NORETURN(return NULL;);
 
  not_constructable:
 	/* For now GETPROPC delayed error not needed for constructor calls. */
@@ -1348,8 +1354,7 @@ DUK_LOCAL duk_hobject *duk__resolve_target_func_and_this_binding(duk_hthread *th
 #else
 	DUK_ERROR_TYPE(thr, DUK_STR_NOT_CONSTRUCTABLE);
 #endif
-	DUK_UNREACHABLE();
-	return NULL;  /* never executed */
+	DUK_WO_NORETURN(return NULL;);
 }
 
 /*
@@ -1373,6 +1378,7 @@ DUK_LOCAL void duk__safe_call_adjust_valstack(duk_hthread *thr, duk_idx_t idx_re
 	idx_rcbase = duk_get_top(thr) - num_actual_rets;  /* base of known return values */
 	if (DUK_UNLIKELY(idx_rcbase < 0)) {
 		DUK_ERROR_TYPE(thr, DUK_STR_INVALID_CFUNC_RC);
+		DUK_WO_NORETURN(return;);
 	}
 
 	DUK_DDD(DUK_DDDPRINT("adjust valstack after func call: "
@@ -1507,9 +1513,10 @@ DUK_LOCAL duk_small_uint_t duk__call_setup_act_attempt_tailcall(duk_hthread *thr
 	 *    - Disable StepOut processing for the activation unwind because
 	 *      we reuse the activation, see:
 	 *      https://github.com/svaarala/duktape/issues/1684.
-	 *    - Disable line change pause flag permanently (if set) because
-	 *      it would no longer be relevant, see:
-	 *      https://github.com/svaarala/duktape/issues/1726.
+	 *    - Disable line change pause flag permanently if act == dbg_pause_act
+	 *      (if set) because it would no longer be relevant, see:
+	 *      https://github.com/svaarala/duktape/issues/1726,
+	 *      https://github.com/svaarala/duktape/issues/1786.
 	 *    - Check for function entry (e.g. StepInto) pause flag here, because
 	 *      the executor pause check won't trigger due to shared activation, see:
 	 *      https://github.com/svaarala/duktape/issues/1726.
@@ -1530,9 +1537,12 @@ DUK_LOCAL duk_small_uint_t duk__call_setup_act_attempt_tailcall(duk_hthread *thr
 	DUK_ASSERT(thr->callstack_top > 0);
 	DUK_ASSERT(thr->callstack_curr != NULL);
 #if defined(DUK_USE_DEBUGGER_SUPPORT)
+	if (act == thr->heap->dbg_pause_act) {
+		thr->heap->dbg_pause_flags &= ~DUK_PAUSE_FLAG_LINE_CHANGE;
+	}
+
 	prev_pause_act = thr->heap->dbg_pause_act;
 	thr->heap->dbg_pause_act = NULL;
-	thr->heap->dbg_pause_flags &= ~DUK_PAUSE_FLAG_LINE_CHANGE;
 	if (thr->heap->dbg_pause_flags & DUK_PAUSE_FLAG_FUNC_ENTRY) {
 		DUK_D(DUK_DPRINT("PAUSE TRIGGERED by function entry (tailcall)"));
 		duk_debug_set_paused(thr->heap);
@@ -1672,10 +1682,10 @@ DUK_LOCAL void duk__call_setup_act_not_tailcall(duk_hthread *thr,
 		 *  Update return value stack index of current activation (if any).
 		 *
 		 *  Although it might seem this is not necessary (bytecode executor
-		 *  does this for Ecmascript-to-Ecmascript calls; other calls are
+		 *  does this for ECMAScript-to-ECMAScript calls; other calls are
 		 *  handled here), this turns out to be necessary for handling yield
-		 *  and resume.  For them, an Ecmascript-to-native call happens, and
-		 *  the Ecmascript call's retval_byteoff must be set for things to work.
+		 *  and resume.  For them, an ECMAScript-to-native call happens, and
+		 *  the ECMAScript call's retval_byteoff must be set for things to work.
 		 */
 
 		act->retval_byteoff = entry_valstack_bottom_byteoff + (duk_size_t) idx_func * sizeof(duk_tval);
@@ -1882,16 +1892,16 @@ DUK_LOCAL void duk__call_thread_state_update(duk_hthread *thr) {
 
  thread_state_error:
 	DUK_ERROR_FMT1(thr, DUK_ERR_TYPE_ERROR, "invalid thread state (%ld)", (long) thr->state);
-	DUK_UNREACHABLE();
+	DUK_WO_NORETURN(return;);
 }
 
 /*
  *  Main unprotected call handler, handles:
  *
- *    - All combinations of native/Ecmascript caller and native/Ecmascript
+ *    - All combinations of native/ECMAScript caller and native/ECMAScript
  *      target.
  *
- *    - Optimized Ecmascript-to-Ecmascript call where call handling only
+ *    - Optimized ECMAScript-to-ECMAScript call where call handling only
  *      sets up a new duk_activation but reuses an existing bytecode executor
  *      (the caller) without native recursion.
  *
@@ -1940,7 +1950,7 @@ DUK_LOCAL duk_int_t duk__handle_call_raw(duk_hthread *thr,
 	DUK_STATS_INC(thr->heap, stats_call_all);
 
 	/* If a tail call:
-	 *   - an Ecmascript activation must be on top of the callstack
+	 *   - an ECMAScript activation must be on top of the callstack
 	 *   - there cannot be any catch stack entries that would catch
 	 *     a return
 	 */
@@ -2045,6 +2055,12 @@ DUK_LOCAL duk_int_t duk__handle_call_raw(duk_hthread *thr,
 	 *  Because 'act' is not zeroed, all fields must be filled in.
 	 */
 
+	/* Should not be necessary, but initialize to silence warnings. */
+	act = NULL;
+	nargs = 0;
+	nregs = 0;
+	vs_min_bytes = 0;
+
 #if defined(DUK_USE_TAILCALL)
 	use_tailcall = (call_flags & DUK_CALL_FLAG_TAILCALL);
 	if (use_tailcall) {
@@ -2092,7 +2108,7 @@ DUK_LOCAL duk_int_t duk__handle_call_raw(duk_hthread *thr,
 	 *  compiler; the compiled function's parent env will contain
 	 *  the (immutable) binding already.
 	 *
-	 *  This handling is now identical for C and Ecmascript functions.
+	 *  This handling is now identical for C and ECMAScript functions.
 	 *  C functions always have the 'NEWENV' flag set, so their
 	 *  environment record initialization is delayed (which is good).
 	 *
@@ -2139,7 +2155,7 @@ DUK_LOCAL duk_int_t duk__handle_call_raw(duk_hthread *thr,
 
 	if (func != NULL && DUK_HOBJECT_IS_COMPFUNC(func)) {
 		/*
-		 *  Ecmascript call.
+		 *  ECMAScript call.
 		 */
 
 		DUK_ASSERT(func != NULL);
@@ -2233,9 +2249,10 @@ DUK_LOCAL duk_int_t duk__handle_call_raw(duk_hthread *thr,
 			;
 		} else if (rc < 0) {
 			duk_error_throw_from_negative_rc(thr, rc);
-			DUK_UNREACHABLE();
+			DUK_WO_NORETURN(return 0;);
 		} else {
 			DUK_ERROR_TYPE(thr, DUK_STR_INVALID_CFUNC_RC);
+			DUK_WO_NORETURN(return 0;);
 		}
 	}
 	DUK_ASSERT(thr->ptr_curr_pc == NULL);
@@ -2323,7 +2340,7 @@ DUK_LOCAL duk_int_t duk__handle_call_raw(duk_hthread *thr,
 	 * calls caused by side effects (e.g. when doing a DUK_OP_GETPROP), see
 	 * GH-303.  Only needed for success path, error path always causes a
 	 * breakpoint recheck in the executor.  It would be enough to set this
-	 * only when returning to an Ecmascript activation, but setting the flag
+	 * only when returning to an ECMAScript activation, but setting the flag
 	 * on every return should have no ill effect.
 	 */
 #if defined(DUK_USE_DEBUGGER_SUPPORT)
@@ -2435,6 +2452,7 @@ DUK_LOCAL void duk__handle_safe_call_inner(duk_hthread *thr,
 
 	if (DUK_UNLIKELY(rc < 0)) {
 		duk_error_throw_from_negative_rc(thr, rc);
+		DUK_WO_NORETURN(return;);
 	}
 	DUK_ASSERT(rc >= 0);
 
@@ -2712,7 +2730,10 @@ DUK_INTERNAL duk_int_t duk_handle_safe_call(duk_hthread *thr,
 		retval = DUK_EXEC_ERROR;
 	}
 #if defined(DUK_USE_CPP_EXCEPTIONS)
-	catch (std::exception &exc) {
+	catch (duk_fatal_exception &exc) {
+		DUK_D(DUK_DPRINT("rethrow duk_fatal_exception"));
+		throw;
+	} catch (std::exception &exc) {
 		const char *what = exc.what();
 		DUK_ASSERT((duk_size_t) ((duk_uint8_t *) thr->valstack_end - (duk_uint8_t *) thr->valstack) >= entry_valstack_end_byteoff);
 		DUK_STATS_INC(thr->heap, stats_safecall_throw);
@@ -2722,6 +2743,7 @@ DUK_INTERNAL duk_int_t duk_handle_safe_call(duk_hthread *thr,
 		DUK_D(DUK_DPRINT("unexpected c++ std::exception (perhaps thrown by user code)"));
 		try {
 			DUK_ERROR_FMT1(thr, DUK_ERR_TYPE_ERROR, "caught invalid c++ std::exception '%s' (perhaps thrown by user code)", what);
+			DUK_WO_NORETURN(return 0;);
 		} catch (duk_internal_exception exc) {
 			DUK_D(DUK_DPRINT("caught api error thrown from unexpected c++ std::exception"));
 			DUK_UNREF(exc);
@@ -2744,6 +2766,7 @@ DUK_INTERNAL duk_int_t duk_handle_safe_call(duk_hthread *thr,
 		DUK_STATS_INC(thr->heap, stats_safecall_throw);
 		try {
 			DUK_ERROR_TYPE(thr, "caught invalid c++ exception (perhaps thrown by user code)");
+			DUK_WO_NORETURN(return 0;);
 		} catch (duk_internal_exception exc) {
 			DUK_D(DUK_DPRINT("caught api error thrown from unexpected c++ exception"));
 			DUK_UNREF(exc);
@@ -2803,7 +2826,7 @@ DUK_INTERNAL duk_int_t duk_handle_safe_call(duk_hthread *thr,
 /*
  *  Property-based call (foo.noSuch()) error setup: replace target function
  *  on stack top with a specially tagged (hidden Symbol) error which gets
- *  thrown in call handling at the proper spot to follow Ecmascript semantics.
+ *  thrown in call handling at the proper spot to follow ECMAScript semantics.
  */
 
 #if defined(DUK_USE_VERBOSE_ERRORS)

@@ -5,7 +5,7 @@ Unicode support
 Overview
 ========
 
-Ecmascript E5 requires quite extensive Unicode support, which is difficult to
+ECMAScript E5 requires quite extensive Unicode support, which is difficult to
 implement in a very compact fashion.  The subsections below discuss Unicode
 handling in various parts of the E5 standard.  Below, the terms "character"
 and "codepoint" are used interchangeably.
@@ -25,7 +25,7 @@ The general principles for implementation are:
 * Compile-time operations on non-ASCII characters can have a performance
   penalty in exchange for small size.
 
-Handling unicode case conversion, character classes etc in a compact code
+Handling Unicode case conversion, character classes, etc. in a compact code
 size is bit challenging.  The current solution is to fast path ASCII
 characters and to use a bit-packed format for encoding case conversion
 rules (e.g. range mappings).  The rules are created by build-time Python
@@ -77,10 +77,10 @@ needed.
 String case conversion
 ======================
 
-Ecmascript E5 requires case conversion for 16-bit Unicode characters with the
+ECMAScript E5 requires case conversion for 16-bit Unicode characters with the
 ``String.prototype`` functions ``toLowerCase()``, ``toLocaleLowerCase()``,
 ``toUpperCase()``, and ``toLocaleUpperCase()``, see E5 Sections 15.5.4.16 to
-15.5.4.19.  Titlecase conversion is not required by Ecmascript E5.  Regular
+15.5.4.19.  Titlecase conversion is not required by ECMAScript E5.  Regular
 expression abstract ``Canonicalize()`` operation also borrows the case
 conversion rules (though only for 1:1 conversions), see E5 Section 15.10.2.8.
 

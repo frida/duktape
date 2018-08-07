@@ -11,15 +11,15 @@ with a focus on **portability** and **compact** footprint.
 
 Duktape is easy to integrate into a C/C++ project: add `duktape.c`,
 `duktape.h`, and `duk_config.h` to your build, and use the Duktape API
-to call Ecmascript functions from C code and vice versa.
+to call ECMAScript functions from C code and vice versa.
 
 Main features:
 
 * Embeddable, portable, compact
-* Ecmascript E5/E5.1 compliant, with some semantics updated from ES2015+
-* Partial support for Ecmascript 2015 (E6) and Ecmascript 2016 (E7),
+* ECMAScript E5/E5.1 compliant, with some semantics updated from ES2015+
+* Partial support for ECMAScript 2015 (E6) and ECMAScript 2016 (E7),
   [Post-ES5 feature status](http://wiki.duktape.org/PostEs5Features.html),
-  [kangax/compat-table](https://kangax.github.io/compat-table">kangax/compat-table)
+  [kangax/compat-table](https://kangax.github.io/compat-table)
 * ES2015 TypedArray and Node.js Buffer bindings
 * WHATWG Encoding API living standard
 * Built-in debugger
@@ -27,8 +27,8 @@ Main features:
 * Built-in Unicode support
 * Minimal platform dependencies
 * Combined reference counting and mark-and-sweep garbage collection with finalization
-* Custom features like co-routines
-* Property virtualization using a subset of Ecmascript E2015 Proxy object
+* Custom features like coroutines
+* Property virtualization using a subset of ECMAScript E2015 Proxy object
 * Bytecode dump/load for caching compiled functions
 * Distributable includes an optional logging framework, CommonJS-based module
   loading implementations, etc
@@ -86,19 +86,19 @@ example, to enable fastint support (example for Linux):
     # src-custom/ will now contain: duktape.c, duktape.h, duk_config.h.
 
 You can also clone this repository, make modifications, and build a source
-distributable on Linux, OSX, and Windows using `python util/dist.py`.
+distributable on Linux, macOS, and Windows using `python util/dist.py`.
 
 Getting started: modifying and rebuilding the distributable
 -----------------------------------------------------------
 
 If you intend to change Duktape internals and want to rebuild the source
-distributable in Linux, OSX, or Windows:
+distributable in Linux, macOS, or Windows:
 
     # Linux; can often install from packages or using 'pip'
     $ sudo apt-get install python python-yaml
     $ python util/dist.py
 
-    # OSX
+    # macOS
     # Install Python 2.7.x
     $ pip install PyYAML
     $ python util/dist.py
@@ -155,7 +155,7 @@ Duktape uses [Semantic Versioning](http://semver.org/) for official
 releases.  Builds from Duktape repo are not official releases and don't
 follow strict semver, mainly because `DUK_VERSION` needs to have some
 compromise value that won't be strictly semver conforming.
-Because Duktape tracks the latest Ecmascript specification versions,
+Because Duktape tracks the latest ECMAScript specification versions,
 compliance fixes are made in minor versions even when they are technically
 not backwards compatible.  See
 [Versioning](http://duktape.org/guide.html#versioning) for details.
@@ -165,7 +165,7 @@ Reporting bugs
 
 See [CONTRIBUTING.md](https://github.com/svaarala/duktape/blob/master/CONTRIBUTING.md).
 
-Security critical Github issues (for example anything leading to a segfault)
+Security critical GitHub issues (for example anything leading to a segfault)
 are tagged `security`.
 
 Contributing

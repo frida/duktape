@@ -1,11 +1,11 @@
 /*
- *  Ecmascript compiler.
+ *  ECMAScript compiler.
  */
 
 #if !defined(DUK_JS_COMPILER_H_INCLUDED)
 #define DUK_JS_COMPILER_H_INCLUDED
 
-/* ecmascript compiler limits */
+/* ECMAScript compiler limits */
 #define DUK_COMPILER_TOKEN_LIMIT           100000000L  /* 1e8: protects against deeply nested inner functions */
 
 /* maximum loopcount for peephole optimization */
@@ -187,6 +187,7 @@ struct duk_compiler_func {
 	duk_uint8_t is_arguments_shadowed;   /* argument/function declaration shadows 'arguments' */
 	duk_uint8_t needs_shuffle;           /* function needs shuffle registers */
 	duk_uint8_t reject_regexp_in_adv;    /* reject RegExp literal on next advance() call; needed for handling IdentifierName productions */
+	duk_uint8_t allow_regexp_in_adv;     /* allow RegExp literal on next advance() call */
 };
 
 struct duk_compiler_ctx {

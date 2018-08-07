@@ -75,7 +75,7 @@ DUK_LOCAL void duk__duplicate_ram_global_object(duk_hthread *thr) {
 	props = DUK_ALLOC_CHECKED(thr, alloc_size);
 	DUK_ASSERT(props != NULL);
 	DUK_ASSERT(DUK_HOBJECT_GET_PROPS(thr->heap, h_oldglobal) != NULL);
-	DUK_MEMCPY((void *) props, (const void *) DUK_HOBJECT_GET_PROPS(thr->heap, h_oldglobal), alloc_size);
+	duk_memcpy((void *) props, (const void *) DUK_HOBJECT_GET_PROPS(thr->heap, h_oldglobal), alloc_size);
 
 	/* XXX: keep property attributes or tweak them here?
 	 * Properties will now be non-configurable even when they're
@@ -202,7 +202,7 @@ DUK_INTERNAL void duk_hthread_create_builtin_objects(duk_hthread *thr) {
 
 	DUK_D(DUK_DPRINT("INITBUILTINS BEGIN: DUK_NUM_BUILTINS=%d, DUK_NUM_BUILTINS_ALL=%d", (int) DUK_NUM_BUILTINS, (int) DUK_NUM_ALL_BUILTINS));
 
-	DUK_MEMZERO(&bd_ctx, sizeof(bd_ctx));
+	duk_memzero(&bd_ctx, sizeof(bd_ctx));
 	bd->data = (const duk_uint8_t *) duk_builtins_data;
 	bd->length = (duk_size_t) DUK_BUILTINS_DATA_LENGTH;
 
@@ -444,11 +444,9 @@ DUK_INTERNAL void duk_hthread_create_builtin_objects(duk_hthread *thr) {
 			 *  signaled using a single flag bit in the bitstream.
 			 */
 
-			if (duk_bd_decode_flag(bd)) {
-				defprop_flags = (duk_small_uint_t) duk_bd_decode(bd, DUK__PROP_FLAGS_BITS);
-			} else {
-				defprop_flags = DUK_PROPDESC_FLAGS_WC;
-			}
+			defprop_flags = (duk_small_uint_t) duk_bd_decode_flagged(bd,
+			                                                         DUK__PROP_FLAGS_BITS,
+			                                                         (duk_uint32_t) DUK_PROPDESC_FLAGS_WC);
 			defprop_flags |= DUK_DEFPROP_FORCE |
 			                 DUK_DEFPROP_HAVE_VALUE |
 			                 DUK_DEFPROP_HAVE_WRITABLE |
@@ -553,6 +551,7 @@ DUK_INTERNAL void duk_hthread_create_builtin_objects(duk_hthread *thr) {
 #if defined(DUK_USE_LIGHTFUNC_BUILTINS)
 			duk_small_int_t lightfunc_eligible;
 #endif
+			duk_small_uint_t defprop_flags;
 
 			duk__push_stridx_or_string(thr, bd);
 			h_key = duk_known_hstring(thr, -1);
@@ -672,10 +671,19 @@ DUK_INTERNAL void duk_hthread_create_builtin_objects(duk_hthread *thr) {
 		 lightfunc_skip:
 #endif
 
-			/* XXX: So far all ES builtins are 'wc' but e.g.
-			 * performance.now() should be 'wec'.
-			 */
-			duk_xdef_prop(thr, (duk_idx_t) i, DUK_PROPDESC_FLAGS_WC);
+			defprop_flags = (duk_small_uint_t) duk_bd_decode_flagged(bd,
+			                                                         DUK__PROP_FLAGS_BITS,
+			                                                         (duk_uint32_t) DUK_PROPDESC_FLAGS_WC);
+			defprop_flags |= DUK_DEFPROP_FORCE |
+			                 DUK_DEFPROP_HAVE_VALUE |
+			                 DUK_DEFPROP_HAVE_WRITABLE |
+			                 DUK_DEFPROP_HAVE_ENUMERABLE |
+			                 DUK_DEFPROP_HAVE_CONFIGURABLE;
+			DUK_ASSERT(DUK_PROPDESC_FLAG_WRITABLE == DUK_DEFPROP_WRITABLE);
+			DUK_ASSERT(DUK_PROPDESC_FLAG_ENUMERABLE == DUK_DEFPROP_ENUMERABLE);
+			DUK_ASSERT(DUK_PROPDESC_FLAG_CONFIGURABLE == DUK_DEFPROP_CONFIGURABLE);
+
+			duk_def_prop(thr, (duk_idx_t) i, defprop_flags);
 
 			/* [ (builtin objects) ] */
 		}
@@ -748,7 +756,7 @@ DUK_INTERNAL void duk_hthread_create_builtin_objects(duk_hthread *thr) {
 			"f"
 #endif
 			" "
-			/* Low memory options */
+			/* Low memory/performance options */
 #if defined(DUK_USE_STRTAB_PTRCOMP)
 			"s"
 #endif
@@ -788,6 +796,9 @@ DUK_INTERNAL void duk_hthread_create_builtin_objects(duk_hthread *thr) {
 			 * are in ROM.
 			 */
 			"Z"
+#endif
+#if defined(DUK_USE_LITCACHE_SIZE)
+			"l"
 #endif
 	                " "
 			/* Object property allocation layout */

@@ -6,17 +6,19 @@
 <ul>
 <li>Add Duktape source (<code>duktape.c</code>) and headers
     (<code>duktape.h</code> and <code>duk_config.h</code>)
-    to your build.</li>
+    to your build.  If the default configuration is not appropriate,
+    use <code>python2 tools/configure.py</code> to prepare Duktape
+    sources and headers for a custom configuration.</li>
 <li>Create a Duktape <b>heap</b> (a garbage collection region) and an initial
     <b>context</b> (essentially a thread handle) in your program.</li>
-<li>Load the necessary Ecmascript script files, and register your Duktape/C
+<li>Load the necessary ECMAScript script files, and register your Duktape/C
     functions.  Duktape/C functions are C functions you can call from
-    Ecmascript code for better performance, bindings to native libraries, etc.</li>
-<li>Use the Duktape API to call Ecmascript functions whenever appropriate.
+    ECMAScript code for better performance, bindings to native libraries, etc.</li>
+<li>Use the Duktape API to call ECMAScript functions whenever appropriate.
     Duktape API is used to pass values to and from functions.  Values are
     converted between their C representation and the Duktape internal
-    (Ecmascript compatible) representation.</li>
-<li>Duktape API is also used by Duktape/C functions (called from Ecmascript)
+    (ECMAScript compatible) representation.</li>
+<li>Duktape API is also used by Duktape/C functions (called from ECMAScript)
     to access call arguments and to provide return values.</li>
 </ul>
 
@@ -25,17 +27,17 @@
 <h2>Heap and context</h2>
 
 <p>A Duktape <b>heap</b> is a single region for garbage collection.  A heap
-is used to allocate storage for strings, Ecmascript objects, and other
+is used to allocate storage for strings, ECMAScript objects, and other
 variable size, garbage collected data.  Objects in the heap have an internal
 heap header which provides the necessary information for reference counting,
 mark-and-sweep garbage collection, object finalization, etc.
 Heap objects can reference each other, creating a reachability graph from
-a garbage collection perspective.  For instance, the properties of an Ecmascript
+a garbage collection perspective.  For instance, the properties of an ECMAScript
 object reference both the keys and values of the object's property set.  You can
 have multiple heaps, but objects in different heaps cannot reference each other
 directly; you need to use serialization to pass values between heaps.</p>
 
-<p>A Duktape <b>context</b> is an Ecmascript "thread of execution" which lives
+<p>A Duktape <b>context</b> is an ECMAScript "thread of execution" which lives
 in a certain Duktape heap.  A context is represented by a <code>duk_context *</code>
 in the Duktape API, and is associated with an internal Duktape coroutine (a form
 of a co-operative thread).  Each context is also associated with an environment
@@ -46,15 +48,14 @@ the Duktape coroutine: values can be inserted and queries, functions can be call
 and so on.</p>
 
 <p>Each coroutine has a <b>call stack</b> which controls execution, keeping
-track of function calls, native or Ecmascript, within the Ecmascript engine.
-Each coroutine also has a <b>value stack</b> which stores all the Ecmascript
+track of function calls, native or ECMAScript, within the ECMAScript engine.
+Each coroutine also has a <b>value stack</b> which stores all the ECMAScript
 values of the coroutine's active call stack.  The value stack always has an
 active <b>stack frame</b> for the most recent function call (when no function
 calls have been made, the active stack frame is the value stack as is).
 The Duktape API calls operate almost exclusively in the currently active
-stack frame.  A coroutine also has an internal <b>catch stack</b> which is used
-to track error catching sites established using e.g. <code>try-catch-finally</code>
-blocks.  This is not visible to the caller in any way at the moment.</p>
+stack frame.  There's also internal book-keeping for error catching sites
+established using e.g. <code>try-catch-finally</code>.</p>
 
 <p>Multiple contexts can share the same Duktape <b>heap</b>.  In more concrete
 terms this means that multiple contexts can share the same garbage collection
@@ -121,20 +122,15 @@ to values which resided on the value stack of a context associated with the
 heap, such pointers are invalidated and must never be dereferenced after
 the heap destruction call returns.</p>
 
-<h2>Call stack and catch stack (of a context)</h2>
+<h2>Call stack (of a context)</h2>
 
 <p>The call stack of a context is not directly visible to the caller.
-It keeps track of the chain of function calls, either C or Ecmascript,
+It keeps track of the chain of function calls, either C or ECMAScript,
 currently executing in a context.  The main purpose of this book-keeping is
 to facilitate the passing of arguments and results between function callers
 and callees, and to keep track of how the value stack is divided between
 function calls.  The call stack also allows Duktape to construct a traceback
 for errors.</p>
-
-<p>Closely related to the call stack, Duktape also maintains a catch stack
-for keeping track of current error catching sites established using e.g.
-<code>try-catch-finally</code>.  The catch stack is even less visible to the
-caller than the call stack.</p>
 
 <p>Because Duktape supports tail calls, the call stack does not always
 accurately represent the true call chain: tail calls will be "squashed"
@@ -273,14 +269,14 @@ the internal number of value stack elements available beyond the caller
 specified extra varies considerably.  The caller does not need to take this
 into account and should never rely on any additional elements being available.</p>
 
-<h2>Ecmascript array index</h2>
+<h2>ECMAScript array index</h2>
 
-<p>Ecmascript object and array keys can only be strings.  Array indices
+<p>ECMAScript object and array keys can only be strings.  Array indices
 (e.g. 0, 1, 2) are represented as canonical string representations of the
 respective numbers.  More technically, all canonical string representations
 of the integers in the range [0, 2**32-1] are valid array indices.</p>
 
-<p>To illustrate the Ecmascript array index handling, consider the following
+<p>To illustrate the ECMAScript array index handling, consider the following
 example:</p>
 
 <pre class="ecmascript-code">
@@ -293,16 +289,16 @@ print(arr[1.0]);   // refers to 'bar', canonical encoding is "1"
 print(arr["1.0"]); // undefined, not an array index
 </pre>
 
-<p>Some API calls operating on Ecmascript arrays accept numeric array index
+<p>Some API calls operating on ECMAScript arrays accept numeric array index
 arguments.  This is really just a short hand for denoting a string conversion
 of that number.  For instance, if the API is given the integer 123, this
 really refers to the property name "123".</p>
 
 <p>Internally, Duktape tries to avoid converting numeric indices to actual
 strings whenever possible, so it is preferable to use array index API calls
-when they are relevant.  Similarly, when writing Ecmascript code it is
+when they are relevant.  Similarly, when writing ECMAScript code it is
 preferable to use numeric rather than string indices, as the same fast path
-applies for Ecmascript code.</p>
+applies for ECMAScript code.</p>
 
 <h2 id="duktape-api">Duktape API</h2>
 
@@ -335,7 +331,7 @@ the following guarantees for macros:</p>
 <h2>Duktape/C function</h2>
 
 <p>A C function with a Duktape/C API signature can be associated with an
-Ecmascript function object, and gets called when the Ecmascript function
+ECMAScript function object, and gets called when the ECMAScript function
 object is called.  A Duktape/C API function looks as follows:</p>
 <pre class="c-code">
 duk_ret_t my_func(duk_context *ctx) {
@@ -344,14 +340,14 @@ duk_ret_t my_func(duk_context *ctx) {
 }
 </pre>
 
-<p>The function gets Ecmascript call argument in the value stack of
+<p>The function gets ECMAScript call argument in the value stack of
 <code>ctx</code>, with
 <code><a href="api.html#duk_get_top">duk_get_top()</a></code>
 indicating the number of
 arguments present on the value stack.  The <code>this</code> binding is not
 automatically pushed to the value stack; use
 <code><a href="api.html#duk_push_this">duk_push_this()</a></code>
-to access it.  When creating an Ecmascript function object associated with a
+to access it.  When creating an ECMAScript function object associated with a
 Duktape/C function, one can select the desired number of arguments.  Extra
 arguments are dropped and missing arguments are replaced with
 <code>undefined</code>.  A function can also be registered as a vararg
@@ -368,9 +364,9 @@ which case call arguments are not modified prior to C function entry.</p>
     thrown.  Error codes named <code>DUK_RET_xxx</code> map to specific kinds
     of errors (do not confuse these with <code>DUK_ERR_xxx</code> which are
     positive values).</li>
-<li>A return value higher than 1 is currently undefined, as Ecmascript
+<li>A return value higher than 1 is currently undefined, as ECMAScript
     doesn't support multiple return values in Edition 5.1.  (Values higher
-    than 1 may be taken into to support multiple return values in Ecmascript
+    than 1 may be taken into to support multiple return values in ECMAScript
     Edition 6.)</li>
 </ul>
 
@@ -390,12 +386,12 @@ duk_ret_t my_func(duk_context *ctx) {
 </pre>
 
 <p>All Duktape/C functions are considered <b>strict</b> in the
-<a href="http://www.ecma-international.org/ecma-262/5.1/#sec-4.2.2">Ecmascript sense</a>.
-Duktape API calls always obey Ecmascript strict mode semantics, even when the API calls
+<a href="http://www.ecma-international.org/ecma-262/5.1/#sec-4.2.2">ECMAScript sense</a>.
+Duktape API calls always obey ECMAScript strict mode semantics, even when the API calls
 are made outside of any Duktape/C function, i.e. with an empty call stack.
 For instance, attempt to delete a non-configurable property using
 <code><a href="api.html#duk_del_prop">duk_del_prop()</a></code>
-will cause an error to be thrown.  This is the case with a strict Ecmascript function too:</p>
+will cause an error to be thrown.  This is the case with a strict ECMAScript function too:</p>
 
 <pre class="ecmascript-code">
 function f() {
@@ -410,7 +406,7 @@ print(f());  // this throws an error because f() is strict
 <p>Another consequence of Duktape/C function strictness is that the <code>this</code>
 binding given to Duktape/C functions is not
 <a href="http://www.ecma-international.org/ecma-262/5.1/#sec-10.4.3">coerced</a>.
-This is also the case for strict Ecmascript code:</p>
+This is also the case for strict ECMAScript code:</p>
 <pre class="ecmascript-code">
 function strictFunc() { 'use strict'; print(typeof this); }
 function nonStrictFunc() { print(typeof this); }
@@ -437,7 +433,7 @@ property by default, so the default object instance (given to the constructor
 as <code>this</code>) inherits from <code>Object.prototype</code>.  To use a
 custom prototype you can define <code>prototype</code> for the Duktape/C
 function explicitly.  Another approach is to ignore the default object instance
-and construct one manually within the Duktape/C call: as with Ecmascript
+and construct one manually within the Duktape/C call: as with ECMAScript
 functions, if a constructor returns an object value, that value replaces the
 default object instance and becomes the value of the <code>new</code>
 expression.</p>
@@ -459,14 +455,14 @@ There are several ways to achieve this.</p>
 
 <p>First, a Duktape/C function can use its Function object to store state
 or parameters.  A certain Duktape/C function (the actual C function)
-is always represented by an Ecmascript Function object which is
+is always represented by an ECMAScript Function object which is
 internally associated with the underlying C function.   The Function
 object can be used to store properties related to that particular
 instance of the function.  Note that a certain Duktape/C function can
 be associated with multiple independent Function objects and thus
 independent states.</p>
 
-<p>Accessing the Ecmascript Function object related to a Duktape/C function
+<p>Accessing the ECMAScript Function object related to a Duktape/C function
 is easy:</p>
 <pre class="c-code">
 duk_push_current_function(ctx);
@@ -495,9 +491,9 @@ duk_get_prop_string(ctx, -1, "my_state_variable");
 
 <h3 id="hidden-symbol-properties">Hidden Symbol properties</h3>
 
-<p>If data needs to be associated with an object, but hidden from Ecmascript
+<p>If data needs to be associated with an object, but hidden from ECMAScript
 code, hidden <a href="#symbols">Symbols</a> can be used as a property key. The
-key is only accessible via the C API, unless passed to Ecmascript code from the
+key is only accessible via the C API, unless passed to ECMAScript code from the
 C API. A common use case is to associated backing pointers/data to C memory.
 Symbols are created as a string, but are differentiated with macros that mark
 them as Symbols.</p>
@@ -552,7 +548,7 @@ more stable alternative.
 
 <p>The heap stash is an object visible only from C code.  It is associated
 with the Duktape heap, and allows Duktape/C code to store "under the hood"
-state data which is not exposed to Ecmascript code.  It is accessed with the
+state data which is not exposed to ECMAScript code.  It is accessed with the
 <code><a href="api.html#duk_push_heap_stash">duk_push_heap_stash()</a></code>
 API call.</p>
 
@@ -575,7 +571,7 @@ API call.</p>
 
 <p>The Duktape version is available through the <code>DUK_VERSION</code> define,
 with the numeric value <code>(major * 10000) + (minor * 100) + patch</code>.
-The same value is available to Ecmascript code through <code>Duktape.version</code>.
+The same value is available to ECMAScript code through <code>Duktape.version</code>.
 Calling code can use this define for Duktape version specific code.</p>
 
 <p>For C code:</p>
@@ -589,7 +585,7 @@ Calling code can use this define for Duktape version specific code.</p>
 #endif
 </pre>
 
-<p>For Ecmascript code (also see <a href="#duktapebuiltins">Duktape built-ins</a>):</p>
+<p>For ECMAScript code (also see <a href="#duktapebuiltins">Duktape built-ins</a>):</p>
 <pre class="ecmascript-code">
 if (typeof Duktape !== 'object') {
     print('not Duktape');
@@ -616,19 +612,24 @@ shorthand to automatically throw an error.</p>
 
 <h2 id="error-handling">Error handling</h2>
 
-<p>Error handling in the Duktape API is similar to how Ecmascript handles
+<p>Error handling in the Duktape API is similar to how ECMAScript handles
 errors: errors are thrown either explicitly or implicitly, then caught and
-handled.  However, instead of a try-catch statement application code uses
+handled.  Instead of a try-catch statement application C code uses
 <code><a href="api.html#taglist-protected">protected</a></code>
 Duktape API calls to establish points in C code where errors can be caught
-and handled.
-An uncaught error causes the fatal error handler to be called, which is
+and handled.  All Duktape API calls except protected calls may throw errors:
+most ECMAScript operations may cause error throws in some situations, and an
+out-of-memory error is possible in almost any situation.  The long control
+transfer between the throw site and the catch site is based either on
+<code>setjmp()</code>/<code>longjmp()</code> (or their platform specific
+variants), or a C++ exception throw (when <code>DUK_USE_CPP_EXCEPTIONS</code>
+is enabled), see <a href="#long-control-transfers">Long control transfers</a>.</p>
+
+<p>An uncaught error causes the fatal error handler to be called, which is
 considered an unrecoverable situation and should ordinarily be avoided,
 see <a href="#normal-and-fatal-errors">Normal and fatal errors</a> and
-<a href="http://wiki.duktape.org/HowtoFatalErrors.html">How to handle fatal errors</a>.</p>
-
-<p>To avoid fatal errors, typical application code should establish an error
-catch point before making other Duktape API calls.  This is done using
+<a href="http://wiki.duktape.org/HowtoFatalErrors.html">How to handle fatal errors</a>.  To avoid fatal errors, typical application code should establish an
+error catch site before making other Duktape API calls.  This is done using
 protected Duktape API calls, for example:</p>
 <ul>
 <li>Use protected calls to evaluate code
@@ -707,7 +708,7 @@ necessarily context dependent, but could be something like:</p>
 
 <p>Note that it may be fine for some applications to make API calls without
 an error catcher and risk throwing uncaught errors leading to a fatal error.
-It's not possible to continue execution after a fatal error, so such
+It's not safe to continue execution after a fatal error, so such
 applications would typically simply exit when a fatal error occurs.  Even
 without an actual recovery strategy, a fatal error handler should be used to
 e.g. write fatal error information to <code>stderr</code> before process exit.</p>
@@ -718,40 +719,110 @@ e.g. write fatal error information to <code>stderr</code> before process exit.</
 <p>An <b>ordinary error</b> is caused by a <code>throw</code> statement, a
 <code><a href="api.html#duk_throw">duk_throw()</a></code>
 API call (or similar), or by an internal, recoverable Duktape error.
-Ordinary errors can be caught with a <code>try-catch</code> in Ecmascript
+Ordinary errors can be caught with a <code>try-catch</code> in ECMAScript
 code or e.g. <code><a href="api.html#duk_pcall">duk_pcall()</a></code>
 (see API calls tagged
 <code><a href="api.html#taglist-protected">protected</a></code>)
 in C code.</p>
 
-<p>A <b>fatal error</b> is caused by an uncaught error, an explicit call to
-<code><a href="api.html#duk_fatal">duk_fatal()</a></code>, or an
-unrecoverable error inside Duktape.  Each Duktape heap has a heap-wide fatal
-error handler registered in
-<code><a href="api.html#duk_create_heap">duk_create_heap()</a></code>; if no
-handler is given a built-in default handler is used.  There's no safe way to
-resume execution after a fatal error, so that a fatal error handler must not
-return or call into the Duktape API.  Instead the handler should e.g. write
-out the message to the console or a log file and then exit the process (or
-restart an embedded device).</p>
+<p>A <b>fatal error</b> is caused by an uncaught error, an assertion failure
+(if enabled), an explicit call to
+<code><a href="api.html#duk_fatal">duk_fatal()</a></code>, or an unrecoverable
+error inside Duktape.</p>
+
+<p>Each Duktape heap has a heap-wide fatal error handler registered in
+<code><a href="api.html#duk_create_heap">duk_create_heap()</a></code>.
+If no handler is given a built-in default handler is used:</p>
+<ul>
+<li>Default configuration: the built-in default fatal error handler
+    writes a debug log message but <b>won't</b> write anything to
+    <code>stdout</code> or <code>stderr</code>.  Debug logging is disabled
+    by default, so that the fatal error message is not displayed by default.
+    The handler then calls <code>abort()</code>.  If the abort() call exits
+    for some reason, the handler then enters an infinite loop to ensure
+    execution doesn't resume after a fatal error.</li>
+<li><code>DUK_USE_CPP_EXCEPTIONS</code> enabled: the built-in default
+    fatal error handler throws a <code>duk_fatal_exception</code>.  This
+    exception inherits from <code>std::runtime_error</code> so that it can be
+    easily caught and provides a <code>::what()</code> method to read the
+    fatal error message.  It is unsafe to continue execution after catching
+    the fatal error.</li>
+<li>If <code>DUK_USE_FATAL_HANDLER</code> is defined, it is always used as the
+    built-in default fatal error handler, even if C++ exceptions are enabled.</li>
+</ul>
+
+<div class="note">
+It is <b>strongly recommended</b> to both (1) provide a custom fatal error
+handler in heap creation and (2) replace the built-in default fatal error
+handler using the <code>DUK_USE_FATAL_HANDLER()</code> option in
+<code>duk_config.h</code>.
+</div>
+
+<p>There's no safe way to resume execution after a fatal error, so that a
+fatal error handler must not return or call into the Duktape API.  Instead the
+handler should e.g. write out the message to the console or a log file and
+then exit the process (or restart an embedded device).  This also applies when
+using C++ exceptions as the long control transfer mechanism.  <b>If the
+application continues execution after a fatal error all bets are off: memory
+leaks are possible, and memory safety may be compromised.</b></p>
 
 <p>Fatal errors may also happen without any heap context, so that Duktape
 can't look up a possible heap-specific fatal error handler.  Duktape will then
 always call the built-in default fatal error handler (with the handler
 userdata argument set to NULL).  Fatal errors handled this way are currently
 limited to assertion failures, so that if you don't enable assertions, no such
-errors will currently occur.  All fatal error handling goes through the
+errors will currently occur and all fatal error handling goes through the
 heap-associated fatal error handler which is in direct application control.</p>
-
-<div class="note">
-The built-in default fatal error handler will write a debug log message
-(but <b>won't</b> write anything to <code>stdout</code> to <code>stderr</code>),
-and will then call <code>abort()</code>; if that fails, it enters an
-infinite loop to ensure execution doesn't resume after a fatal error.  It is
-<b>strongly recommended</b> to both (1) provide a custom fatal error handler
-in heap creation and (2) replace the built-in default fatal error handler using
-the <code>DUK_USE_FATAL_HANDLER()</code> option in <code>duk_config.h</code>.
-</div>
 
 <p>See <a href="http://wiki.duktape.org/HowtoFatalErrors.html">How to handle fatal errors</a>
 for more detail and examples.</p>
+
+<h2 id="long-control-transfers">Long control transfers</h2>
+
+<p>The specific long control transfer mechanism Duktape uses internally
+for error throwing and catching is not directly visible to application code:
+application code uses a
+<code><a href="api.html#taglist-protected">protected</a></code> call to catch
+errors, while errors are thrown by Duktape or by the application using a
+variety of Duktape API calls, e.g. <code>duk_error()</code>.</p>
+
+<h3>Default configuration, without DUK_USE_CPP_EXCEPTIONS</h3>
+
+<p>In the default configuration a Duktape API protected call uses
+<code>setjmp()</code> to establish a catch site.  The error throw
+site uses <code>longjmp()</code> to unwind the native C stack and return
+to the (nearest) catch site.  On some platforms variants of the calls, such
+as <code>sigsetjmp()</code> and <code>siglongjmp</code> are used.  There are
+minor differences between the call variants e.g. with regards to performance
+and signal handling.  The variant is chosen by <code>duk_config.h</code>.</p>
+
+<p>A <code>longjmp()</code> unwinds all the native C stack frames between the
+<code>longjmp()</code> and the <code>setjmp()</code>.  However, this unwinding
+process won't invoke C++ automatic destructors which may be a significant
+limitation for some C++ applications.</p>
+
+<p>For fatal errors, e.g. uncaught errors, the default fatal error handler
+uses <code>abort()</code>, see <a href="#normal-and-fatal-errors">Normal and fatal errors</a>.</p>
+
+<h3>C++ mode, with DUK_USE_CPP_EXCEPTIONS</h3>
+
+<p>When <code>DUK_USE_CPP_EXCEPTIONS</code> is enabled the long control transfer
+is based on a C++ exception throw.  The protected call uses a C++ try-catch
+to establish a catch site; note that this happens inside Duktape, and is not
+visible to the application.  The error throw site throws a
+<code>duk_internal_exception</code> which is caught by the (nearest) Duktape
+catch site.  <b>Application code must not catch the exception.</b>  To minimize
+that risk, the exception doesn't inherit from any standard exception class so
+it won't be caught by a boilerplate <code>std::exception</code> catch site.</p>
+
+<p>For fatal errors, e.g. uncaught errors, a <code>duk_fatal_exception</code>
+is thrown by the default fatal error handler.  The exception inherits from
+<code>std::runtime_error</code> and is intended to be caught by user code.
+The exception provides a <code>::what()</code> method returning the fatal
+error message.  Even though the fatal error is catchable, it is still unsafe
+to continue execution after catching the error.  See
+<a href="#normal-and-fatal-errors">Normal and fatal errors</a>.</p>
+
+<p>For both C++ exception types the C++ native stack unwind process supports
+automatic destructors for the stack frames between the throw site and the catch
+site.</p>

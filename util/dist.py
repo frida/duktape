@@ -137,6 +137,7 @@ def create_dist_directories(dist):
     mkdir(os.path.join(dist, 'extras', 'module-duktape'))
     mkdir(os.path.join(dist, 'extras', 'module-node'))
     mkdir(os.path.join(dist, 'extras', 'alloc-pool'))
+    mkdir(os.path.join(dist, 'extras', 'cbor'))
     mkdir(os.path.join(dist, 'polyfills'))
     #mkdir(os.path.join(dist, 'doc'))  # Empty, so omit
     mkdir(os.path.join(dist, 'licenses'))
@@ -312,6 +313,7 @@ def main():
         'duk_api_inspect.c',
         'duk_api_memory.c',
         'duk_api_object.c',
+        'duk_api_random.c',
         'duk_api_stack.c',
         'duk_api_string.c',
         'duk_api_time.c',
@@ -423,13 +425,16 @@ def main():
         'duk_unicode.h',
         'duk_unicode_support.c',
         'duk_unicode_tables.c',
+        'duk_util.h',
         'duk_util_bitdecoder.c',
         'duk_util_bitencoder.c',
         'duk_util_bufwriter.c',
-        'duk_util.h',
         'duk_util_hashbytes.c',
-        'duk_util_misc.c',
         'duk_util_tinyrandom.c',
+        'duk_util_double.c',
+        'duk_util_cast.c',
+        'duk_util_memory.c',
+        'duk_util_misc.c',
         'strings.yaml',
         'SpecialCasing.txt',
         'SpecialCasing-8bit.txt',
@@ -511,7 +516,8 @@ def main():
         'duktape-isfastint.js',
         'duktape-error-setter-writable.js',
         'duktape-error-setter-nonwritable.js',
-        'duktape-buffer.js'
+        'duktape-buffer.js',
+        'promise.js'
     ], 'polyfills', os.path.join(dist, 'polyfills'))
 
     copy_files([
@@ -704,6 +710,16 @@ def main():
     ], os.path.join('extras', 'alloc-pool'), os.path.join(dist, 'extras', 'alloc-pool'))
 
     copy_files([
+        'README.rst',
+        'cbordecode.py',
+        'duk_cbor.c',
+        'duk_cbor.h',
+        'jsoncbor.c',
+        'run_testvectors.js',
+        'Makefile'
+    ], os.path.join('extras', 'cbor'), os.path.join(dist, 'extras', 'cbor'))
+
+    copy_files([
         'Makefile.cmdline',
         'Makefile.dukdebug',
         'Makefile.eventloop',
@@ -711,6 +727,7 @@ def main():
         'Makefile.eval',
         'Makefile.coffee',
         'Makefile.jxpretty',
+        'Makefile.jsoncbor',
         'Makefile.sandbox',
         'Makefile.codepage',
         'mandel.js'
@@ -723,6 +740,9 @@ def main():
 
     copy_and_replace(os.path.join('dist-files', 'README.rst'), os.path.join(dist, 'README.rst'), {
         '@DUK_VERSION_FORMATTED@': duk_version_formatted,
+        '@DUK_MAJOR@': str(duk_major),
+        '@DUK_MINOR@': str(duk_minor),
+        '@DUK_PATCH@': str(duk_patch),
         '@GIT_COMMIT@': git_commit,
         '@GIT_DESCRIBE@': git_describe,
         '@GIT_BRANCH@': git_branch

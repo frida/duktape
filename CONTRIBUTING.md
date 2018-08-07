@@ -11,7 +11,7 @@ for details.
 To make a code contribution to Duktape
 --------------------------------------
 
-* Fork the Duktape Github repository and make your changes:
+* Fork the Duktape GitHub repository and make your changes:
 
   - Use a well named topic branch for the changes, with lowercase and dashes,
     e.g. `xyz-compiler-fixes`.
@@ -26,7 +26,7 @@ To make a code contribution to Duktape
 * Test your changes as thoroughly as possible.  At the very minimum:
 
   - Travis test run must pass, which covers both a code policy check, and
-    runs basic API and Ecmascript test case set.
+    runs basic API and ECMAScript test case set.
 
   - If some test cases are invalidated by the changes, fix the test cases as
     part of the branch.  If you add new functionality, you should add test
@@ -63,7 +63,7 @@ To make a code contribution to Duktape
   - Please include an e-mail address, a link to your GitHub profile, or
     something similar to allow your contribution to be identified accurately.
 
-* Create a pull request in Github.  For now, the "base branch" should be
+* Create a pull request in GitHub.  For now, the "base branch" should be
   "master", i.e. the pull requests are merged directly to the master branch.
   In the description:
 

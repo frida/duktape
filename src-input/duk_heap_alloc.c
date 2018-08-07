@@ -66,7 +66,7 @@ DUK_INTERNAL void duk_free_hobject(duk_heap *heap, duk_hobject *h) {
 		 * functions in the callstack.
 		 */
 	} else if (DUK_HOBJECT_IS_BOUNDFUNC(h)) {
-		duk_hboundfunc *f = (duk_hboundfunc *) h;
+		duk_hboundfunc *f = (duk_hboundfunc *) (void *) h;
 
 		DUK_FREE(heap, f->args);
 	}
@@ -464,7 +464,7 @@ DUK_LOCAL duk_bool_t duk__init_heap_strings(duk_heap *heap) {
 	duk_bitdecoder_ctx *bd = &bd_ctx;  /* convenience */
 	duk_small_uint_t i;
 
-	DUK_MEMZERO(&bd_ctx, sizeof(bd_ctx));
+	duk_memzero(&bd_ctx, sizeof(bd_ctx));
 	bd->data = (const duk_uint8_t *) duk_strings_data;
 	bd->length = (duk_size_t) DUK_STRDATA_DATA_LENGTH;
 
@@ -685,7 +685,8 @@ DUK_LOCAL void duk__dump_type_sizes(void) {
 	DUK__DUMPSZ(duk_heap);
 	DUK__DUMPSZ(duk_activation);
 	DUK__DUMPSZ(duk_catcher);
-	DUK__DUMPSZ(duk_strcache);
+	DUK__DUMPSZ(duk_strcache_entry);
+	DUK__DUMPSZ(duk_litcache_entry);
 	DUK__DUMPSZ(duk_ljstate);
 	DUK__DUMPSZ(duk_fixedbuffer);
 	DUK__DUMPSZ(duk_bitdecoder_ctx);
@@ -894,7 +895,7 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 	 *  Zero the struct, and start initializing roughly in order
 	 */
 
-	DUK_MEMZERO(res, sizeof(*res));
+	duk_memzero(res, sizeof(*res));
 #if defined(DUK_USE_ASSERTIONS)
 	res->heap_initializing = 1;
 #endif
@@ -902,7 +903,6 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 	/* explicit NULL inits */
 #if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	res->heap_udata = NULL;
-	res->global_access_funcs = NULL;
 	res->heap_allocated = NULL;
 #if defined(DUK_USE_REFERENCE_COUNTING)
 	res->refzero_list = NULL;
@@ -980,7 +980,7 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 
 	/* XXX: use the pointer as a seed for now: mix in time at least */
 
-	/* The casts through duk_intptr_t is to avoid the following GCC warning:
+	/* The casts through duk_uintptr_t is to avoid the following GCC warning:
 	 *
 	 *   warning: cast from pointer to integer of different size [-Wpointer-to-int-cast]
 	 *
@@ -991,7 +991,7 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 	DUK_D(DUK_DPRINT("using rom strings, force heap hash_seed to fixed value 0x%08lx", (long) DUK__FIXED_HASH_SEED));
 	res->hash_seed = (duk_uint32_t) DUK__FIXED_HASH_SEED;
 #else  /* DUK_USE_ROM_STRINGS */
-	res->hash_seed = (duk_uint32_t) (duk_intptr_t) res;
+	res->hash_seed = (duk_uint32_t) (duk_uintptr_t) res;
 #if !defined(DUK_USE_STRHASH_DENSE)
 	res->hash_seed ^= 5381;  /* Bernstein hash init value is normally 5381; XOR it in in case pointer low bits are 0 */
 #endif
@@ -1031,17 +1031,17 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 
 #if defined(DUK_USE_STRTAB_PTRCOMP)
 	/* zero assumption */
-	DUK_MEMZERO(res->strtable16, sizeof(duk_uint16_t) * st_initsize);
+	duk_memzero(res->strtable16, sizeof(duk_uint16_t) * st_initsize);
 #else
 #if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	{
-		duk_small_uint_t i;
+		duk_uint32_t i;
 	        for (i = 0; i < st_initsize; i++) {
 			res->strtable[i] = NULL;
 	        }
 	}
 #else
-	DUK_MEMZERO(res->strtable, sizeof(duk_hstring *) * st_initsize);
+	duk_memzero(res->strtable, sizeof(duk_hstring *) * st_initsize);
 #endif  /* DUK_USE_EXPLICIT_NULL_INIT */
 #endif  /* DUK_USE_STRTAB_PTRCOMP */
 
@@ -1051,12 +1051,29 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 
 #if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	{
-		duk_small_uint_t i;
+		duk_uint_t i;
 		for (i = 0; i < DUK_HEAP_STRCACHE_SIZE; i++) {
 			res->strcache[i].h = NULL;
 		}
 	}
 #endif
+
+	/*
+	 *  Init litcache
+	 */
+#if defined(DUK_USE_LITCACHE_SIZE)
+	DUK_ASSERT(DUK_USE_LITCACHE_SIZE > 0);
+	DUK_ASSERT(DUK_IS_POWER_OF_TWO((duk_uint_t) DUK_USE_LITCACHE_SIZE));
+#if defined(DUK_USE_EXPLICIT_NULL_INIT)
+	{
+		duk_uint_t i;
+		for (i = 0; i < DUK_USE_LITCACHE_SIZE; i++) {
+			res->litcache[i].addr = NULL;
+			res->litcache[i].h = NULL;
+		}
+	}
+#endif
+#endif  /* DUK_USE_LITCACHE_SIZE */
 
 	/* XXX: error handling is incomplete.  It would be cleanest if
 	 * there was a setjmp catchpoint, so that all init code could
@@ -1129,7 +1146,7 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 	{
 		duk_uint64_t tmp_u64;
 		tmp_u64 = 0;
-		DUK_MEMCPY((void *) &tmp_u64,
+		duk_memcpy((void *) &tmp_u64,
 		           (const void *) &res,
 		           (size_t) (sizeof(void *) >= sizeof(duk_uint64_t) ? sizeof(duk_uint64_t) : sizeof(void *)));
 		res->rnd_state[1] ^= tmp_u64;

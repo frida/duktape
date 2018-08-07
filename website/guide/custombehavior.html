@@ -13,7 +13,7 @@ types are custom.</p>
 
 <p>Objects may have properties with <a href="#symbols">hidden Symbol</a> keys.
 These are similar to ES2015 Symbols but won't be enumerated or returned from even
-<code>Object.getOwnPropertySymbols()</code>.  Ordinary Ecmascript code cannot
+<code>Object.getOwnPropertySymbols()</code>.  Ordinary ECMAScript code cannot
 refer to such properties because the keys intentionally use an invalid (extended)
 UTF-8 representation.</p>
 
@@ -25,7 +25,7 @@ It prevents a function from being tail called.</p>
 <h2>"const" treated mostly like "var"</h2>
 
 <p>The <code>const</code> keyword is supported with minimal non-standard
-semantics (officially defined in Ecmascript 6).  See
+semantics (officially defined in ECMAScript 6).  See
 <a href="#es6-const">Const variables</a> for more detail.</p>
 
 <h2>Additional Error and Function object properties</h2>
@@ -90,10 +90,10 @@ binding in any of the points A, B, or C.</p>
 
 <h2>RegExp leniency</h2>
 
-<p>Most Ecmascript engines support more syntax than guaranteed by the
-<a href="http://www.ecma-international.org/ecma-262/5.1/#sec-15.10.1">Ecmascript
+<p>Most ECMAScript engines support more syntax than guaranteed by the
+<a href="http://www.ecma-international.org/ecma-262/5.1/#sec-15.10.1">ECMAScript
 E5.1 specification (Section 15.10.1 Patterns)</a>.  As a result there's quite
-a lot of code that won't work with strict Ecmascript E5.1 regexp syntax.  Much
+a lot of code that won't work with strict ECMAScript E5.1 regexp syntax.  Much
 of the additional syntax expected of web browser engines is documented in
 <a href="http://www.ecma-international.org/ecma-262/6.0/#sec-regular-expressions-patterns">ES2015 Annex B.1.4 Regular Expression Patterns</a>.
 However, note that features in
@@ -133,27 +133,9 @@ the splice operation to the end of the array.</p>
 Duktape uses this behavior by default.  The strict standards compliant behavior can
 be enabled by disabling the config option <code>DUK_USE_NONSTD_ARRAY_SPLICE_DELCOUNT</code>.</p>
 
-<h2>Array.prototype.concat() trailing non-existent elements</h2>
-
-<p>When the result of an array <code>concat()</code> would have trailing non-existent
-elements, the standard behavior is to ignore them so that they are not reflected in
-the result <code>length</code>.  Real world behavior is to include them in the result
-value <code>length</code>.  See
-<a href="https://github.com/svaarala/duktape/blob/master/tests/ecmascript/test-bi-array-proto-concat-nonstd-trailing.js">test-bi-array-proto-concat-nonstd-trailing.js</a>.</p>
-
-<p>The real world behavior seems consistent in other engines (V8, Rhino, Spidermonkey
-at least), so Duktape uses the real world behavior by default.  The strict standards compliant
-behavior can be enabled by disabling the config option <code>DUK_USE_NONSTD_ARRAY_CONCAT_TRAILER</code>.</p>
-
-<h2>Array.prototype.map() trailing non-existent elements</h2>
-
-<p>Similar issue as with <code>Array.prototype.concat()</code>, see
-<a href="https://github.com/svaarala/duktape/blob/master/tests/ecmascript/test-bi-array-proto-map-nonstd-trailing.js">test-bi-array-proto-map-nonstd-trailing.js</a>.  The strict standards compliant behavior can be
-enabled by disabling the config option <code>DUK_USE_NONSTD_ARRAY_MAP_TRAILER</code>.</p>
-
 <h2>Setter/getter key argument</h2>
 
-<p>Ecmascript standard behavior is that setters and getters are not given
+<p>ECMAScript standard behavior is that setters and getters are not given
 the name of the property being accessed.  This prevents reusing a single
 setter or a getter for multiple properties; separate functions are needed
 for each property which is sometimes inconvenient and wastes memory.</p>
@@ -212,7 +194,7 @@ to be fixed, e.g. small differences in argument coercion e.g. for offset
 and length values.</p>
 
 <p>The plain buffer custom type behaves mostly like an Uint8Array object
-for Ecmascript code, but has a separate type in the Duktape C API.</p>
+for ECMAScript code, but has a separate type in the Duktape C API.</p>
 
 <h2 id="nodejsbuffer-custombehavior">Node.js Buffer binding</h2>
 

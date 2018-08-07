@@ -1,5 +1,5 @@
 /*
- *  Pure Ecmascript eventloop example.
+ *  Pure ECMAScript eventloop example.
  *
  *  Timer state handling is inefficient in this trivial example.  Timers are
  *  kept in an array sorted by their expiry time which works well for expiring
@@ -370,8 +370,14 @@ function setTimeout(func, delay) {
     var timer_id;
     var evloop = EventLoop;
 
+    // Delay can be optional at least in some contexts, so tolerate that.
+    // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/setTimeout
     if (typeof delay !== 'number') {
-        throw new TypeError('delay is not a number');
+        if (typeof delay === 'undefined') {
+            delay = 0;
+        } else {
+            throw new TypeError('invalid delay');
+        }
     }
     delay = Math.max(evloop.minimumDelay, delay);
 
@@ -419,7 +425,11 @@ function setInterval(func, delay) {
     var evloop = EventLoop;
 
     if (typeof delay !== 'number') {
-        throw new TypeError('delay is not a number');
+        if (typeof delay === 'undefined') {
+            delay = 0;
+        } else {
+            throw new TypeError('invalid delay');
+        }
     }
     delay = Math.max(evloop.minimumDelay, delay);
 

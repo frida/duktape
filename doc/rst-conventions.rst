@@ -16,7 +16,7 @@ Book level:
 
 #. Over- and underlined hash marks (``#``) for book title
 
-#. Over- and underlines stars (``*``) for book sub-title
+#. Over- and underlined stars (``*``) for book sub-title
 
 File level:
 
@@ -42,7 +42,7 @@ See http://comments.gmane.org/gmane.text.docutils.user/6473.
 You can use::
 
   .. raw:: LaTeX
-  
+
      \newpage
 
 Lists
@@ -63,8 +63,8 @@ However, e.g. GitHub will renumber the bullets and may also change the
 numbering style.  This will make references to list elements confusing;
 e.g. if you refer to Quux as element 1.a.1 above, the reference is quite
 confusing if Quux was renumbered to 1.1.1 or 1.a.iii.  Even so, such
-references are sometimes necessary so they can be used.
-Start at zero indent
+references are sometimes necessary, so they can be used.
+Start at zero indent.
 
 Bullets
 -------
@@ -106,12 +106,12 @@ minimize formatting issues::
 
   3. Quux
 
-Nested lists and GitHub
+Nested lists
 -----------------------
 
 While ``rst2pdf`` and friends are somewhat lenient with respect to nested
-lists, GitHub RST formatter is a bit more picky.  To work with the GitHub
-formatter, make sure that a nested list's bullet mark is intended to the
+lists, some RST formatters are a bit more picky.  To work well with all
+formatters, make sure that a nested list's bullet mark is indented to the
 level of the previous level's body, e.g.::
 
   1. Foo
@@ -122,7 +122,7 @@ level of the previous level's body, e.g.::
 
   2. Bar
 
-The following is **incorrect** and GitHub will render the nested list as
+The following is **incorrect** and may render the nested list as
 a quoted block::
 
   1. Foo

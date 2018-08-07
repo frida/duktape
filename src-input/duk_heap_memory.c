@@ -127,8 +127,7 @@ DUK_INTERNAL void *duk_heap_mem_alloc_zeroed(duk_heap *heap, duk_size_t size) {
 
 	res = DUK_ALLOC(heap, size);
 	if (DUK_LIKELY(res != NULL)) {
-		/* assume memset with zero size is OK */
-		DUK_MEMZERO(res, size);
+		duk_memzero(res, size);
 	}
 	return res;
 }
@@ -142,7 +141,7 @@ DUK_INTERNAL void *duk_heap_mem_alloc_checked(duk_hthread *thr, duk_size_t size)
 		return res;
 	}
 	DUK_ERROR_ALLOC_FAILED(thr);
-	return NULL;
+	DUK_WO_NORETURN(return NULL;);
 }
 
 DUK_INTERNAL void *duk_heap_mem_alloc_checked_zeroed(duk_hthread *thr, duk_size_t size) {
@@ -154,7 +153,7 @@ DUK_INTERNAL void *duk_heap_mem_alloc_checked_zeroed(duk_hthread *thr, duk_size_
 		return res;
 	}
 	DUK_ERROR_ALLOC_FAILED(thr);
-	return NULL;
+	DUK_WO_NORETURN(return NULL;);
 }
 
 /*

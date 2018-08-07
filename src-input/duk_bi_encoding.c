@@ -239,7 +239,7 @@ DUK_LOCAL duk_ret_t duk__decode_helper(duk_hthread *thr, duk__decode_context *de
 	                                      DUK_TYPE_MASK_LIGHTFUNC |
 	                                      DUK_TYPE_MASK_BUFFER |
 		                              DUK_TYPE_MASK_OBJECT);
-		if (duk_get_prop_string(thr, 1, "stream")) {
+		if (duk_get_prop_literal(thr, 1, "stream")) {
 			stream = duk_to_boolean(thr, -1);
 		}
 	}
@@ -254,6 +254,7 @@ DUK_LOCAL duk_ret_t duk__decode_helper(duk_hthread *thr, duk__decode_context *de
 	 */
 	if (len >= (DUK_HBUFFER_MAX_BYTELEN / 3) - 3) {
 		DUK_ERROR_TYPE(thr, DUK_STR_RESULT_TOO_LONG);
+		DUK_WO_NORETURN(return 0;);
 	}
 	output = (duk_uint8_t *) duk_push_fixed_buffer_nozero(thr, 3 + (3 * len));  /* used parts will be always manually written over */
 
@@ -331,7 +332,7 @@ DUK_LOCAL duk_ret_t duk__decode_helper(duk_hthread *thr, duk__decode_context *de
 
  fail_type:
 	DUK_ERROR_TYPE(thr, DUK_STR_UTF8_DECODE_FAILED);
-	DUK_UNREACHABLE();
+	DUK_WO_NORETURN(return 0;);
 }
 
 /*
@@ -349,7 +350,7 @@ DUK_INTERNAL duk_ret_t duk_bi_textencoder_constructor(duk_hthread *thr) {
 }
 
 DUK_INTERNAL duk_ret_t duk_bi_textencoder_prototype_encoding_getter(duk_hthread *thr) {
-	duk_push_string(thr, "utf-8");
+	duk_push_literal(thr, "utf-8");
 	return 1;
 }
 
@@ -371,6 +372,7 @@ DUK_INTERNAL duk_ret_t duk_bi_textencoder_prototype_encode(duk_hthread *thr) {
 		len = (duk_size_t) DUK_HSTRING_GET_CHARLEN(h_input);
 		if (len >= DUK_HBUFFER_MAX_BYTELEN / 3) {
 			DUK_ERROR_TYPE(thr, DUK_STR_RESULT_TOO_LONG);
+			DUK_WO_NORETURN(return 0;);
 		}
 	}
 
@@ -390,14 +392,14 @@ DUK_INTERNAL duk_ret_t duk_bi_textencoder_prototype_encode(duk_hthread *thr) {
 		DUK_ASSERT(duk_is_string(thr, 0));  /* True if len > 0. */
 
 		/* XXX: duk_decode_string() is used to process the input
-		 * string.  For standard Ecmascript strings, represented
+		 * string.  For standard ECMAScript strings, represented
 		 * internally as CESU-8, this is fine.  However, behavior
 		 * beyond CESU-8 is not very strict: codepoints using an
 		 * extended form of UTF-8 are also accepted, and invalid
 		 * codepoint sequences (which are allowed in Duktape strings)
 		 * are not handled as well as they could (e.g. invalid
 		 * continuation bytes may mask following codepoints).
-		 * This is how Ecmascript code would also see such strings.
+		 * This is how ECMAScript code would also see such strings.
 		 * Maybe replace duk_decode_string() with an explicit strict
 		 * CESU-8 decoder here?
 		 */
@@ -425,7 +427,7 @@ DUK_INTERNAL duk_ret_t duk_bi_textencoder_prototype_encode(duk_hthread *thr) {
 
 	/* Standard WHATWG output is a Uint8Array.  Here the Uint8Array will
 	 * be backed by a dynamic buffer which differs from e.g. Uint8Arrays
-	 * created as 'new Uint8Array(N)'.  Ecmascript code won't see the
+	 * created as 'new Uint8Array(N)'.  ECMAScript code won't see the
 	 * difference but C code will.  When bufferobjects are not supported,
 	 * returns a plain dynamic buffer.
 	 */
@@ -447,10 +449,10 @@ DUK_INTERNAL duk_ret_t duk_bi_textdecoder_constructor(duk_hthread *thr) {
 		duk_to_string(thr, 0);
 	}
 	if (!duk_is_null_or_undefined(thr, 1)) {
-		if (duk_get_prop_string(thr, 1, "fatal")) {
+		if (duk_get_prop_literal(thr, 1, "fatal")) {
 			fatal = duk_to_boolean(thr, -1);
 		}
-		if (duk_get_prop_string(thr, 1, "ignoreBOM")) {
+		if (duk_get_prop_literal(thr, 1, "ignoreBOM")) {
 			ignore_bom = duk_to_boolean(thr, -1);
 		}
 	}
@@ -465,7 +467,7 @@ DUK_INTERNAL duk_ret_t duk_bi_textdecoder_constructor(duk_hthread *thr) {
 	dec_ctx->ignore_bom = (duk_uint8_t) ignore_bom;
 	duk__utf8_decode_init(dec_ctx);  /* Initializes remaining fields. */
 
-	duk_put_prop_string(thr, -2, DUK_INTERNAL_SYMBOL("Context"));
+	duk_put_prop_literal(thr, -2, DUK_INTERNAL_SYMBOL("Context"));
 	return 0;
 }
 
@@ -473,7 +475,7 @@ DUK_INTERNAL duk_ret_t duk_bi_textdecoder_constructor(duk_hthread *thr) {
 DUK_LOCAL duk__decode_context *duk__get_textdecoder_context(duk_hthread *thr) {
 	duk__decode_context *dec_ctx;
 	duk_push_this(thr);
-	duk_get_prop_string(thr, -1, DUK_INTERNAL_SYMBOL("Context"));
+	duk_get_prop_literal(thr, -1, DUK_INTERNAL_SYMBOL("Context"));
 	dec_ctx = (duk__decode_context *) duk_require_buffer(thr, -1, NULL);
 	DUK_ASSERT(dec_ctx != NULL);
 	return dec_ctx;
@@ -490,7 +492,7 @@ DUK_INTERNAL duk_ret_t duk_bi_textdecoder_prototype_shared_getter(duk_hthread *t
 		/* Encoding is now fixed, so _Context lookup is only needed to
 		 * validate the 'this' binding (TypeError if not TextDecoder-like).
 		 */
-		duk_push_string(thr, "utf-8");
+		duk_push_literal(thr, "utf-8");
 		break;
 	case 1:
 		duk_push_boolean(thr, dec_ctx->fatal);

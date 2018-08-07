@@ -108,11 +108,11 @@ eval:
 top after eval: 1
 ==> rc=1, result='TypeError: not extensible'
 *** test_putprop_shorthand_a_safecall (duk_safe_call)
-{"2001":234,"foo":123,"bar":123,"nul\u0000key":345,"heapptr":456,"stringCoerced":567,"undefined":678}
+{"2001":234,"foo":123,"bar":123,"nul\u0000key":345,"heapptr":456,"stringCoerced":567,"undefined":678,"litkey":789}
 final top: 1
 ==> rc=0, result='undefined'
 *** test_putprop_shorthand_a (duk_pcall)
-{"2001":234,"foo":123,"bar":123,"nul\u0000key":345,"heapptr":456,"stringCoerced":567,"undefined":678}
+{"2001":234,"foo":123,"bar":123,"nul\u0000key":345,"heapptr":456,"stringCoerced":567,"undefined":678,"litkey":789}
 final top: 1
 ==> rc=0, result='undefined'
 *** test_putprop_invalid_index1 (duk_safe_call)
@@ -127,6 +127,10 @@ final top: 1
 ==> rc=1, result='RangeError: invalid stack index -2147483648'
 *** test_putprop_lstring_invalid_index2 (duk_safe_call)
 ==> rc=1, result='RangeError: invalid stack index -2147483648'
+*** test_putprop_literal_invalid_index1 (duk_safe_call)
+==> rc=1, result='RangeError: invalid stack index -2147483648'
+*** test_putprop_literal_invalid_index2 (duk_safe_call)
+==> rc=1, result='RangeError: invalid stack index -2147483648'
 *** test_putprop_index_invalid_index1 (duk_safe_call)
 ==> rc=1, result='RangeError: invalid stack index 345'
 *** test_putprop_index_invalid_index2 (duk_safe_call)
@@ -139,8 +143,8 @@ final top: 1
 
 /* Test property writing API call.
  *
- * Property write behavior is quite complex in Ecmascript and there
- * are many Ecmascript testcases to cover the behavior.  The purpose
+ * Property write behavior is quite complex in ECMAScript and there
+ * are many ECMAScript testcases to cover the behavior.  The purpose
  * of this testcase is to ensure the exposed API behavior is as
  * expected without covering every specification case.  In particular,
  * different throwing / return code combinations need to be covered.
@@ -406,6 +410,9 @@ static duk_ret_t test_putprop_shorthand_a(duk_context *ctx) {
 	duk_push_uint(ctx, 678);
 	duk_put_prop_heapptr(ctx, -2, NULL);
 
+	duk_push_uint(ctx, 789);
+	duk_put_prop_literal(ctx, -2, "litkey");
+
 	duk_json_encode(ctx, -1);
 	printf("%s\n", duk_to_string(ctx, -1));
 
@@ -474,6 +481,26 @@ static duk_ret_t test_putprop_lstring_invalid_index2(duk_context *ctx, void *uda
 
 	duk_push_uint(ctx, 123);
 	duk_put_prop_lstring(ctx, DUK_INVALID_INDEX, "foox", 3);
+
+	printf("final top: %ld\n", (long) duk_get_top(ctx));
+	return 0;
+}
+
+static duk_ret_t test_putprop_literal_invalid_index1(duk_context *ctx, void *udata) {
+	(void) udata;
+
+	duk_push_uint(ctx, 123);
+	duk_put_prop_literal(ctx, 123, "foo");
+
+	printf("final top: %ld\n", (long) duk_get_top(ctx));
+	return 0;
+}
+
+static duk_ret_t test_putprop_literal_invalid_index2(duk_context *ctx, void *udata) {
+	(void) udata;
+
+	duk_push_uint(ctx, 123);
+	duk_put_prop_literal(ctx, DUK_INVALID_INDEX, "foo");
 
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
 	return 0;
@@ -552,6 +579,8 @@ void test(duk_context *ctx) {
 	TEST_SAFE_CALL(test_putprop_string_invalid_index2);
 	TEST_SAFE_CALL(test_putprop_lstring_invalid_index1);
 	TEST_SAFE_CALL(test_putprop_lstring_invalid_index2);
+	TEST_SAFE_CALL(test_putprop_literal_invalid_index1);
+	TEST_SAFE_CALL(test_putprop_literal_invalid_index2);
 	TEST_SAFE_CALL(test_putprop_index_invalid_index1);
 	TEST_SAFE_CALL(test_putprop_index_invalid_index2);
 	TEST_SAFE_CALL(test_putprop_heapptr_invalid_index1);

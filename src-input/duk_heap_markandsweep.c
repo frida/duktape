@@ -114,7 +114,7 @@ DUK_LOCAL void duk__mark_hobject(duk_heap *heap, duk_hobject *h) {
 		duk__mark_heaphdr(heap, (duk_heaphdr *) b->buf_prop);
 #endif  /* DUK_USE_BUFFEROBJECT_SUPPORT */
 	} else if (DUK_HOBJECT_IS_BOUNDFUNC(h)) {
-		duk_hboundfunc *f = (duk_hboundfunc *) h;
+		duk_hboundfunc *f = (duk_hboundfunc *) (void *) h;
 		DUK_ASSERT_HBOUNDFUNC_VALID(f);
 		duk__mark_tval(heap, &f->target);
 		duk__mark_tval(heap, &f->this_binding);
@@ -588,7 +588,8 @@ DUK_LOCAL void duk__sweep_stringtable(duk_heap *heap, duk_size_t *out_count_keep
 			duk_hstring *next;
 			next = h->hdr.h_next;
 
-			if (DUK_HEAPHDR_HAS_REACHABLE((duk_heaphdr *) h)) {
+			if (DUK_HEAPHDR_HAS_REACHABLE((duk_heaphdr *) h))
+			{
 				DUK_HEAPHDR_CLEAR_REACHABLE((duk_heaphdr *) h);
 				count_keep++;
 				prev = h;
@@ -597,13 +598,26 @@ DUK_LOCAL void duk__sweep_stringtable(duk_heap *heap, duk_size_t *out_count_keep
 				count_free++;
 #endif
 
+				/* For pinned strings the refcount has been
+				 * bumped.  We could unbump it here before
+				 * freeing, but that's actually not necessary
+				 * except for assertions.
+				 */
+#if 0
+				if (DUK_HSTRING_HAS_PINNED_LITERAL(h)) {
+					DUK_ASSERT(DUK_HEAPHDR_GET_REFCOUNT((duk_heaphdr *) h) > 0U);
+					DUK_HSTRING_DECREF_NORZ(heap->heap_thread, h);
+					DUK_HSTRING_CLEAR_PINNED_LITERAL(h);
+				}
+#endif
 #if defined(DUK_USE_REFERENCE_COUNTING)
 				/* Non-zero refcounts should not happen for unreachable strings,
 				 * because we refcount finalize all unreachable objects which
 				 * should have decreased unreachable string refcounts to zero
-				 * (even for cycles).
+				 * (even for cycles).  However, pinned strings have a +1 bump.
 				 */
-				DUK_ASSERT(DUK_HEAPHDR_GET_REFCOUNT((duk_heaphdr *) h) == 0);
+				DUK_ASSERT(DUK_HEAPHDR_GET_REFCOUNT((duk_heaphdr *) h) ==
+				           DUK_HSTRING_HAS_PINNED_LITERAL(h) ? 1U : 0U);
 #endif
 
 				/* Deal with weak references first. */
@@ -807,6 +821,26 @@ DUK_LOCAL void duk__sweep_heap(duk_heap *heap, duk_small_uint_t flags, duk_size_
 }
 
 /*
+ *  Litcache helpers.
+ */
+
+#if defined(DUK_USE_LITCACHE_SIZE)
+DUK_LOCAL void duk__wipe_litcache(duk_heap *heap) {
+	duk_uint_t i;
+	duk_litcache_entry *e;
+
+	e = heap->litcache;
+	for (i = 0; i < DUK_USE_LITCACHE_SIZE; i++) {
+		e->addr = NULL;
+		/* e->h does not need to be invalidated: when e->addr is
+		 * NULL, e->h is considered garbage.
+		 */
+		e++;
+	}
+}
+#endif  /* DUK_USE_LITCACHE_SIZE */
+
+/*
  *  Object compaction.
  *
  *  Compaction is assumed to never throw an error.
@@ -990,6 +1024,7 @@ DUK_LOCAL void duk__clear_assert_refcounts(duk_heap *heap) {
 
 DUK_LOCAL void duk__check_refcount_heaphdr(duk_heaphdr *hdr) {
 	duk_bool_t count_ok;
+	duk_size_t expect_refc;
 
 	/* The refcount check only makes sense for reachable objects on
 	 * heap_allocated or string table, after the sweep phase.  Prior to
@@ -1006,7 +1041,11 @@ DUK_LOCAL void duk__check_refcount_heaphdr(duk_heaphdr *hdr) {
 	 */
 	DUK_ASSERT(!DUK_HEAPHDR_HAS_READONLY(hdr));
 
-	count_ok = ((duk_size_t) DUK_HEAPHDR_GET_REFCOUNT(hdr) == hdr->h_assert_refcount);
+	expect_refc = hdr->h_assert_refcount;
+	if (DUK_HEAPHDR_IS_STRING(hdr) && DUK_HSTRING_HAS_PINNED_LITERAL((duk_hstring *) hdr)) {
+		expect_refc++;
+	}
+	count_ok = ((duk_size_t) DUK_HEAPHDR_GET_REFCOUNT(hdr) == expect_refc);
 	if (!count_ok) {
 		DUK_D(DUK_DPRINT("refcount mismatch for: %p: header=%ld counted=%ld --> %!iO",
 		                 (void *) hdr, (long) DUK_HEAPHDR_GET_REFCOUNT(hdr),
@@ -1043,6 +1082,22 @@ DUK_LOCAL void duk__check_assert_refcounts(duk_heap *heap) {
 	}
 }
 #endif  /* DUK_USE_REFERENCE_COUNTING */
+
+#if defined(DUK_USE_LITCACHE_SIZE)
+DUK_LOCAL void duk__assert_litcache_nulls(duk_heap *heap) {
+	duk_uint_t i;
+	duk_litcache_entry *e;
+
+	e = heap->litcache;
+	for (i = 0; i < DUK_USE_LITCACHE_SIZE; i++) {
+		/* Entry addresses were NULLed before mark-and-sweep, check
+		 * that they're still NULL afterwards to ensure no pointers
+		 * were recorded through any side effects.
+		 */
+		DUK_ASSERT(e->addr == NULL);
+	}
+}
+#endif  /* DUK_USE_LITCACHE_SIZE */
 #endif  /* DUK_USE_ASSERTIONS */
 
 /*
@@ -1063,10 +1118,13 @@ DUK_LOCAL void duk__dump_stats(duk_heap *heap) {
 	DUK_D(DUK_DPRINT("stats mark-and-sweep: try_count=%ld, skip_count=%ld, emergency_count=%ld",
 	                 (long) heap->stats_ms_try_count, (long) heap->stats_ms_skip_count,
 	                 (long) heap->stats_ms_emergency_count));
-	DUK_D(DUK_DPRINT("stats stringtable: intern_hit=%ld, intern_miss=%ld, resize_check=%ld, resize_grow=%ld, resize_shrink=%ld",
+	DUK_D(DUK_DPRINT("stats stringtable: intern_hit=%ld, intern_miss=%ld, "
+	                 "resize_check=%ld, resize_grow=%ld, resize_shrink=%ld, "
+	                 "litcache_hit=%ld, litcache_miss=%ld, litcache_pin=%ld",
 	                 (long) heap->stats_strtab_intern_hit, (long) heap->stats_strtab_intern_miss,
 	                 (long) heap->stats_strtab_resize_check, (long) heap->stats_strtab_resize_grow,
-	                 (long) heap->stats_strtab_resize_shrink));
+	                 (long) heap->stats_strtab_resize_shrink, (long) heap->stats_strtab_litcache_hit,
+	                 (long) heap->stats_strtab_litcache_miss, (long) heap->stats_strtab_litcache_pin));
 	DUK_D(DUK_DPRINT("stats object: realloc_props=%ld, abandon_array=%ld",
 	                 (long) heap->stats_object_realloc_props, (long) heap->stats_object_abandon_array));
 	DUK_D(DUK_DPRINT("stats getownpropdesc: count=%ld, hit=%ld, miss=%ld",
@@ -1207,6 +1265,9 @@ DUK_INTERNAL void duk_heap_mark_and_sweep(duk_heap *heap, duk_small_uint_t flags
 #if defined(DUK_USE_ASSERTIONS) && defined(DUK_USE_REFERENCE_COUNTING)
 	duk__clear_assert_refcounts(heap);
 #endif
+#if defined(DUK_USE_LITCACHE_SIZE)
+	duk__wipe_litcache(heap);
+#endif
 	duk__mark_roots_heap(heap);               /* Mark main reachability roots. */
 #if defined(DUK_USE_REFERENCE_COUNTING)
 	DUK_ASSERT(heap->refzero_list == NULL);   /* Always handled to completion inline in DECREF. */
@@ -1312,6 +1373,9 @@ DUK_INTERNAL void duk_heap_mark_and_sweep(duk_heap *heap, duk_small_uint_t flags
 	 */
 	duk__assert_valid_refcounts(heap);
 #endif  /* DUK_USE_REFERENCE_COUNTING */
+#if defined(DUK_USE_LITCACHE_SIZE)
+	duk__assert_litcache_nulls(heap);
+#endif  /* DUK_USE_LITCACHE_SIZE */
 #endif  /* DUK_USE_ASSERTIONS */
 
 	/*

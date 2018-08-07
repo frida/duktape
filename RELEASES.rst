@@ -81,7 +81,7 @@ Released
 * Enforce string/buffer length limits to avoid corner cases with strings
   and buffers close to size_t limit
 
-* Ecmascript E5.1 test cases and fixes
+* ECMAScript E5.1 test cases and fixes
 
 * Mark-and-sweep stringtable leak fixed, affected mostly builds without
   reference counting
@@ -108,7 +108,7 @@ Released
 * Added support for function declarations outside function or program top
   level (also known as "function statements"), with V8-like semantics
 
-* Renamed __duk__ to Duktape for more consistency with Ecmascript conventions
+* Renamed __duk__ to Duktape for more consistency with ECMAScript conventions
 
 * Removed somewhat useless Duktape.build property and added Duktape.env
 
@@ -205,7 +205,7 @@ Released
 
 * Add duk_push_heap_stash(), duk_push_global_stash(), and
   duk_push_thread_stash() to provide C code with stashes for storing
-  values invisible to Ecmascript code
+  values invisible to ECMAScript code
 
 * Add duk_safe_to_string() and duk_safe_to_lstring() to make it easier
   to write result printing in C
@@ -221,10 +221,10 @@ Released
 
 * Add Duktape.compact(), Duktape.line(), and Duktape.act()
 
-* Add a "use duk notail" directive which indicates that an Ecmascript
+* Add a "use duk notail" directive which indicates that an ECMAScript
   function should never be tail called
 
-* Add a barebones built-in logging framework with both Ecmascript and C
+* Add a barebones built-in logging framework with both ECMAScript and C
   APIs and easy customization
 
 * Add a message argument to fatal handler function callback, simplify
@@ -454,7 +454,7 @@ Released
   duk_xmove())
 
 * Change strictness behavior for Duktape API calls: all API calls now have
-  Ecmascript strict semantics, even when a call is made with an empty call
+  ECMAScript strict semantics, even when a call is made with an empty call
   stack outside of any Duktape/C function
 
 * Change strictness handling of duk_eval() and variants so that all code is
@@ -469,7 +469,7 @@ Released
 
 * Add API call duk_set_global_object() which allows the global object of a
   context to be replaced; this is useful as an initial mechanism for proper
-  sandboxing of Ecmascript code
+  sandboxing of ECMAScript code
 
 * Add API calls duk_get_prototype() and duk_set_prototype() for getting and
   setting an object's "internal prototype" from C code
@@ -515,7 +515,7 @@ Released
   there will be no API to use it
 
 * Fix value stack reserve handling for function calls: a function call
-  (Ecmascript or Duktape/C) might reduce the valstack "checked size" which
+  (ECMAScript or Duktape/C) might reduce the valstack "checked size" which
   was previously requested by user code (for more detail, see API test case
   test-dev-valstack-checked-size-call.c)
 
@@ -524,7 +524,7 @@ Released
   would also be executed for the Proxy object
 
 * Fix a few Date bugs for large out-of-range years which caused some assert
-  failures and incorrect behavior when year was out of Ecmascript range (e.g.
+  failures and incorrect behavior when year was out of ECMAScript range (e.g.
   year 870e6 and year -200e6)
 
 * Minor compile warnings fixes for non-default options (e.g. when reference
@@ -656,7 +656,7 @@ Released
 
 * Add duk_def_prop() which allows creation of accessor (getter/setter)
   properties and other custom properties from C code (instead of using
-  Object.defineProperty() from Ecmascript code)
+  Object.defineProperty() from ECMAScript code)
 
 * Add duk_is_error() API call to check if a value inherits from Error
 
@@ -671,7 +671,7 @@ Released
 * Add vararg variants duk_error_va(), duk_push_error_object_va(), and
   duk_log_va()
 
-* Add DUK_GIT_DESCRIBE macro to the C API (with no Ecmascript equivalent)
+* Add DUK_GIT_DESCRIBE macro to the C API (with no ECMAScript equivalent)
   to allow application code to e.g. log more detailed version information
   relevant for non-official snapshot builds
 
@@ -778,7 +778,7 @@ Released
   body was not checked and Duktape would accept e.g. "function () [}"
   (GH-106)
 
-* Fix compiler register limit bug where an Ecmascript function with
+* Fix compiler register limit bug where an ECMAScript function with
   [65536,262143] VM registers would be compiled into incorrect bytecode
   instead of being rejected with an internal error (GH-111)
 
@@ -873,7 +873,7 @@ Released
   body was not checked and Duktape would accept e.g. "function () [}"
   (GH-106)
 
-* Fix compiler register limit bug where an Ecmascript function with
+* Fix compiler register limit bug where an ECMAScript function with
   [65536,262143] VM registers would be compiled into incorrect bytecode
   instead of being rejected with an internal error (GH-111)
 
@@ -1477,7 +1477,7 @@ Released
   notifications (AppNotify) (GH-596, GH-563)
 
 * Add duk_debugger_pause() API which allows the target to quickly pause
-  Ecmascript execution and break into the debugger (GH-615)
+  ECMAScript execution and break into the debugger (GH-615)
 
 * Add sizeof void pointer to the BasicInfo debugger command (GH-611)
 
@@ -1873,18 +1873,18 @@ Configuration:
 
 Buffers:
 
-* Incompatible change: rework buffer types and their Ecmascript and C API
+* Incompatible change: rework buffer types and their ECMAScript and C API
   behavior: remove Duktape.Buffer; provide Uint8Array.allocPlain() and
   Uint8Array.plainOf() to replace Duktape.Buffer; plain buffers now behave
   like Uint8Arrays and inherit from Uint8Array.prototype; plain buffers now
   test false in duk_is_primitive() which is more consistent with their
-  Ecmascript coercion behavior; many small changes in how built-in functions
+  ECMAScript coercion behavior; many small changes in how built-in functions
   behave for plain buffer arguments e.g. in enumeration, JSON serialization,
   and Object.prototype.toString() output (GH-875, GH-1005, GH-864, GH-1197)
 
 * Incompatible change: remove the ability to do a 1:1 buffer-to-string
   coercion (using buffer data directly as the internal string representation)
-  from the default Ecmascript bindings, an encoding (usually UTF-8) is now
+  from the default ECMAScript bindings, an encoding (usually UTF-8) is now
   always applied (GH-875, GH-1005)
 
 * Incompatible change: remove non-standard properties from ArrayBuffer
@@ -1947,7 +1947,7 @@ Other type changes:
   (plainPointer instanceof Duktape.Pointer === true) (GH-864)
 
 * Incompatible change: lightfunc values now test false in duk_is_primitive()
-  which is more consistent with how they behave in Ecmascript coercions
+  which is more consistent with how they behave in ECMAScript coercions
   (GH-864)
 
 * Incompatible change: lightfunc value as a "this" binding is ToObject()
@@ -1984,7 +1984,7 @@ Debugger:
 * Rename debugger protocol artificial property "bound" to "boundfunc" for
   consistency with an internal flag rename (GH-703)
 
-Ecmascript 2015+ and real world compatibility:
+ECMAScript 2015+ and real world compatibility:
 
 * Change Object constructor argument coercion policy to match ES2015
   requirements for .keys(), .getOwnPropertyNames(),
@@ -2015,7 +2015,7 @@ Ecmascript 2015+ and real world compatibility:
 
 * Add support for ES2016 exponentiation and exponentiation assignment
   operators, e.g. "2 \*\* 10" evaluates to 1024, avoiding the cost of an
-  Ecmascript call to Math.pow() while also being more readable (GH-987,
+  ECMAScript call to Math.pow() while also being more readable (GH-987,
   GH-997)
 
 * Add a Reflect built-in, provides Reflect.construct() etc. from ES2015; some
@@ -2118,7 +2118,7 @@ Ecmascript 2015+ and real world compatibility:
 WHATWG Encoding API:
 
 * Add TextEncoder and TextDecoder built-ins (the Encoding API) which allow
-  Ecmascript code to convert between buffers and strings using the UTF-8
+  ECMAScript code to convert between buffers and strings using the UTF-8
   encoding (GH-975)
 
 Other C API changes:
@@ -2154,8 +2154,8 @@ Other C API changes:
   DUK_ERR_UNSUPPORTED_ERROR; use standard error types instead (GH-827)
 
 * Incompatible change: map API related errors (which previously used
-  DUK_ERR_API_ERROR and a plain Error for Ecmascript representation) into
-  TypeErrors and RangeErrors to match common Ecmascript conventions (GH-827)
+  DUK_ERR_API_ERROR and a plain Error for ECMAScript representation) into
+  TypeErrors and RangeErrors to match common ECMAScript conventions (GH-827)
 
 * Incompatible change: remove duk_to_defaultvalue() which invoked the
   [[DefaultValue]] specification algorithm removed in ES2015 (it was folded
@@ -2193,7 +2193,7 @@ Other C API changes:
 
 * Add time functions to the C API (duk_get_now(), duk_time_to_components(),
   duk_components_to_time()) to allow C code to conveniently work with the
-  same time provider as seen by Ecmascript code (GH-771, GH-1209, GH-1211,
+  same time provider as seen by ECMAScript code (GH-771, GH-1209, GH-1211,
   GH-1226)
 
 * Add duk_push_bare_object() API call which pushes an object without an
@@ -2214,7 +2214,7 @@ Other C API changes:
 * Remove duk_{get,put,has,del}_var() calls from API header; they were not
   fully implemented and not part of the documented public API (GH-762)
 
-Other Ecmascript binding changes:
+Other ECMAScript binding changes:
 
 * Incompatible change: remove built-in print() and alert() bindings which,
   being dependent on stdout/stderr, are often a portability issue (GH-745)
@@ -2229,7 +2229,7 @@ Other Ecmascript binding changes:
   (which is difficult to version and work with) to an object with named
   properties; the properties are not under versioning guarantees (GH-1125)
 
-* Allow a bound Ecmascript function as an argument to new Duktape.Thread()
+* Allow a bound ECMAScript function as an argument to new Duktape.Thread()
   (GH-1134, GH-1157)
 
 Extras:
@@ -2338,7 +2338,7 @@ Footprint:
   lexenv/varenv fields in duk_hcompfunc struct (GH-1132); omit duk_hcompfunc
   _Formals array when it is safe to do so (GH-1141); omit duk_hcompfunc
   _Varmap in more cases when it is safe to do so (GH-1146); reduce initial
-  bytecode allocation in Ecmascript compiler for low memory targets (GH-1146);
+  bytecode allocation in ECMAScript compiler for low memory targets (GH-1146);
   packed arguments for some internal helper calls (GH-1158, GH-1172); misc
   internal helpers to reduce call site size (GH-1166, GH-1173); config options
   for function .name and .fileName control (GH-1153); internal helper
@@ -2436,7 +2436,7 @@ Other bug fixes:
 Miscellaneous:
 
 * Incompatible change: bytecode opcode format reworks drop maximum function
-  and constructor call argument count from 511 to 255, and maximum Ecmascript
+  and constructor call argument count from 511 to 255, and maximum ECMAScript
   function constant count from 262144 to 65536 (GH-903)
 
 * Add a human readable summary of 'new MyConstructor()' constructor call
@@ -2893,6 +2893,27 @@ Miscellaneous:
 * Fix incorrect handling of register bound unary operation target for
   unary minus, unary plus, and bitwise NOT (GH-1623, GH-1624)
 
+2.1.2 (2018-04-22)
+------------------
+
+* Improve error message for instanceof and duk_instanceof() when rval has
+  no .prototype property, which is common for Duktape/C functions (GH-1725)
+
+* Fix pointer size detection for MSVC2015 ARM32/ARM64 (GH-1577, GH-1675)
+
+* Fix incorrect pausing by debugger StepOut, StepOver, and StepInto commands
+  when stepping out/over/into a tail call (GH-1684, GH-1685, GH-1726, GH-1734)
+
+* Fix dangling pointer in instanceof/duk_instanceof() when rval .prototype is
+  a virtualized property coming from a getter or a Proxy trap (GH-1725)
+
+* Fix trailing single line comment handling for Function constructor;
+  new Function('return "foo" //') previously failed with SyntaxError
+  (GH-1757)
+
+* Fix potential dangling pointer use in Duktape thread termination handling;
+  the dangling pointer could cause unsafe memory behavior (GH-1845, GH-1868)
+
 2.2.0 (2017-09-23)
 ------------------
 
@@ -2918,11 +2939,11 @@ Miscellaneous:
 * Function.prototype.call(), Function.prototype.apply(), Reflect.apply(),
   and Reflect.construct() can now be used in tailcalls (e.g.
   'return func.call(null, 123);'), don't grow the native C stack when doing an
-  Ecmascript-to-Ecmascript call, and no longer prevent coroutine yielding
+  ECMAScript-to-ECMAScript call, and no longer prevent coroutine yielding
   (GH-1421, GH-1545, GH-1557)
 
 * Constructor calls (new Func()) can be used in tailcalls, don't grow
-  the native C stack when doing an Ecmascript-to-Ecmascript call, and no
+  the native C stack when doing an ECMAScript-to-ECMAScript call, and no
   longer prevent coroutine yielding (GH-1523)
 
 * Increase maximum call argument count from 255 to ~64k (GH-1292, GH-1586)
@@ -3029,11 +3050,11 @@ Miscellaneous:
 
 * Use monotonic time (if available) for debugger transport peeking, so that
   the peek callback is called with the same realtime rate even if the
-  Ecmascript time source jumps or doesn't advance in realtime (GH-1659)
+  ECMAScript time source jumps or doesn't advance in realtime (GH-1659)
 
 * Allow sub-millisecond resolution for DUK_USE_DATE_GET_NOW() Date provider;
   the extra resolution is visible through duk_get_now() but not through Date
-  instances because Ecmascript requires Date instances to have integer
+  instances because ECMAScript requires Date instances to have integer
   millisecond timestamps (GH-773, GH-1660, GH-1669)
 
 * Add sub-millisecond resolution to the default POSIX and Windows Date
@@ -3134,7 +3155,14 @@ Miscellaneous:
 * Add some statistics dumps to mark-and-sweep with debug logging enabled
   (GH-1579, GH-1640, GH-1677)
 
-* Add DUK_CONSOLE_FLUSH flag to extras/duktape-console (GH-1587, GH-1588)
+* Add DUK_CONSOLE_FLUSH flag to extras/console (GH-1587, GH-1588)
+
+* Use stdout for info and below, and stderr for warn and above in
+  extras/console; previous behavior was to use stdout only, use
+  DUK_CONSOLE_STDOUT_ONLY init flag to restore previous behavior (GH-1890,
+  GH-1903)
+
+* Compile warning fix to extras/console (GH-1906)
 
 * Compile warning fixes and Duktape 1.x compatibility fix to module-node
   (GH-1605)
@@ -3184,15 +3212,8 @@ Miscellaneous:
   check entry part before array part in property lookup (GH-1634); optimize
   duk_propdesc filling in property lookups (GH-1635)
 
-Planned
-=======
-
-2.3.0 (XXXX-XX-XX)
+2.2.1 (2018-04-26)
 ------------------
-
-* ES2015 Number constructor properties: EPSILON, MIN_SAFE_INTEGER,
-  MAX_SAFE_INTEGER, isFinite(), isInteger(), isNaN(), isSafeInteger(),
-  parseInt(), parseFloat() (GH-1756, GH-1761)
 
 * Fix trailing single line comment handling for Function constructor;
   new Function('return "foo" //') previously failed with SyntaxError
@@ -3200,18 +3221,183 @@ Planned
 
 * Fix DUK_BOOL_{MIN,MAX} defines for unsigned duk_bool_t (GH-1769)
 
+* Fix debugger StepOver behavior when a tailcall happens in a nested
+  function (not the function where stepping started from) (GH-1786, GH-1787)
+
+* Fix potential dangling pointer use in Duktape thread termination handling;
+  the dangling pointer could cause unsafe memory behavior (GH-1845, GH-1868)
+
+2.3.0 (2018-08-04)
+------------------
+
+* When C++ exception support is enabled use a separate duk_fatal_exception
+  (inherits from std::runtime_error) to propagate fatal errors (uncaught
+  errors, assertions) out of Duktape when using the default fatal error
+  handler (GH-1915)
+
+* Update UnicodeData.txt and SpecialCasing.txt used for building internal
+  Unicode control data to Unicode version 10.0.0 (GH-1851)
+
+* Add support for Symbol.hasInstance (@@hasInstance) check for 'instanceof'
+  operator and duk_instanceof() API call; also add Symbol.hasInstance and
+  Function.prototype[@@hasInstance] (GH-1821)
+
+* Add support for Symbol.toStringTag (@@toStringTag) in
+  Object.prototype.toString() (GH-1822)
+
+* Add support for Symbol.isConcatSpreadable (@@isConcatSpreadable) in
+  Array.prototype.concat() (GH-1823)
+
+* Add support for Symbol.toPrimitive (@@toPrimitive) in ToPrimitive()
+  internal algorithm and duk_to_primitive() API call (GH-1825)
+
+* Invoke Proxy 'has' trap in Array.prototype.concat() when inspecting the
+  elements of the Proxy target (GH-1823)
+
+* Remove DUK_USE_NONSTD_ARRAY_CONCAT_TRAILER because the underlying ES5.1
+  specification "bug" was fixed in ES2015 (GH-1823)
+
+* Remove DUK_USE_NONSTD_ARRAY_MAP_TRAILER because ES5.0/ES5.1 behavior
+  actually did match the "non-standard" behavior provided by the option
+  (GH-1823)
+
+* Add duk_random() to allow C code access to the same random number source
+  as ECMAScript code (GH-1815)
+
+* Add duk_push_new_target() to allow C code to access new.target; at present
+  this is for completeness because without actual class support it's only
+  useful to detect constructor calls which can already be done using
+  duk_is_constructor_call() (GH-1745)
+
+* Add experimental API call variants for plain C literals, for example
+  duk_push_literal(ctx, "key") and duk_get_prop_literal(ctx, "propname"),
+  which allow e.g. better performance; calls added: duk_push_literal(),
+  duk_get_prop_literal(), duk_put_prop_literal(), duk_has_prop_literal(),
+  duk_del_prop_literal(), duk_get_global_literal(), duk_put_global_literal()
+  (GH-1805)
+
+* Add duk_get_global_heapptr() and duk_put_global_heapptr() for completeness
+  (GH-1805)
+
+* Automatically pin strings accessed using the C literal API call variants
+  such as duk_get_prop_literal(ctx, "propname") between mark-and-sweep rounds
+  to facilitate literal caching and to reduce string table traffic; this
+  behavior can be disabled by disabling DUK_USE_LITCACHE_SIZE in configure.py
+  (GH-1813)
+
+* Add a lookup cache for C literals to speed up string table lookups when
+  using API call variants such as duk_get_prop_literal(ctx, "propname");
+  the cache relies on literals being pinned between mark-and-sweep rounds,
+  and can be disabled by disabling DUK_USE_LITCACHE_SIZE in configure.py
+  (GH-1813)
+
+* ES2015 Number constructor properties: EPSILON, MIN_SAFE_INTEGER,
+  MAX_SAFE_INTEGER, isFinite(), isInteger(), isNaN(), isSafeInteger(),
+  parseInt(), parseFloat() (GH-1756, GH-1761)
+
+* Assume only natural alignment (DUK_USE_ALIGN_BY=8) on all platforms to
+  minimize compiler assumptions regarding unaligned accesses (which can be
+  an issue even on x86); applications working with a low memory target may
+  want to force DUK_USE_ALIGN_BY in configuration (GH-1783, GH-1784)
+
+* Base64 decoder is now more lenient for padding: accepts missing padding
+  ('Zm'), partial padding ('Zm='), standard padding ('Zm=='), and extra
+  padding ('Zm===' etc), also for concatenated documents ('Zm===Zm' decodes
+  to 'ff' for example) (GH-1789)
+
+* Base64 encoder and decoder performance improvements for both fast path and
+  slow path variants (GH-1789)
+
+* Make base64 support optional and drop it from lowmem base configuration;
+  define DUK_USE_BASE64_SUPPORT to enable it (GH-1789)
+
+* Make hex support optional and drop it from lowmem base configuration;
+  define DUK_USE_BASE64_SUPPORT to enable it (GH-1789)
+
+* Add C++ name mangling wrappers (extern "C") for extras (GH-1780, GH-1782)
+
+* Add a duk_uint64_t to duk_hbuffer_fixed forced alignment union trick just
+  in case double and uint64_t alignment requirements differ (GH-1799)
+
+* Add a CBOR encoder/decoder as an extra (GH-1781, GH-1800, GH-1801)
+
+* Add a minimal ES2015 Promise polyfill into the distribution (GH-1865)
+
+* Include <exception> only when compiling as C++ with C++ exception support
+  enabled (GH-1838, GH-1839)
+
+* Allow undefined timeout in eventloop example setTimeout() and setInterval()
+  bindings, minor cleanups and improvements (GH-1866, GH-1879, GH-1884)
+
+* Revise Number.prototype.toFixed() 'this' binding and fractionDigits argument
+  validation order to match ES2015 where the 'this' binding is validated
+  first (GH-1887)
+
+* Add Makefile.jsoncbor to the distributable (GH-1885)
+
+* Makefile.sharedlibrary portability improvements (GH-1922, GH-1923)
+
+* Change spelling from ECMAScript to ECMAScript throughout the internal source
+  code; as far as external behavior is concerned this only affects a few
+  debug prints (GH-1894)
+
+* Fix NULL pointer dereference in error augmentation when DUK_USE_TRACEBACKS
+  was disabled (GH-1909)
+
+* Fix potential dangling pointer use in Duktape thread termination handling;
+  the dangling pointer could cause unsafe memory behavior (GH-1845, GH-1868)
+
+* Fix performance.now() property attributes to 'wec' (earlier 'wc') (GH-1821)
+
+* Fix debugger StepOver behavior when a tailcall happens in a nested
+  function (not the function where stepping started from) (GH-1786, GH-1787)
+
+* Fix trailing single line comment handling for Function constructor;
+  new Function('return "foo" //') previously failed with SyntaxError
+  (GH-1757)
+
+* Fix some lexer bugs related to parsing in RegExp mode (interpret leading
+  '/' as part of a RegExp) or not (interpret '/' as division) (GH-1779)
+
+* Fix DUK_BOOL_{MIN,MAX} defines for unsigned duk_bool_t (GH-1769)
+
 * Fix 'defined but not used' warning for Windows (GH-1775)
 
-* Fix some Clang warnings (GH-1777)
+* Fix potential uninitialized data use when Windows Date provider
+  FileTimeToSystemTime() or FileTimeToLocalFileTime() failed (GH-1953)
+
+* Fix some Clang warnings by avoiding undefined behavior by default, define
+  DUK_USE_ALLOW_UNDEFINED_BEHAVIOR to reduce the explicit undefined behavior
+  checks for better footprint/performance (GH-1777, GH-1795, GH-1796, GH-1797,
+  GH-1798)
+
+* Fix some compilation warnings triggered when DUK_NORETURN is not defined;
+  the internal DUK_WO_NORETURN() is used to include unreachable dummy
+  statements when the noreturn attribute is not available, e.g.
+  DUK_WO_NORETURN(return 0;); (GH-1790)
 
 * Fix a few casts in duk_trans_socket_windows.c to avoid errors in a C++
   build (GH-1773)
+
+* Fix harmless -Wcast-align warnings on armhf (GH-1793)
+
+* Various compiler warning fixes (GH-1788, GH-1932, GH-1924, GH-1950,
+  GH-1951, etc)
 
 * Add automatic workaround for union aliasing issues with FreeBSD + -m32 +
   Clang prior to 5.0; the aliasing issues cause packed duk_tval to work
   incorrectly (see
   https://github.com/svaarala/duktape/blob/master/misc/clang_aliasing.c),
   and the workaround is to use unpacked duk_tval prior to Clang 5.0 (GH-1764)
+
+Planned
+=======
+
+2.4.0 (XXXX-XX-XX)
+------------------
+
+* Trivial fixes and cleanups: Windows Date provider return code check
+  consistency (GH-1956)
 
 3.0.0 (XXXX-XX-XX)
 ------------------

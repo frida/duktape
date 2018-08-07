@@ -1,7 +1,7 @@
 /*
  *  Regexp executor.
  *
- *  Safety: the Ecmascript executor should prevent user from reading and
+ *  Safety: the ECMAScript executor should prevent user from reading and
  *  replacing regexp bytecode.  Even so, the executor must validate all
  *  memory accesses etc.  When an invalid access is detected (e.g. a 'save'
  *  opcode to invalid, unallocated index) it should fail with an internal
@@ -68,7 +68,7 @@ DUK_LOCAL const duk_uint8_t *duk__utf8_backtrack(duk_hthread *thr, const duk_uin
 
  fail:
 	DUK_ERROR_INTERNAL(thr);
-	return NULL;  /* never here */
+	DUK_WO_NORETURN(return NULL;);
 }
 
 DUK_LOCAL const duk_uint8_t *duk__utf8_advance(duk_hthread *thr, const duk_uint8_t **ptr, const duk_uint8_t *ptr_start, const duk_uint8_t *ptr_end, duk_uint_fast32_t count) {
@@ -99,7 +99,7 @@ DUK_LOCAL const duk_uint8_t *duk__utf8_advance(duk_hthread *thr, const duk_uint8
 
  fail:
 	DUK_ERROR_INTERNAL(thr);
-	return NULL;  /* never here */
+	DUK_WO_NORETURN(return NULL;);
 }
 
 /*
@@ -148,6 +148,7 @@ DUK_LOCAL duk_codepoint_t duk__inp_get_prev_cp(duk_re_matcher_ctx *re_ctx, const
 DUK_LOCAL const duk_uint8_t *duk__match_regexp(duk_re_matcher_ctx *re_ctx, const duk_uint8_t *pc, const duk_uint8_t *sp) {
 	if (re_ctx->recursion_depth >= re_ctx->recursion_limit) {
 		DUK_ERROR_RANGE(re_ctx->thr, DUK_STR_REGEXP_EXECUTOR_RECURSION_LIMIT);
+		DUK_WO_NORETURN(return NULL;);
 	}
 	re_ctx->recursion_depth++;
 
@@ -156,6 +157,7 @@ DUK_LOCAL const duk_uint8_t *duk__match_regexp(duk_re_matcher_ctx *re_ctx, const
 
 		if (re_ctx->steps_count >= re_ctx->steps_limit) {
 			DUK_ERROR_RANGE(re_ctx->thr, DUK_STR_REGEXP_EXECUTOR_STEP_LIMIT);
+			DUK_WO_NORETURN(return NULL;);
 		}
 		re_ctx->steps_count++;
 
@@ -501,14 +503,14 @@ DUK_LOCAL const duk_uint8_t *duk__match_regexp(duk_re_matcher_ctx *re_ctx, const
 			range_save = (duk_uint8_t **) duk_push_fixed_buffer_nozero(re_ctx->thr,
 			                                                           sizeof(duk_uint8_t *) * idx_count);
 			DUK_ASSERT(range_save != NULL);
-			DUK_MEMCPY(range_save, re_ctx->saved + idx_start, sizeof(duk_uint8_t *) * idx_count);
+			duk_memcpy(range_save, re_ctx->saved + idx_start, sizeof(duk_uint8_t *) * idx_count);
 #if defined(DUK_USE_EXPLICIT_NULL_INIT)
 			idx_end = idx_start + idx_count;
 			for (idx = idx_start; idx < idx_end; idx++) {
 				re_ctx->saved[idx] = NULL;
 			}
 #else
-			DUK_MEMZERO((void *) (re_ctx->saved + idx_start), sizeof(duk_uint8_t *) * idx_count);
+			duk_memzero((void *) (re_ctx->saved + idx_start), sizeof(duk_uint8_t *) * idx_count);
 #endif
 
 			sub_sp = duk__match_regexp(re_ctx, pc, sp);
@@ -526,7 +528,7 @@ DUK_LOCAL const duk_uint8_t *duk__match_regexp(duk_re_matcher_ctx *re_ctx, const
 			DUK_DDD(DUK_DDDPRINT("fail: restore wiped/resaved values [%ld,%ld] (captures [%ld,%ld])",
 			                     (long) idx_start, (long) (idx_start + idx_count - 1),
 			                     (long) (idx_start / 2), (long) ((idx_start + idx_count - 1) / 2)));
-			DUK_MEMCPY((void *) (re_ctx->saved + idx_start),
+			duk_memcpy((void *) (re_ctx->saved + idx_start),
 			           (const void *) range_save,
 			           sizeof(duk_uint8_t *) * idx_count);
 			duk_pop_unsafe(re_ctx->thr);
@@ -558,7 +560,7 @@ DUK_LOCAL const duk_uint8_t *duk__match_regexp(duk_re_matcher_ctx *re_ctx, const
 			full_save = (duk_uint8_t **) duk_push_fixed_buffer_nozero(re_ctx->thr,
 			                                                          sizeof(duk_uint8_t *) * re_ctx->nsaved);
 			DUK_ASSERT(full_save != NULL);
-			DUK_MEMCPY(full_save, re_ctx->saved, sizeof(duk_uint8_t *) * re_ctx->nsaved);
+			duk_memcpy(full_save, re_ctx->saved, sizeof(duk_uint8_t *) * re_ctx->nsaved);
 
 			skip = duk__bc_get_i32(re_ctx, &pc);
 			sub_sp = duk__match_regexp(re_ctx, pc, sp);
@@ -583,7 +585,7 @@ DUK_LOCAL const duk_uint8_t *duk__match_regexp(duk_re_matcher_ctx *re_ctx, const
 
 		 lookahead_fail:
 			/* fail: restore saves */
-			DUK_MEMCPY((void *) re_ctx->saved,
+			duk_memcpy((void *) re_ctx->saved,
 			           (const void *) full_save,
 			           sizeof(duk_uint8_t *) * re_ctx->nsaved);
 			duk_pop_unsafe(re_ctx->thr);
@@ -665,7 +667,7 @@ DUK_LOCAL const duk_uint8_t *duk__match_regexp(duk_re_matcher_ctx *re_ctx, const
 
  internal_error:
 	DUK_ERROR_INTERNAL(re_ctx->thr);
-	return NULL;  /* never here */
+	DUK_WO_NORETURN(return NULL;);
 }
 
 /*
@@ -731,7 +733,7 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 
 	/* [ ... re_obj input bc ] */
 
-	DUK_MEMZERO(&re_ctx, sizeof(re_ctx));
+	duk_memzero(&re_ctx, sizeof(re_ctx));
 
 	re_ctx.thr = thr;
 	re_ctx.input = (const duk_uint8_t *) DUK_HSTRING_GET_DATA(h_input);
@@ -768,7 +770,7 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 #elif defined(DUK_USE_ZERO_BUFFER_DATA)
 	/* buffer is automatically zeroed */
 #else
-	DUK_MEMZERO((void *) p_buf, sizeof(duk_uint8_t *) * re_ctx.nsaved);
+	duk_memzero((void *) p_buf, sizeof(duk_uint8_t *) * re_ctx.nsaved);
 #endif
 
 	DUK_DDD(DUK_DDDPRINT("regexp ctx initialized, flags=0x%08lx, nsaved=%ld, recursion_limit=%ld, steps_limit=%ld",
@@ -853,7 +855,7 @@ DUK_LOCAL void duk__regexp_match_helper(duk_hthread *thr, duk_small_int_t force_
 		 *      internal/limit error occurs (which causes a longjmp())
 		 *
 		 *    - If we supported anchored matches, we would break out here
-		 *      unconditionally; however, Ecmascript regexps don't have anchored
+		 *      unconditionally; however, ECMAScript regexps don't have anchored
 		 *      matches.  It might make sense to implement a fast bail-out if
 		 *      the regexp begins with '^' and sp is not 0: currently we'll just
 		 *      run through the entire input string, trivially failing the match

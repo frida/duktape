@@ -309,6 +309,7 @@ DUK_INTERNAL void duk_debug_read_bytes(duk_hthread *thr, duk_uint8_t *data, duk_
 	DUK_ASSERT(thr != NULL);
 	heap = thr->heap;
 	DUK_ASSERT(heap != NULL);
+	DUK_ASSERT(data != NULL);
 
 	if (heap->dbg_read_cb == NULL) {
 		DUK_D(DUK_DPRINT("attempt to read %ld bytes in detached state, return zero data", (long) length));
@@ -346,7 +347,7 @@ DUK_INTERNAL void duk_debug_read_bytes(duk_hthread *thr, duk_uint8_t *data, duk_
 	return;
 
  fail:
-	DUK_MEMZERO((void *) data, (size_t) length);
+	duk_memzero((void *) data, (size_t) length);
 }
 
 DUK_INTERNAL duk_uint8_t duk_debug_read_byte(duk_hthread *thr) {
@@ -959,7 +960,7 @@ DUK_INTERNAL void duk_debug_write_tval(duk_hthread *thr, duk_tval *tv) {
 		                   (unsigned int) du2.uc[4], (unsigned int) du2.uc[5],
 		                   (unsigned int) du2.uc[6], (unsigned int) du2.uc[7]));
 
-		if (DUK_MEMCMP((const void *) du1.uc, (const void *) du2.uc, sizeof(du1.uc)) == 0) {
+		if (duk_memcmp((const void *) du1.uc, (const void *) du2.uc, sizeof(du1.uc)) == 0) {
 			duk_debug_write_int(thr, i32);
 		} else {
 			DUK_DBLUNION_DOUBLE_HTON(&du1);
@@ -1068,9 +1069,9 @@ DUK_INTERNAL void duk_debug_send_status(duk_hthread *thr) {
 		duk_debug_write_int(thr, 0);
 	} else {
 		duk_push_tval(thr, &act->tv_func);
-		duk_get_prop_string(thr, -1, "fileName");
+		duk_get_prop_literal(thr, -1, "fileName");
 		duk__debug_write_hstring_safe_top(thr);
-		duk_get_prop_string(thr, -2, "name");
+		duk_get_prop_literal(thr, -2, "name");
 		duk__debug_write_hstring_safe_top(thr);
 		duk_pop_3(thr);
 		/* Report next pc/line to be executed. */
@@ -1115,7 +1116,7 @@ DUK_INTERNAL void duk_debug_send_throw(duk_hthread *thr, duk_bool_t fatal) {
 		act = thr->callstack_curr;
 		if (act != NULL) {
 			duk_push_tval(thr, &act->tv_func);
-			duk_get_prop_string(thr, -1, "fileName");
+			duk_get_prop_literal(thr, -1, "fileName");
 			duk__debug_write_hstring_safe_top(thr);
 			pc = (duk_uint32_t) duk_hthread_get_act_prev_pc(thr, act);
 			duk_debug_write_uint(thr, (duk_uint32_t) duk_hobject_pc2line_query(thr, -2, pc));
@@ -1592,7 +1593,7 @@ DUK_LOCAL void duk__debug_handle_eval(duk_hthread *thr, duk_heap *heap) {
 			fun = DUK_ACT_GET_FUNC(act);
 			if (fun != NULL && DUK_HOBJECT_IS_COMPFUNC(fun)) {
 				/* Direct eval requires that there's a current
-				 * activation and it is an Ecmascript function.
+				 * activation and it is an ECMAScript function.
 				 * When Eval is executed from e.g. cooperate API
 				 * call we'll need to do an indirect eval instead.
 				 */
@@ -2258,7 +2259,7 @@ DUK_LOCAL void duk__debug_handle_get_heap_obj_info(duk_hthread *thr, duk_heap *h
 
 		if (DUK_HOBJECT_IS_BOUNDFUNC(h_obj)) {
 			duk_hboundfunc *h_bfun;
-			h_bfun = (duk_hboundfunc *) h_obj;
+			h_bfun = (duk_hboundfunc *) (void *) h_obj;
 
 			duk__debug_getinfo_flags_key(thr, "target");
 			duk_debug_write_tval(thr, &h_bfun->target);
@@ -2735,7 +2736,7 @@ DUK_INTERNAL void duk_debug_halt_execution(duk_hthread *thr, duk_bool_t use_prev
 		fun = (duk_hcompfunc *) DUK_ACT_GET_FUNC(act);
 
 		/* Short circuit if is safe: if act->curr_pc != NULL, 'fun' is
-		 * guaranteed to be a non-NULL Ecmascript function.
+		 * guaranteed to be a non-NULL ECMAScript function.
 		 */
 		DUK_ASSERT(act->curr_pc == NULL ||
 		           (fun != NULL && DUK_HOBJECT_IS_COMPFUNC((duk_hobject *) fun)));
@@ -2831,11 +2832,10 @@ DUK_INTERNAL duk_bool_t duk_debug_remove_breakpoint(duk_hthread *thr, duk_small_
 	DUK_ASSERT(h != NULL);
 
 	move_size = sizeof(duk_breakpoint) * (heap->dbg_breakpoint_count - breakpoint_index - 1);
-	if (move_size > 0) {
-		DUK_MEMMOVE((void *) b,
-		            (const void *) (b + 1),
-		            (size_t) move_size);
-	}
+	duk_memmove((void *) b,
+	            (const void *) (b + 1),
+	            (size_t) move_size);
+
 	heap->dbg_breakpoint_count--;
 	heap->dbg_breakpoints_active[0] = (duk_breakpoint *) NULL;
 

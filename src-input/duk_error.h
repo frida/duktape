@@ -20,8 +20,8 @@
  *  Error codes: defined in duktape.h
  *
  *  Error codes are used as a shorthand to throw exceptions from inside
- *  the implementation.  The appropriate Ecmascript object is constructed
- *  based on the code.  Ecmascript code throws objects directly.  The error
+ *  the implementation.  The appropriate ECMAScript object is constructed
+ *  based on the code.  ECMAScript code throws objects directly.  The error
  *  codes are defined in the public API header because they are also used
  *  by calling code.
  */
@@ -423,7 +423,7 @@
 
 #if defined(DUK_USE_ASSERTIONS)
 #define DUK_ASSERT_SET_GARBAGE(ptr,size) do { \
-		DUK_MEMSET((void *) (ptr), 0x5a, size); \
+		duk_memset_unsafe((void *) (ptr), 0x5a, size); \
 	} while (0)
 #else
 #define DUK_ASSERT_SET_GARBAGE(ptr,size) do {} while (0)

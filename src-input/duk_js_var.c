@@ -6,7 +6,7 @@
  *  be used for most identifier accesses.  Consequently, these slow path
  *  primitives should be optimized for maximum compactness.
  *
- *  Ecmascript environment records (declarative and object) are represented
+ *  ECMAScript environment records (declarative and object) are represented
  *  as internal objects with control keys.  Environment records have a
  *  parent record ("outer environment reference") which is represented by
  *  the implicit prototype for technical reasons (in other words, it is a
@@ -48,7 +48,7 @@ typedef struct {
  *  Create a new function object based on a "template function" which contains
  *  compiled bytecode, constants, etc, but lacks a lexical environment.
  *
- *  Ecmascript requires that each created closure is a separate object, with
+ *  ECMAScript requires that each created closure is a separate object, with
  *  its own set of editable properties.  However, structured property values
  *  (such as the formal arguments list and the variable map) are shared.
  *  Also the bytecode, constants, and inner functions are shared.
@@ -1057,6 +1057,7 @@ duk_bool_t duk__get_identifier_reference(duk_hthread *thr,
 
                 if (DUK_UNLIKELY(sanity-- == 0)) {
                         DUK_ERROR_RANGE(thr, DUK_STR_PROTOTYPE_CHAIN_LIMIT);
+			DUK_WO_NORETURN(return 0;);
                 }
 		env = DUK_HOBJECT_GET_PROTOTYPE(thr->heap, env);
 	}
@@ -1192,19 +1193,11 @@ duk_bool_t duk__getvar_helper(duk_hthread *thr,
 
 		return 1;
 	} else {
-		duk_global_access_functions *funcs = thr->heap->global_access_funcs;
-
-		if (funcs != NULL) {
-			if (funcs->get_func(thr, (const char *) DUK_HSTRING_GET_DATA(name), funcs->udata) == 1) {
-				duk_push_undefined(thr);  /* [ value ] -> [ value this ] */
-				return 1;
-			}
-		}
-
 		if (throw_flag) {
 			DUK_ERROR_FMT1(thr, DUK_ERR_REFERENCE_ERROR,
 			               "identifier '%s' undefined",
 			               (const char *) DUK_HSTRING_GET_DATA(name));
+			DUK_WO_NORETURN(return 0;);
 		}
 
 		return 0;
@@ -1329,6 +1322,7 @@ void duk__putvar_helper(duk_hthread *thr,
 		DUK_ERROR_FMT1(thr, DUK_ERR_REFERENCE_ERROR,
 		               "identifier '%s' undefined",
 		               (const char *) DUK_HSTRING_GET_DATA(name));
+		DUK_WO_NORETURN(return;);
 	}
 
 	DUK_DDD(DUK_DDDPRINT("identifier binding not found, not strict => set to global"));
@@ -1719,7 +1713,7 @@ duk_bool_t duk__declvar_helper(duk_hthread *thr,
  fail_existing_attributes:
  fail_not_extensible:
 	DUK_ERROR_TYPE(thr, "declaration failed");
-	return 0;
+	DUK_WO_NORETURN(return 0;);
 }
 
 DUK_INTERNAL

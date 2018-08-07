@@ -214,6 +214,7 @@ DUK_LOCAL void duk__dec_syntax_error(duk_json_dec_ctx *js_ctx) {
 	 */
 	DUK_ERROR_FMT1(js_ctx->thr, DUK_ERR_SYNTAX_ERROR, DUK_STR_FMT_INVALID_JSON,
 	               (long) (js_ctx->p - js_ctx->p_start));
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL void duk__dec_eat_white(duk_json_dec_ctx *js_ctx) {
@@ -629,7 +630,7 @@ DUK_LOCAL void duk__dec_buffer(duk_json_dec_ctx *js_ctx) {
 	src_len = (duk_size_t) (p - js_ctx->p);
 	buf = (duk_uint8_t *) duk_push_fixed_buffer_nozero(thr, src_len);
 	DUK_ASSERT(buf != NULL);
-	DUK_MEMCPY((void *) buf, (const void *) js_ctx->p, src_len);
+	duk_memcpy((void *) buf, (const void *) js_ctx->p, src_len);
 	duk_hex_decode(thr, -1);
 
 	js_ctx->p = p + 1;  /* skip '|' */
@@ -720,6 +721,7 @@ DUK_LOCAL void duk__dec_objarr_entry(duk_json_dec_ctx *js_ctx) {
 	DUK_ASSERT(js_ctx->recursion_depth <= js_ctx->recursion_limit);
 	if (js_ctx->recursion_depth >= js_ctx->recursion_limit) {
 		DUK_ERROR_RANGE(thr, DUK_STR_JSONDEC_RECLIMIT);
+		DUK_WO_NORETURN(return;);
 	}
 	js_ctx->recursion_depth++;
 }
@@ -1296,9 +1298,9 @@ DUK_LOCAL void duk__enc_quote_string(duk_json_enc_ctx *js_ctx, duk_hstring *h_st
 				/* If XUTF-8 decoding fails, treat the offending byte as a codepoint directly
 				 * and go forward one byte.  This is of course very lossy, but allows some kind
 				 * of output to be produced even for internal strings which don't conform to
-				 * XUTF-8.  All standard Ecmascript strings are always CESU-8, so this behavior
-				 * does not violate the Ecmascript specification.  The behavior is applied to
-				 * all modes, including Ecmascript standard JSON.  Because the current XUTF-8
+				 * XUTF-8.  All standard ECMAScript strings are always CESU-8, so this behavior
+				 * does not violate the ECMAScript specification.  The behavior is applied to
+				 * all modes, including ECMAScript standard JSON.  Because the current XUTF-8
 				 * decoding is not very strict, this behavior only really affects initial bytes
 				 * and truncated codepoints.
 				 *
@@ -1435,7 +1437,7 @@ DUK_LOCAL duk_uint8_t *duk__enc_buffer_data_hex(const duk_uint8_t *src, duk_size
 
 	/* Unlike in duk_hex_encode() 'dst' is not necessarily aligned by 2.
 	 * For platforms where unaligned accesses are not allowed, shift 'dst'
-	 * ahead by 1 byte to get alignment and then DUK_MEMMOVE() the result
+	 * ahead by 1 byte to get alignment and then duk_memmove() the result
 	 * in place.  The faster encoding loop makes up the difference.
 	 * There's always space for one extra byte because a terminator always
 	 * follows the hex data and that's been accounted for by the caller.
@@ -1468,7 +1470,7 @@ DUK_LOCAL duk_uint8_t *duk__enc_buffer_data_hex(const duk_uint8_t *src, duk_size
 #if !defined(DUK_USE_UNALIGNED_ACCESSES_POSSIBLE)
 	if (shift_dst) {
 		q--;
-		DUK_MEMMOVE((void *) dst, (const void *) (dst + 1), 2 * len_safe);
+		duk_memmove((void *) dst, (const void *) (dst + 1), 2 * len_safe);
 		DUK_ASSERT(dst + 2 * len_safe == q);
 	}
 #endif
@@ -1544,7 +1546,7 @@ DUK_LOCAL void duk__enc_buffer_data(duk_json_enc_ctx *js_ctx, duk_uint8_t *buf_d
 #if defined(DUK_USE_JC)
 	{
 		DUK_ASSERT(js_ctx->flag_ext_compatible);
-		DUK_MEMCPY((void *) q, (const void *) "{\"_buf\":\"", 9);  /* len: 9 */
+		duk_memcpy((void *) q, (const void *) "{\"_buf\":\"", 9);  /* len: 9 */
 		q += 9;
 		q = duk__enc_buffer_data_hex(buf_data, buf_len, q);
 		*q++ = DUK_ASC_DOUBLEQUOTE;
@@ -1617,7 +1619,7 @@ DUK_LOCAL void duk__enc_pointer(duk_json_enc_ctx *js_ctx, void *ptr) {
 	DUK_ASSERT(js_ctx->flag_ext_custom || js_ctx->flag_ext_compatible);  /* caller checks */
 	DUK_ASSERT(js_ctx->flag_ext_custom_or_compatible);
 
-	DUK_MEMZERO(buf, sizeof(buf));
+	duk_memzero(buf, sizeof(buf));
 
 	/* The #if defined() clutter here needs to handle the three
 	 * cases: (1) JX+JC, (2) JX only, (3) JC only.
@@ -1707,21 +1709,21 @@ DUK_LOCAL void duk__enc_newline_indent(duk_json_enc_ctx *js_ctx, duk_uint_t dept
 	p = DUK_BW_ENSURE_GETPTR(js_ctx->thr, &js_ctx->bw, need_bytes);
 	p_start = p;
 
-	DUK_MEMCPY((void *) p, (const void *) gap_data, (size_t) gap_len);
+	duk_memcpy((void *) p, (const void *) gap_data, (size_t) gap_len);
 	p += gap_len;
 	avail_bytes = gap_len;
 	DUK_ASSERT(need_bytes >= gap_len);
 	need_bytes -= gap_len;
 
 	while (need_bytes >= avail_bytes) {
-		DUK_MEMCPY((void *) p, (const void *) p_start, (size_t) avail_bytes);
+		duk_memcpy((void *) p, (const void *) p_start, (size_t) avail_bytes);
 		p += avail_bytes;
 		need_bytes -= avail_bytes;
 		avail_bytes <<= 1;
 	}
 
 	DUK_ASSERT(need_bytes < avail_bytes);  /* need_bytes may be zero */
-	DUK_MEMCPY((void *) p, (const void *) p_start, (size_t) need_bytes);
+	duk_memcpy((void *) p, (const void *) p_start, (size_t) need_bytes);
 	p += need_bytes;
 	/*avail_bytes += need_bytes*/
 
@@ -1753,6 +1755,7 @@ DUK_LOCAL void duk__enc_objarr_entry(duk_json_enc_ctx *js_ctx, duk_idx_t *entry_
 		if (DUK_UNLIKELY(js_ctx->visiting[i] == h_target)) {
 			DUK_DD(DUK_DDPRINT("slow path loop detect"));
 			DUK_ERROR_TYPE(thr, DUK_STR_CYCLIC_INPUT);
+			DUK_WO_NORETURN(return;);
 		}
 	}
 	if (js_ctx->recursion_depth < DUK_JSON_ENC_LOOPARRAY) {
@@ -1762,6 +1765,7 @@ DUK_LOCAL void duk__enc_objarr_entry(duk_json_enc_ctx *js_ctx, duk_idx_t *entry_
 		duk_dup_top(thr);  /* -> [ ... voidp voidp ] */
 		if (duk_has_prop(thr, js_ctx->idx_loop)) {
 			DUK_ERROR_TYPE(thr, DUK_STR_CYCLIC_INPUT);
+			DUK_WO_NORETURN(return;);
 		}
 		duk_push_true(thr);  /* -> [ ... voidp true ] */
 		duk_put_prop(thr, js_ctx->idx_loop);  /* -> [ ... ] */
@@ -1773,6 +1777,7 @@ DUK_LOCAL void duk__enc_objarr_entry(duk_json_enc_ctx *js_ctx, duk_idx_t *entry_
 	DUK_ASSERT(js_ctx->recursion_depth <= js_ctx->recursion_limit);
 	if (js_ctx->recursion_depth >= js_ctx->recursion_limit) {
 		DUK_ERROR_RANGE(thr, DUK_STR_JSONENC_RECLIMIT);
+		DUK_WO_NORETURN(return;);
 	}
 	js_ctx->recursion_depth++;
 
@@ -2370,12 +2375,14 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 		if (js_ctx->recursion_depth >= js_ctx->recursion_limit) {
 			DUK_DD(DUK_DDPRINT("fast path recursion limit"));
 			DUK_ERROR_RANGE(js_ctx->thr, DUK_STR_JSONDEC_RECLIMIT);
+			DUK_WO_NORETURN(return 0;);
 		}
 
 		for (i = 0, n = (duk_uint_fast32_t) js_ctx->recursion_depth; i < n; i++) {
 			if (DUK_UNLIKELY(js_ctx->visiting[i] == obj)) {
 				DUK_DD(DUK_DDPRINT("fast path loop detect"));
 				DUK_ERROR_TYPE(js_ctx->thr, DUK_STR_CYCLIC_INPUT);
+				DUK_WO_NORETURN(return 0;);
 			}
 		}
 
@@ -2756,7 +2763,7 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 	/* Error message doesn't matter: the error is ignored anyway. */
 	DUK_DD(DUK_DDPRINT("aborting fast path"));
 	DUK_ERROR_INTERNAL(js_ctx->thr);
-	return 0;  /* unreachable */
+	DUK_WO_NORETURN(return 0;);
 }
 
 DUK_LOCAL duk_ret_t duk__json_stringify_fast(duk_hthread *thr, void *udata) {
@@ -2805,7 +2812,7 @@ void duk_bi_json_parse_helper(duk_hthread *thr,
 	                     (unsigned long) flags,
 	                     (long) duk_get_top(thr)));
 
-	DUK_MEMZERO(&js_ctx_alloc, sizeof(js_ctx_alloc));
+	duk_memzero(&js_ctx_alloc, sizeof(js_ctx_alloc));
 	js_ctx->thr = thr;
 #if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	/* nothing now */
@@ -2915,7 +2922,7 @@ void duk_bi_json_stringify_helper(duk_hthread *thr,
 	 *  Context init
 	 */
 
-	DUK_MEMZERO(&js_ctx_alloc, sizeof(js_ctx_alloc));
+	duk_memzero(&js_ctx_alloc, sizeof(js_ctx_alloc));
 	js_ctx->thr = thr;
 #if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	js_ctx->h_replacer = NULL;

@@ -15,11 +15,13 @@ Checklist for ordinary releases
 
 * Git maintenance
 
-  - ensure git commits are up-to-date
+  - Ensure git commits are up-to-date
 
-  - ensure branches are merged, unused branches deleted (also remotely)
+  - Ensure branches are merged, unused branches deleted (also remotely)
 
-  - ensure branches are rebased where applicable
+  - Ensure branches are rebased where applicable
+
+  - Check for uncommitted files
 
   - git fsck --full
 
@@ -32,9 +34,10 @@ Checklist for ordinary releases
 
   - Verify by running Duktape cmdline and evaluating ``Duktape.version``
 
-* Check dist-files/README.rst
+* Check for API calls and config options tagged experimental to see if they
+  should lose their experimental status
 
-  - Update release specific release notes link
+* Check dist-files/README.rst
 
 * Ensure LICENSE.txt is up-to-date
 
@@ -94,20 +97,30 @@ Checklist for ordinary releases
 
   - Check ``make duk-clang``, covers ``-Wcast-align``
 
+  - Check compile warnings when DUK_NORETURN() is not defined
+
 * Test configure.py manually using metadata from the distributable
 
   - Ensure that Duktape compiles with e.g. ``-DDUK_USE_FASTINT`` configure
     argument
 
-* Ecmascript testcases
+* duk-sanitize-clang:
 
-  - **FIXME: semiautomate test running for various configurations**
+  - Run::
+
+        $ make duk-sanitize-clang
+        $ for i in tests/ecmascript/test-*.js; do python util/runtest.py --duk ./duk-sanitize-clang --timeout 60 $i; done
+
+* ECMAScript testcases
 
   - On x86-64 (exercise 16-byte duk_tval):
 
     - make ecmatest
 
-    - VALGRIND_WRAP=1 make ecmatest  # valgrind test
+    - Run testcases with util/runtest.py with --valgrind option::
+
+          $ make duk
+          $ for i in tests/ecmascript/test-*.js; do python util/runtest.py --duk ./duk --valgrind --timeout 60 $i; done
 
   - On x86-32 (exercise 8-byte duk_tval)
 
@@ -117,7 +130,7 @@ Checklist for ordinary releases
 
   - Run with assertions enabled at least on x86-64
 
-* Run testcases with torture options
+* Run testcases with torture options, DUK_USE_ASSERTIONS and:
 
   - DUK_USE_GC_TORTURE
 
@@ -271,7 +284,7 @@ Checklist for ordinary releases
     The branch is not pushed to the server.
 
   - The concrete commands are packaged into ``add-unpacked.sh`` in
-    duktape-releases repo.
+    duktape-releases repo.  Add the tar.xz into master first.
 
 * Update website downloads page
 
@@ -332,11 +345,12 @@ Checklist for maintenance releases
 
 * Review diff between previous release and new patch release.
 
-* Tag release, description "maintenance release" should be good enough for
+* Tag release; description "maintenance release" should be good enough for
   most patch releases.
 
 * Build release.  Compare release to previous release package by diffing the
-  unpacked directories.
+  unpacked directories.  Check out the maintenance branch for the build so
+  that the branch in C defines is that branch instead of "HEAD".
 
 * Build website from master.  Deploy only ``download.html``.
 

@@ -7,12 +7,9 @@
 /* Needed even when Object built-in disabled. */
 DUK_INTERNAL duk_ret_t duk_bi_object_prototype_to_string(duk_hthread *thr) {
 	duk_tval *tv;
+
 	tv = DUK_HTHREAD_THIS_PTR(thr);
-	/* XXX: This is not entirely correct anymore; in ES2015 the
-	 * default lookup should use @@toStringTag to come up with
-	 * e.g. [object Symbol].
-	 */
-	duk_push_class_string_tval(thr, tv);
+	duk_push_class_string_tval(thr, tv, 0 /*avoid_side_effects*/);
 	return 1;
 }
 
@@ -517,7 +514,7 @@ DUK_INTERNAL duk_ret_t duk_bi_object_constructor_define_property(duk_hthread *th
 	DUK_ASSERT(duk_get_hobject(thr, 2) != NULL);
 
 	/*
-	 *  Validate and convert argument property descriptor (an Ecmascript
+	 *  Validate and convert argument property descriptor (an ECMAScript
 	 *  object) into a set of defprop_flags and possibly property value,
 	 *  getter, and/or setter values on the value stack.
 	 *
@@ -795,6 +792,7 @@ DUK_INTERNAL duk_ret_t duk_bi_object_prototype_lookupaccessor(duk_hthread *thr) 
 
 		if (DUK_UNLIKELY(sanity-- == 0)) {
 			DUK_ERROR_RANGE(thr, DUK_STR_PROTOTYPE_CHAIN_LIMIT);
+			DUK_WO_NORETURN(return 0;);
 		}
 
 		duk_get_prototype(thr, -1);

@@ -20,8 +20,13 @@ example: |
 
 tags:
   - property
+  - string
 
 seealso:
+  - duk_put_prop
+  - duk_put_prop_index
   - duk_put_prop_lstring
+  - duk_put_prop_literal
+  - duk_put_prop_heapptr
 
 introduced: 1.0.0

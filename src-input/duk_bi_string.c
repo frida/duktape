@@ -28,6 +28,7 @@ DUK_LOCAL duk_hstring *duk__str_tostring_notregexp(duk_hthread *thr, duk_idx_t i
 
 	if (duk_get_class_number(thr, idx) == DUK_HOBJECT_CLASS_REGEXP) {
 		DUK_ERROR_TYPE_INVALID_ARGS(thr);
+		DUK_WO_NORETURN(return NULL;);
 	}
 	h = duk_to_hstring(thr, idx);
 	DUK_ASSERT(h != NULL);
@@ -74,14 +75,14 @@ DUK_LOCAL duk_int_t duk__str_search_shared(duk_hthread *thr, duk_hstring *h_this
 	while (p <= p_end && p >= p_start) {
 		t = *p;
 
-		/* For Ecmascript strings, this check can only match for
+		/* For ECMAScript strings, this check can only match for
 		 * initial UTF-8 bytes (not continuation bytes).  For other
 		 * strings all bets are off.
 		 */
 
 		if ((t == firstbyte) && ((duk_size_t) (p_end - p) >= (duk_size_t) q_blen)) {
-			DUK_ASSERT(q_blen > 0);  /* no issues with memcmp() zero size, even if broken */
-			if (DUK_MEMCMP((const void *) p, (const void *) q_start, (size_t) q_blen) == 0) {
+			DUK_ASSERT(q_blen > 0);
+			if (duk_memcmp((const void *) p, (const void *) q_start, (size_t) q_blen) == 0) {
 				return cpos;
 			}
 		}
@@ -263,13 +264,37 @@ DUK_INTERNAL duk_ret_t duk_bi_string_prototype_to_string(duk_hthread *thr) {
  */
 
 DUK_INTERNAL duk_ret_t duk_bi_string_prototype_char_at(duk_hthread *thr) {
+	duk_hstring *h;
 	duk_int_t pos;
 
 	/* XXX: faster implementation */
 
-	(void) duk_push_this_coercible_to_string(thr);
+	h = duk_push_this_coercible_to_string(thr);
+	DUK_ASSERT(h != NULL);
+
 	pos = duk_to_int(thr, 0);
-	duk_substring(thr, -1, (duk_size_t) pos, (duk_size_t) (pos + 1));
+
+	if (sizeof(duk_size_t) >= sizeof(duk_uint_t)) {
+		/* Cast to duk_size_t works in this case:
+		 * - If pos < 0, (duk_size_t) pos will always be
+		 *   >= max_charlen, and result will be the empty string
+		 *   (see duk_substring()).
+		 * - If pos >= 0, pos + 1 cannot wrap.
+		 */
+		DUK_ASSERT((duk_size_t) DUK_INT_MIN >= DUK_HSTRING_MAX_BYTELEN);
+		DUK_ASSERT((duk_size_t) DUK_INT_MAX + 1U > (duk_size_t) DUK_INT_MAX);
+		duk_substring(thr, -1, (duk_size_t) pos, (duk_size_t) pos + 1U);
+	} else {
+		/* If size_t is smaller than int, explicit bounds checks
+		 * are needed because an int may wrap multiple times.
+		 */
+		if (DUK_UNLIKELY(pos < 0 || (duk_uint_t) pos >= (duk_uint_t) DUK_HSTRING_GET_CHARLEN(h))) {
+			duk_push_hstring_empty(thr);
+		} else {
+			duk_substring(thr, -1, (duk_size_t) pos, (duk_size_t) pos + 1U);
+		}
+	}
+
 	return 1;
 }
 
@@ -659,7 +684,7 @@ DUK_INTERNAL duk_ret_t duk_bi_string_prototype_replace(duk_hthread *thr) {
 
 			while (p <= p_end) {
 				DUK_ASSERT(p + q_blen <= DUK_HSTRING_GET_DATA(h_input) + DUK_HSTRING_GET_BYTELEN(h_input));
-				if (DUK_MEMCMP((const void *) p, (const void *) q_start, (size_t) q_blen) == 0) {
+				if (duk_memcmp((const void *) p, (const void *) q_start, (size_t) q_blen) == 0) {
 					duk_dup_0(thr);
 					h_match = duk_known_hstring(thr, -1);
 #if defined(DUK_USE_REGEXP_SUPPORT)
@@ -1040,7 +1065,7 @@ DUK_INTERNAL duk_ret_t duk_bi_string_prototype_split(duk_hthread *thr) {
 			while (p <= p_end) {
 				DUK_ASSERT(p + q_blen <= DUK_HSTRING_GET_DATA(h_input) + DUK_HSTRING_GET_BYTELEN(h_input));
 				DUK_ASSERT(q_blen > 0);  /* no issues with empty memcmp() */
-				if (DUK_MEMCMP((const void *) p, (const void *) q_start, (size_t) q_blen) == 0) {
+				if (duk_memcmp((const void *) p, (const void *) q_start, (size_t) q_blen) == 0) {
 					/* never an empty match, so step 13.c.iii can't be triggered */
 					goto found;
 				}
@@ -1353,12 +1378,14 @@ DUK_INTERNAL duk_ret_t duk_bi_string_prototype_repeat(duk_hthread *thr) {
 
 	/* Temporary fixed buffer, later converted to string. */
 	buf = (duk_uint8_t *) duk_push_fixed_buffer_nozero(thr, result_len);
+	DUK_ASSERT(buf != NULL);
 	src = (const duk_uint8_t *) DUK_HSTRING_GET_DATA(h_input);
+	DUK_ASSERT(src != NULL);
 
 #if defined(DUK_USE_PREFER_SIZE)
 	p = buf;
 	while (count-- > 0) {
-		DUK_MEMCPY((void *) p, (const void *) src, input_blen);  /* copy size may be zero */
+		duk_memcpy((void *) p, (const void *) src, input_blen);  /* copy size may be zero, but pointers are valid */
 		p += input_blen;
 	}
 #else  /* DUK_USE_PREFER_SIZE */
@@ -1375,12 +1402,12 @@ DUK_INTERNAL duk_ret_t duk_bi_string_prototype_repeat(duk_hthread *thr) {
 		                     (long) result_len));
 		if (remain <= copy_size) {
 			/* If result_len is zero, this case is taken and does
-			 * a zero size copy.
+			 * a zero size copy (with valid pointers).
 			 */
-			DUK_MEMCPY((void *) p, (const void *) src, remain);
+			duk_memcpy((void *) p, (const void *) src, remain);
 			break;
 		} else {
-			DUK_MEMCPY((void *) p, (const void *) src, copy_size);
+			duk_memcpy((void *) p, (const void *) src, copy_size);
 			p += copy_size;
 		}
 
@@ -1435,8 +1462,7 @@ DUK_INTERNAL duk_ret_t duk_bi_string_prototype_locale_compare(duk_hthread *thr) 
 	h2_len = (duk_size_t) DUK_HSTRING_GET_BYTELEN(h2);
 	prefix_len = (h1_len <= h2_len ? h1_len : h2_len);
 
-	/* Zero size compare not an issue with DUK_MEMCMP. */
-	rc = (duk_small_int_t) DUK_MEMCMP((const void *) DUK_HSTRING_GET_DATA(h1),
+	rc = (duk_small_int_t) duk_memcmp((const void *) DUK_HSTRING_GET_DATA(h1),
 	                                  (const void *) DUK_HSTRING_GET_DATA(h2),
 	                                  (size_t) prefix_len);
 
@@ -1486,7 +1512,7 @@ DUK_INTERNAL duk_ret_t duk_bi_string_prototype_startswith_endswith(duk_hthread *
 
 	if (duk_is_undefined(thr, 1)) {
 		if (magic) {
-			p_cmp_start += DUK_HSTRING_GET_BYTELEN(h) - blen_search;
+			p_cmp_start = p_cmp_start + DUK_HSTRING_GET_BYTELEN(h) - blen_search;
 		} else {
 			/* p_cmp_start already OK */
 		}
@@ -1517,7 +1543,7 @@ DUK_INTERNAL duk_ret_t duk_bi_string_prototype_startswith_endswith(duk_hthread *
 	result = 0;
 	if (p_cmp_start >= DUK_HSTRING_GET_DATA(h) &&
 	    (duk_size_t) (p_cmp_start - (const duk_uint8_t *) DUK_HSTRING_GET_DATA(h)) + blen_search <= DUK_HSTRING_GET_BYTELEN(h)) {
-		if (DUK_MEMCMP((const void *) p_cmp_start,
+		if (duk_memcmp((const void *) p_cmp_start,
 		               (const void *) DUK_HSTRING_GET_DATA(h_search),
 		               (size_t) blen_search) == 0) {
 			result = 1;

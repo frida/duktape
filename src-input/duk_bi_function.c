@@ -36,7 +36,7 @@ DUK_INTERNAL duk_ret_t duk_bi_function_constructor(duk_hthread *thr) {
 		duk_push_hstring_empty(thr);
 	} else {
 		duk_insert(thr, 0);   /* [ arg1 ... argN-1 body] -> [body arg1 ... argN-1] */
-		duk_push_string(thr, ",");
+		duk_push_literal(thr, ",");
 		duk_insert(thr, 1);
 		duk_join(thr, nargs - 1);
 	}
@@ -48,11 +48,11 @@ DUK_INTERNAL duk_ret_t duk_bi_function_constructor(duk_hthread *thr) {
 	/* XXX: this placeholder is not always correct, but use for now.
 	 * It will fail in corner cases; see test-dev-func-cons-args.js.
 	 */
-	duk_push_string(thr, "function(");
+	duk_push_literal(thr, "function(");
 	duk_dup_1(thr);
-	duk_push_string(thr, "){");
+	duk_push_literal(thr, "){");
 	duk_dup_0(thr);
-	duk_push_string(thr, "\n}");  /* Newline is important to handle trailing // comment. */
+	duk_push_literal(thr, "\n}");  /* Newline is important to handle trailing // comment. */
 	duk_concat(thr, 5);
 
 	/* [ body formals source ] */
@@ -70,7 +70,7 @@ DUK_INTERNAL duk_ret_t duk_bi_function_constructor(duk_hthread *thr) {
 	               comp_flags);
 
 	/* Force .name to 'anonymous' (ES2015). */
-	duk_push_string(thr, "anonymous");
+	duk_push_literal(thr, "anonymous");
 	duk_xdef_prop_stridx_short(thr, -2, DUK_STRIDX_NAME, DUK_PROPDESC_FLAGS_C);
 
 	func = (duk_hcompfunc *) duk_known_hobject(thr, -1);
@@ -282,7 +282,7 @@ DUK_INTERNAL duk_ret_t duk_bi_function_prototype_bind(duk_hthread *thr) {
 		if (DUK_HOBJECT_HAS_BOUNDFUNC(h_target)) {
 			duk_hboundfunc *h_boundtarget;
 
-			h_boundtarget = (duk_hboundfunc *) h_target;
+			h_boundtarget = (duk_hboundfunc *) (void *) h_target;
 
 			/* The final function should always be non-bound, unless
 			 * there's a bug in the internals.  Assert for it.
@@ -316,7 +316,7 @@ DUK_INTERNAL duk_ret_t duk_bi_function_prototype_bind(duk_hthread *thr) {
 		DUK_DCERROR_RANGE_INVALID_COUNT(thr);
 	}
 	tv_res = (duk_tval *) DUK_ALLOC_CHECKED(thr, ((duk_size_t) bound_nargs) * sizeof(duk_tval));
-	DUK_ASSERT(tv_res != NULL);
+	DUK_ASSERT(tv_res != NULL || bound_nargs == 0);
 	DUK_ASSERT(h_bound->args == NULL);
 	DUK_ASSERT(h_bound->nargs == 0);
 	h_bound->args = tv_res;
@@ -356,7 +356,7 @@ DUK_INTERNAL duk_ret_t duk_bi_function_prototype_bind(duk_hthread *thr) {
 	duk_xdef_prop_stridx_thrower(thr, -1, DUK_STRIDX_LC_ARGUMENTS);
 
 	/* Function name and fileName (non-standard). */
-	duk_push_string(thr, "bound ");  /* ES2015 19.2.3.2. */
+	duk_push_literal(thr, "bound ");  /* ES2015 19.2.3.2. */
 	duk_get_prop_stridx(thr, -3, DUK_STRIDX_NAME);
 	if (!duk_is_string_notsymbol(thr, -1)) {
 		/* ES2015 has requirement to check that .name of target is a string
@@ -440,3 +440,14 @@ DUK_INTERNAL duk_ret_t duk_bi_native_function_name(duk_hthread *thr) {
  fail_type:
 	DUK_DCERROR_TYPE_INVALID_ARGS(thr);
 }
+
+#if defined(DUK_USE_SYMBOL_BUILTIN)
+DUK_INTERNAL duk_ret_t duk_bi_function_prototype_hasinstance(duk_hthread *thr) {
+	/* This binding: RHS, stack index 0: LHS. */
+	duk_bool_t ret;
+
+	ret = duk_js_instanceof_ordinary(thr, DUK_GET_TVAL_POSIDX(thr, 0), DUK_GET_THIS_TVAL_PTR(thr));
+	duk_push_boolean(thr, ret);
+	return 1;
+}
+#endif  /* DUK_USE_SYMBOL_BUILTIN */

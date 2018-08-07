@@ -133,10 +133,8 @@ DUK_LOCAL void duk__bi_copy(duk__bigint *x, duk__bigint *y) {
 
 	n = y->n;
 	x->n = n;
-	if (n == 0) {
-		return;
-	}
-	DUK_MEMCPY((void *) x->v, (const void *) y->v, (size_t) (sizeof(duk_uint32_t) * (size_t) n));
+	/* No need to special case n == 0. */
+	duk_memcpy((void *) x->v, (const void *) y->v, (size_t) (sizeof(duk_uint32_t) * (size_t) n));
 }
 
 DUK_LOCAL void duk__bi_set_small(duk__bigint *x, duk_uint32_t v) {
@@ -412,7 +410,7 @@ DUK_LOCAL void duk__bi_mul(duk__bigint *x, duk__bigint *y, duk__bigint *z) {
 		return;
 	}
 
-	DUK_MEMZERO((void *) x->v, (size_t) (sizeof(duk_uint32_t) * (size_t) nx));
+	duk_memzero((void *) x->v, (size_t) (sizeof(duk_uint32_t) * (size_t) nx));
 	x->n = nx;
 
 	nz = z->n;
@@ -562,7 +560,7 @@ DUK_LOCAL void duk__bi_twoexp(duk__bigint *x, duk_small_int_t y) {
 	n = (y / 32) + 1;
 	DUK_ASSERT(n > 0);
 	r = y % 32;
-	DUK_MEMZERO((void *) x->v, sizeof(duk_uint32_t) * (size_t) n);
+	duk_memzero((void *) x->v, sizeof(duk_uint32_t) * (size_t) n);
 	x->n = n;
 	x->v[n - 1] = (((duk_uint32_t) 1) << r);
 }
@@ -676,6 +674,7 @@ DUK_LOCAL duk_size_t duk__dragon4_format_uint32(duk_uint8_t *buf, duk_uint32_t x
 	duk_small_int_t dig;
 	duk_uint32_t t;
 
+	DUK_ASSERT(buf != NULL);
 	DUK_ASSERT(radix >= 2 && radix <= 36);
 
 	/* A 32-bit unsigned integer formats to at most 32 digits (the
@@ -698,7 +697,7 @@ DUK_LOCAL duk_size_t duk__dragon4_format_uint32(duk_uint8_t *buf, duk_uint32_t x
 	}
 	len = (duk_size_t) ((buf + 32) - p);
 
-	DUK_MEMMOVE((void *) buf, (const void *) p, (size_t) len);
+	duk_memmove((void *) buf, (const void *) p, (size_t) len);
 
 	return len;
 }
@@ -1101,7 +1100,7 @@ DUK_LOCAL void duk__dragon4_generate(duk__numconv_stringify_ctx *nc_ctx) {
 	{
 		duk_uint8_t buf[2048];
 		duk_small_int_t i, t;
-		DUK_MEMZERO(buf, sizeof(buf));
+		duk_memzero(buf, sizeof(buf));
 		for (i = 0; i < nc_ctx->count; i++) {
 			t = nc_ctx->digits[i];
 			if (t < 0 || t > 36) {
@@ -1166,7 +1165,7 @@ DUK_LOCAL duk_small_int_t duk__dragon4_fixed_format_round(duk__numconv_stringify
 			*p = 0;
 			if (p == &nc_ctx->digits[0]) {
 				DUK_DDD(DUK_DDDPRINT("carry propagated to first digit -> special case handling"));
-				DUK_MEMMOVE((void *) (&nc_ctx->digits[1]),
+				duk_memmove((void *) (&nc_ctx->digits[1]),
 				            (const void *) (&nc_ctx->digits[0]),
 				            (size_t) (sizeof(char) * (size_t) nc_ctx->count));
 				nc_ctx->digits[0] = 1;  /* don't increase 'count' */
@@ -1210,7 +1209,7 @@ DUK_LOCAL void duk__dragon4_convert_and_push(duk__numconv_stringify_ctx *nc_ctx,
 	duk_uint8_t *buf;
 
 	/*
-	 *  The string conversion here incorporates all the necessary Ecmascript
+	 *  The string conversion here incorporates all the necessary ECMAScript
 	 *  semantics without attempting to be generic.  nc_ctx->digits contains
 	 *  nc_ctx->count digits (>= 1), with the topmost digit's 'position'
 	 *  indicated by nc_ctx->k as follows:
@@ -1221,11 +1220,11 @@ DUK_LOCAL void duk__dragon4_convert_and_push(duk__numconv_stringify_ctx *nc_ctx,
 	 *    digits="123" count=3 k=-1  -->   0.0123
 	 *
 	 *  Note that the identifier names used for format selection are different
-	 *  in Burger-Dybvig paper and Ecmascript specification (quite confusingly
+	 *  in Burger-Dybvig paper and ECMAScript specification (quite confusingly
 	 *  so, because e.g. 'k' has a totally different meaning in each).  See
 	 *  documentation for discussion.
 	 *
-	 *  Ecmascript doesn't specify any specific behavior for format selection
+	 *  ECMAScript doesn't specify any specific behavior for format selection
 	 *  (e.g. when to use exponent notation) for non-base-10 numbers.
 	 *
 	 *  The bigint space in the context is reused for string output, as there
@@ -1309,7 +1308,7 @@ DUK_LOCAL void duk__dragon4_convert_and_push(duk__numconv_stringify_ctx *nc_ctx,
 	/* Exponent */
 	if (expt != DUK__NO_EXP) {
 		/*
-		 *  Exponent notation for non-base-10 numbers isn't specified in Ecmascript
+		 *  Exponent notation for non-base-10 numbers isn't specified in ECMAScript
 		 *  specification, as it never explicitly turns up: non-decimal numbers can
 		 *  only be formatted with Number.prototype.toString([radix]) and for that,
 		 *  behavior is not explicitly specified.
@@ -1411,7 +1410,7 @@ DUK_LOCAL void duk__dragon4_ctx_to_double(duk__numconv_stringify_ctx *nc_ctx, du
 	 * (perhaps because the low part is set (seemingly) conditionally in a
 	 * loop), so this is here to avoid the bogus warning.
 	 */
-	DUK_MEMZERO((void *) &u, sizeof(u));
+	duk_memzero((void *) &u, sizeof(u));
 
 	/*
 	 *  Figure out how generated digits match up with the mantissa,
@@ -1594,7 +1593,7 @@ DUK_INTERNAL void duk_numconv_stringify(duk_hthread *thr, duk_small_int_t radix,
 	 *  sprintf "%lu" for the fast path and for exponent formatting.
 	 */
 
-	uval = (unsigned int) x;
+	uval = duk_double_to_uint32_t(x);
 	if (((double) uval) == x &&  /* integer number in range */
 	    flags == 0) {            /* no special formatting */
 		/* use bigint area as a temp */
@@ -1626,7 +1625,7 @@ DUK_INTERNAL void duk_numconv_stringify(duk_hthread *thr, duk_small_int_t radix,
 	 * is 1-2 kilobytes and nothing should rely on it being zeroed.
 	 */
 #if 0
-	DUK_MEMZERO((void *) nc_ctx, sizeof(*nc_ctx));  /* slow init, do only for slow path cases */
+	duk_memzero((void *) nc_ctx, sizeof(*nc_ctx));  /* slow init, do only for slow path cases */
 #endif
 
 	nc_ctx->is_s2n = 0;
@@ -1666,7 +1665,7 @@ DUK_INTERNAL void duk_numconv_stringify(duk_hthread *thr, duk_small_int_t radix,
 		}
 		DUK_DDD(DUK_DDDPRINT("count=%ld", (long) count));
 		DUK_ASSERT(count >= 1);
-		DUK_MEMZERO((void *) nc_ctx->digits, (size_t) count);
+		duk_memzero((void *) nc_ctx->digits, (size_t) count);
 		nc_ctx->count = count;
 		nc_ctx->k = 1;  /* 0.000... */
 		neg = 0;
@@ -1746,8 +1745,8 @@ DUK_INTERNAL void duk_numconv_parse(duk_hthread *thr, duk_small_int_t radix, duk
 	duk__numconv_stringify_ctx *nc_ctx = &nc_ctx_alloc;
 	duk_double_t res;
 	duk_hstring *h_str;
-	duk_small_int_t expt;
-	duk_small_int_t expt_neg;
+	duk_int_t expt;
+	duk_bool_t expt_neg;
 	duk_small_int_t expt_adj;
 	duk_small_int_t neg;
 	duk_small_int_t dig;
@@ -1883,7 +1882,7 @@ DUK_INTERNAL void duk_numconv_parse(duk_hthread *thr, duk_small_int_t radix, duk
 	 *  accuracy, so that Dragon4 will generate enough binary output digits.
 	 *  For decimal numbers, this means generating a 20-digit significand,
 	 *  which should yield enough practical accuracy to parse IEEE doubles.
-	 *  In fact, the Ecmascript specification explicitly allows an
+	 *  In fact, the ECMAScript specification explicitly allows an
 	 *  implementation to treat digits beyond 20 as zeroes (and even
 	 *  to round the 20th digit upwards).  For non-decimal numbers, the
 	 *  appropriate number of digits has been precomputed for comparable
@@ -2054,9 +2053,10 @@ DUK_INTERNAL void duk_numconv_parse(duk_hthread *thr, duk_small_int_t radix, duk
 		} else {
 			/* exponent digit */
 
+			DUK_ASSERT(radix == 10);
 			expt = expt * radix + dig;
 			if (expt > DUK_S2N_MAX_EXPONENT) {
-				/* impose a reasonable exponent limit, so that exp
+				/* Impose a reasonable exponent limit, so that exp
 				 * doesn't need to get tracked using a bigint.
 				 */
 				DUK_DDD(DUK_DDDPRINT("parse failed: exponent too large"));
@@ -2259,5 +2259,5 @@ DUK_INTERNAL void duk_numconv_parse(duk_hthread *thr, duk_small_int_t radix, duk
  parse_explimit_error:
 	DUK_DDD(DUK_DDDPRINT("parse failed, internal error, can't return a value"));
 	DUK_ERROR_RANGE(thr, "exponent too large");
-	return;
+	DUK_WO_NORETURN(return;);
 }

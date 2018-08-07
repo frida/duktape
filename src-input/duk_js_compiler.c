@@ -1,5 +1,5 @@
 /*
- *  Ecmascript compiler.
+ *  ECMAScript compiler.
  *
  *  Parses an input string and generates a function template result.
  *  Compilation may happen in multiple contexts (global code, eval
@@ -235,9 +235,9 @@ DUK_LOCAL_DECL void duk__parse_try_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *
 DUK_LOCAL_DECL void duk__parse_with_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res);
 DUK_LOCAL_DECL void duk__parse_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_bool_t allow_source_elem);
 DUK_LOCAL_DECL duk_int_t duk__stmt_label_site(duk_compiler_ctx *comp_ctx, duk_int_t label_id);
-DUK_LOCAL_DECL void duk__parse_stmts(duk_compiler_ctx *comp_ctx, duk_bool_t allow_source_elem, duk_bool_t expect_eof);
+DUK_LOCAL_DECL void duk__parse_stmts(duk_compiler_ctx *comp_ctx, duk_bool_t allow_source_elem, duk_bool_t expect_eof, duk_bool_t regexp_after);
 
-DUK_LOCAL_DECL void duk__parse_func_body(duk_compiler_ctx *comp_ctx, duk_bool_t expect_eof, duk_bool_t implicit_return_value, duk_small_int_t expect_token);
+DUK_LOCAL_DECL void duk__parse_func_body(duk_compiler_ctx *comp_ctx, duk_bool_t expect_eof, duk_bool_t implicit_return_value, duk_bool_t regexp_after, duk_small_int_t expect_token);
 DUK_LOCAL_DECL void duk__parse_func_formals(duk_compiler_ctx *comp_ctx);
 DUK_LOCAL_DECL void duk__parse_func_like_raw(duk_compiler_ctx *comp_ctx, duk_small_uint_t flags);
 DUK_LOCAL_DECL duk_int_t duk__parse_func_like_fnum(duk_compiler_ctx *comp_ctx, duk_small_uint_t flags);
@@ -409,6 +409,7 @@ DUK_LOCAL void duk__comp_recursion_increase(duk_compiler_ctx *comp_ctx) {
 	DUK_ASSERT(comp_ctx->recursion_depth >= 0);
 	if (comp_ctx->recursion_depth >= comp_ctx->recursion_limit) {
 		DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_COMPILER_RECURSION_LIMIT);
+		DUK_WO_NORETURN(return;);
 	}
 	comp_ctx->recursion_depth++;
 }
@@ -463,15 +464,20 @@ DUK_LOCAL void duk__advance_helper(duk_compiler_ctx *comp_ctx, duk_small_int_t e
 		comp_ctx->curr_func.reject_regexp_in_adv = 0;
 		regexp = 0;
 	}
+	if (comp_ctx->curr_func.allow_regexp_in_adv) {
+		comp_ctx->curr_func.allow_regexp_in_adv = 0;
+		regexp = 1;
+	}
 
 	if (expect >= 0 && comp_ctx->curr_token.t != (duk_small_uint_t) expect) {
 		DUK_D(DUK_DPRINT("parse error: expect=%ld, got=%ld",
 		                 (long) expect, (long) comp_ctx->curr_token.t));
 		DUK_ERROR_SYNTAX(thr, DUK_STR_PARSE_ERROR);
+		DUK_WO_NORETURN(return;);
 	}
 
 	/* make current token the previous; need to fiddle with valstack "backing store" */
-	DUK_MEMCPY(&comp_ctx->prev_token, &comp_ctx->curr_token, sizeof(duk_token));
+	duk_memcpy(&comp_ctx->prev_token, &comp_ctx->curr_token, sizeof(duk_token));
 	duk_copy(thr, comp_ctx->tok11_idx, comp_ctx->tok21_idx);
 	duk_copy(thr, comp_ctx->tok12_idx, comp_ctx->tok22_idx);
 
@@ -519,7 +525,7 @@ DUK_LOCAL void duk__init_func_valstack_slots(duk_compiler_ctx *comp_ctx) {
 
 	entry_top = duk_get_top(thr);
 
-	DUK_MEMZERO(func, sizeof(*func));  /* intentional overlap with earlier memzero */
+	duk_memzero(func, sizeof(*func));  /* intentional overlap with earlier memzero */
 #if defined(DUK_USE_EXPLICIT_NULL_INIT)
 	func->h_name = NULL;
 	func->h_consts = NULL;
@@ -766,7 +772,7 @@ DUK_LOCAL void duk__convert_to_func_template(duk_compiler_ctx *comp_ctx) {
 	                     (long) code_size, (long) data_size));
 
 	duk_push_fixed_buffer_nozero(thr, data_size);
-	h_data = (duk_hbuffer_fixed *) duk_known_hbuffer(thr, -1);
+	h_data = (duk_hbuffer_fixed *) (void *) duk_known_hbuffer(thr, -1);
 
 	DUK_HCOMPFUNC_SET_DATA(thr->heap, h_res, (duk_hbuffer *) h_data);
 	DUK_HEAPHDR_INCREF(thr, h_data);
@@ -971,7 +977,7 @@ DUK_LOCAL void duk__convert_to_func_template(duk_compiler_ctx *comp_ctx) {
 		 */
 
 #if 0
-		duk_push_string(thr, "XXX");
+		duk_push_literal(thr, "XXX");
 		duk_xdef_prop_stridx_short(thr, -2, DUK_STRIDX_INT_SOURCE, DUK_PROPDESC_FLAGS_NONE);
 #endif
 	}
@@ -1170,6 +1176,7 @@ DUK_LOCAL void duk__emit(duk_compiler_ctx *comp_ctx, duk_instr_t ins) {
 
   fail_bc_limit:
 	DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_BYTECODE_LIMIT);
+	DUK_WO_NORETURN(return;);
 }
 
 /* Update function min/max line from current token.  Needed to improve
@@ -1454,6 +1461,7 @@ DUK_LOCAL void duk__emit_a_b_c(duk_compiler_ctx *comp_ctx, duk_small_uint_t op_f
 
  error_outofregs:
 	DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_REG_LIMIT);
+	DUK_WO_NORETURN(return;);
 }
 
 /* For many of the helpers below it'd be technically correct to add
@@ -1552,6 +1560,7 @@ DUK_LOCAL void duk__emit_a_bc(duk_compiler_ctx *comp_ctx, duk_small_uint_t op_fl
 
  error_outofregs:
 	DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_REG_LIMIT);
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL void duk__emit_bc(duk_compiler_ctx *comp_ctx, duk_small_uint_t op, duk_regconst_t bc) {
@@ -1586,6 +1595,7 @@ DUK_LOCAL void duk__emit_abc(duk_compiler_ctx *comp_ctx, duk_small_uint_t op, du
 
  error_outofregs:
 	DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_REG_LIMIT);
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL void duk__emit_load_int32_raw(duk_compiler_ctx *comp_ctx, duk_regconst_t reg, duk_int32_t val, duk_small_uint_t op_flags) {
@@ -1683,6 +1693,7 @@ DUK_LOCAL void duk__insert_jump_entry(duk_compiler_ctx *comp_ctx, duk_int_t jump
 
   fail_bc_limit:
 	DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_BYTECODE_LIMIT);
+	DUK_WO_NORETURN(return;);
 }
 
 /* Does not assume that jump_pc contains a DUK_OP_JUMP previously; this is intentional
@@ -1738,6 +1749,7 @@ DUK_LOCAL void duk__patch_trycatch(duk_compiler_ctx *comp_ctx, duk_int_t ldconst
 			DUK_D(DUK_DPRINT("failed to patch trycatch: flags=%ld, reg_catch=%ld, const_varname=%ld (0x%08lx)",
 			                 (long) flags, (long) reg_catch, (long) const_varname, (long) const_varname));
 			DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_REG_LIMIT);
+			DUK_WO_NORETURN(return;);
 		}
 		instr->ins |= DUK_ENC_OP_A_BC(0, 0, const_varname);
 	} else {
@@ -1929,6 +1941,7 @@ DUK_LOCAL duk_regconst_t duk__alloctemps(duk_compiler_ctx *comp_ctx, duk_small_i
 
 	if (comp_ctx->curr_func.temp_next > DUK__MAX_TEMPS) {  /* == DUK__MAX_TEMPS is OK */
 		DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_TEMP_LIMIT);
+		DUK_WO_NORETURN(return 0;);
 	}
 
 	/* maintain highest 'used' temporary, needed to figure out nregs of function */
@@ -1988,6 +2001,7 @@ DUK_LOCAL duk_regconst_t duk__getconst(duk_compiler_ctx *comp_ctx) {
 
 	if (n > DUK__MAX_CONSTS) {
 		DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_CONST_LIMIT);
+		DUK_WO_NORETURN(return 0;);
 	}
 
 	DUK_DDD(DUK_DDDPRINT("allocating new constant for %!T -> const index %ld",
@@ -2161,6 +2175,7 @@ duk_regconst_t duk__ispec_toregconst_raw(duk_compiler_ctx *comp_ctx,
 			}
 		}
 		}  /* end switch */
+		goto fail_internal;  /* never here */
 	}
 	case DUK_ISPEC_REGCONST: {
 		if (forced_reg >= 0) {
@@ -2193,12 +2208,13 @@ duk_regconst_t duk__ispec_toregconst_raw(duk_compiler_ctx *comp_ctx,
 		return x->regconst;
 	}
 	default: {
-		break;
+		break;  /* never here */
 	}
 	}
 
+ fail_internal:
 	DUK_ERROR_INTERNAL(thr);
-	return 0;
+	DUK_WO_NORETURN(return 0;);
 }
 
 DUK_LOCAL void duk__ispec_toforcedreg(duk_compiler_ctx *comp_ctx, duk_ispec *x, duk_regconst_t forced_reg) {
@@ -2271,7 +2287,10 @@ DUK_LOCAL void duk__ivalue_toplain_raw(duk_compiler_ctx *comp_ctx, duk_ivalue *x
 					break;
 				}
 				case DUK_OP_DIV: {
-					d3 = d1 / d2;
+					/* Division-by-zero is undefined
+					 * behavior, so rely on a helper.
+					 */
+					d3 = duk_double_div(d1, d2);
 					break;
 				}
 				case DUK_OP_EXP: {
@@ -2298,7 +2317,7 @@ DUK_LOCAL void duk__ivalue_toplain_raw(duk_compiler_ctx *comp_ctx, duk_ivalue *x
 				}
 			} else if (x->op == DUK_OP_ADD && DUK_TVAL_IS_STRING(tv1) && DUK_TVAL_IS_STRING(tv2)) {
 				/* Inline string concatenation.  No need to check for
-				 * symbols, as all inputs are valid Ecmascript strings.
+				 * symbols, as all inputs are valid ECMAScript strings.
 				 */
 				duk_dup(thr, x->x1.valstack_idx);
 				duk_dup(thr, x->x2.valstack_idx);
@@ -2396,7 +2415,7 @@ DUK_LOCAL void duk__ivalue_toplain_raw(duk_compiler_ctx *comp_ctx, duk_ivalue *x
 	}
 
 	DUK_ERROR_INTERNAL(thr);
-	return;
+	DUK_WO_NORETURN(return;);
 }
 
 /* evaluate to plain value, no forced register (temp/bound reg both ok) */
@@ -2628,6 +2647,7 @@ DUK_LOCAL void duk__add_label(duk_compiler_ctx *comp_ctx, duk_hstring *h_label, 
 
 		if (li->h_label == h_label && h_label != DUK_HTHREAD_STRING_EMPTY_STRING(thr)) {
 			DUK_ERROR_SYNTAX(thr, DUK_STR_DUPLICATE_LABEL);
+			DUK_WO_NORETURN(return;);
 		}
 	}
 
@@ -2757,6 +2777,7 @@ DUK_LOCAL void duk__lookup_active_label(duk_compiler_ctx *comp_ctx, duk_hstring 
 			 */
 			if (h_label != DUK_HTHREAD_STRING_EMPTY_STRING(thr)) {
 				DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_LABEL);
+				DUK_WO_NORETURN(return;);
 			} else {
 				DUK_DDD(DUK_DDDPRINT("continue matched an empty label which does not "
 				                     "allow a continue -> continue lookup deeper in label stack"));
@@ -2766,6 +2787,7 @@ DUK_LOCAL void duk__lookup_active_label(duk_compiler_ctx *comp_ctx, duk_hstring 
 	/* XXX: match flag is awkward, rework */
 	if (!match) {
 		DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_LABEL);
+		DUK_WO_NORETURN(return;);
 	}
 
 	DUK_DDD(DUK_DDDPRINT("label match: %!O -> label_id %ld, catch_depth=%ld, pc_label=%ld",
@@ -2955,6 +2977,7 @@ DUK_LOCAL void duk__nud_array_literal(duk_compiler_ctx *comp_ctx, duk_ivalue *re
 
  syntax_error:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_ARRAY_LITERAL);
+	DUK_WO_NORETURN(return;);
 }
 
 typedef struct {
@@ -3231,13 +3254,14 @@ DUK_LOCAL void duk__nud_object_literal(duk_compiler_ctx *comp_ctx, duk_ivalue *r
 #endif
 
 	DUK_ASSERT(comp_ctx->curr_token.t == DUK_TOK_RCURLY);
-	duk__advance(comp_ctx);
+	duk__advance(comp_ctx);  /* No RegExp after object literal. */
 
 	duk__ivalue_regconst(res, st.reg_obj);
 	return;
 
  syntax_error:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_OBJECT_LITERAL);
+	DUK_WO_NORETURN(return;);
 }
 
 /* Parse argument list.  Arguments are written to temps starting from
@@ -3281,7 +3305,7 @@ DUK_LOCAL duk_int_t duk__parse_arguments(duk_compiler_ctx *comp_ctx, duk_ivalue 
 	}
 
 	/* eat the right paren */
-	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);
+	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);  /* RegExp mode does not matter. */
 
 	DUK_DDD(DUK_DDDPRINT("end parsing arguments"));
 
@@ -3414,7 +3438,7 @@ DUK_LOCAL void duk__expr_nud(duk_compiler_ctx *comp_ctx, duk_ivalue *res) {
 
 		duk__expr(comp_ctx, res, DUK__BP_FOR_EXPR /*rbp_flags*/);  /* Expression, terminates at a ')' */
 
-		duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);
+		duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);  /* No RegExp after parenthesized expression. */
 		comp_ctx->curr_func.allow_in = prev_allow_in;
 		comp_ctx->curr_func.paren_level--;
 		return;
@@ -3549,6 +3573,7 @@ DUK_LOCAL void duk__expr_nud(duk_compiler_ctx *comp_ctx, duk_ivalue *res) {
 
 			if (comp_ctx->curr_func.is_strict) {
 				DUK_ERROR_SYNTAX(thr, DUK_STR_CANNOT_DELETE_IDENTIFIER);
+				DUK_WO_NORETURN(return;);
 			}
 
 			DUK__SETTEMP(comp_ctx, temp_at_entry);
@@ -3713,7 +3738,7 @@ DUK_LOCAL void duk__expr_nud(duk_compiler_ctx *comp_ctx, duk_ivalue *res) {
 	}  /* end switch */
 
 	DUK_ERROR_SYNTAX(thr, DUK_STR_PARSE_ERROR);
-	return;
+	DUK_WO_NORETURN(return;);
 
  unary:
 	{
@@ -3817,10 +3842,12 @@ DUK_LOCAL void duk__expr_nud(duk_compiler_ctx *comp_ctx, duk_ivalue *res) {
 #if defined(DUK_USE_ES6)
  syntax_error_newtarget:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_NEWTARGET);
+	DUK_WO_NORETURN(return;);
 #endif
 
  syntax_error:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_EXPRESSION);
+	DUK_WO_NORETURN(return;);
 }
 
 /* XXX: add flag to indicate whether caller cares about return value; this
@@ -3875,6 +3902,7 @@ DUK_LOCAL void duk__expr_led(duk_compiler_ctx *comp_ctx, duk_ivalue *left, duk_i
 		/* NB: must accept reserved words as property name */
 		if (comp_ctx->curr_token.t_nores != DUK_TOK_IDENTIFIER) {
 			DUK_ERROR_SYNTAX(thr, DUK_STR_EXPECTED_IDENTIFIER);
+			DUK_WO_NORETURN(return;);
 		}
 
 		res->t = DUK_IVAL_PROP;
@@ -4304,7 +4332,7 @@ DUK_LOCAL void duk__expr_led(duk_compiler_ctx *comp_ctx, duk_ivalue *left, duk_i
 
 	DUK_D(DUK_DPRINT("parse error: unexpected token: %ld", (long) tok));
 	DUK_ERROR_SYNTAX(thr, DUK_STR_PARSE_ERROR);
-	return;
+	DUK_WO_NORETURN(return;);
 
 #if 0
 	/* XXX: shared handling for 'duk__expr_lhs'? */
@@ -4534,7 +4562,7 @@ DUK_LOCAL void duk__expr_led(duk_compiler_ctx *comp_ctx, duk_ivalue *left, duk_i
 						 * one instruction, so use explicit PC computation.
 						 */
 						DUK_DD(DUK_DDPRINT("rhs is side effect free, rewind and avoid unnecessary temp for reg-based <op>="));
-						DUK_BW_ADD_PTR(comp_ctx->thr, &comp_ctx->curr_func.bw_code, (duk_size_t) (pc_temp_load - pc_before_rhs) * sizeof(duk_compiler_instr));
+						DUK_BW_ADD_PTR(comp_ctx->thr, &comp_ctx->curr_func.bw_code, (pc_temp_load - pc_before_rhs) * (duk_int_t) sizeof(duk_compiler_instr));
 						reg_src = reg_varbind;
 					} else {
 						DUK_DD(DUK_DDPRINT("rhs evaluation emitted code, not sure if rhs is side effect free; use temp reg for LHS"));
@@ -4794,11 +4822,11 @@ DUK_LOCAL void duk__expr_led(duk_compiler_ctx *comp_ctx, duk_ivalue *left, duk_i
 
  syntax_error:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_EXPRESSION);
-	return;
+	DUK_WO_NORETURN(return;);
 
  syntax_error_lvalue:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_LVALUE);
-	return;
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL duk_small_uint_t duk__expr_lbp(duk_compiler_ctx *comp_ctx) {
@@ -4863,7 +4891,7 @@ DUK_LOCAL void duk__expr(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_small_
 	                     (long) rbp_flags, (long) rbp, (long) comp_ctx->curr_func.allow_in,
 	                     (long) comp_ctx->curr_func.paren_level));
 
-	DUK_MEMZERO(&tmp_alloc, sizeof(tmp_alloc));
+	duk_memzero(&tmp_alloc, sizeof(tmp_alloc));
 	tmp->x1.valstack_idx = duk_get_top(thr);
 	tmp->x2.valstack_idx = tmp->x1.valstack_idx + 1;
 	duk_push_undefined(thr);
@@ -4883,6 +4911,7 @@ DUK_LOCAL void duk__expr(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_small_
 		DUK_DDD(DUK_DDDPRINT("empty expression"));
 		if (!(rbp_flags & DUK__EXPR_FLAG_ALLOW_EMPTY)) {
 			DUK_ERROR_SYNTAX(thr, DUK_STR_EMPTY_EXPR_NOT_ALLOWED);
+			DUK_WO_NORETURN(return;);
 		}
 		duk_push_undefined(thr);
 		duk__ivalue_plain_fromstack(comp_ctx, res);
@@ -4921,6 +4950,7 @@ DUK_LOCAL void duk__exprtop(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_sma
 
 	if (!(rbp_flags & DUK__EXPR_FLAG_ALLOW_EMPTY) && duk__expr_is_empty(comp_ctx)) {
 		DUK_ERROR_SYNTAX(thr, DUK_STR_EMPTY_EXPR_NOT_ALLOWED);
+		DUK_WO_NORETURN(return;);
 	}
 }
 
@@ -5113,6 +5143,7 @@ DUK_LOCAL void duk__parse_var_decl(duk_compiler_ctx *comp_ctx, duk_ivalue *res, 
 
  syntax_error:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_VAR_DECLARATION);
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL void duk__parse_var_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_small_uint_t expr_flags) {
@@ -5344,7 +5375,8 @@ DUK_LOCAL void duk__parse_for_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, 
 		}
 		DUK__SETTEMP(comp_ctx, temp_reset);
 
-		duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);
+		comp_ctx->curr_func.allow_regexp_in_adv = 1;
+		duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);  /* Allow RegExp as part of next stmt. */
 
 		pc_l3 = duk__get_current_pc(comp_ctx);
 		duk__parse_stmt(comp_ctx, res, 0 /*allow_source_elem*/);
@@ -5435,7 +5467,8 @@ DUK_LOCAL void duk__parse_for_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, 
 		pc_jumpto_l4 = duk__emit_jump_empty(comp_ctx);
 		DUK__SETTEMP(comp_ctx, temp_reset);
 
-		duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);
+		comp_ctx->curr_func.allow_regexp_in_adv = 1;
+		duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);  /* Allow RegExp as part of next stmt. */
 
 		pc_l3 = duk__get_current_pc(comp_ctx);
 		duk__parse_stmt(comp_ctx, res, 0 /*allow_source_elem*/);
@@ -5484,6 +5517,7 @@ DUK_LOCAL void duk__parse_for_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, 
 
  syntax_error:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_FOR);
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL void duk__parse_switch_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_int_t pc_label_site) {
@@ -5525,7 +5559,7 @@ DUK_LOCAL void duk__parse_switch_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *re
 	duk__advance(comp_ctx);
 	duk__advance_expect(comp_ctx, DUK_TOK_LPAREN);
 	rc_switch = duk__exprtop_toregconst(comp_ctx, res, DUK__BP_FOR_EXPR /*rbp_flags*/);
-	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);
+	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);  /* RegExp mode does not matter. */
 	duk__advance_expect(comp_ctx, DUK_TOK_LCURLY);
 
 	DUK_DDD(DUK_DDDPRINT("switch value in register %ld", (long) rc_switch));
@@ -5650,7 +5684,8 @@ DUK_LOCAL void duk__parse_switch_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *re
 	}
 
 	DUK_ASSERT(comp_ctx->curr_token.t == DUK_TOK_RCURLY);
-	duk__advance(comp_ctx);
+	comp_ctx->curr_func.allow_regexp_in_adv = 1;
+	duk__advance(comp_ctx);  /* Allow RegExp as part of next stmt. */
 
 	/* default case control flow patchup; note that if pc_prevcase < 0
 	 * (i.e. no case clauses), control enters default case automatically.
@@ -5683,6 +5718,7 @@ DUK_LOCAL void duk__parse_switch_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *re
 
  syntax_error:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_SWITCH);
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL void duk__parse_if_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res) {
@@ -5702,7 +5738,8 @@ DUK_LOCAL void duk__parse_if_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res) {
 	pc_jump_false = duk__emit_jump_empty(comp_ctx);  /* jump to end or else part */
 	DUK__SETTEMP(comp_ctx, temp_reset);
 
-	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);
+	comp_ctx->curr_func.allow_regexp_in_adv = 1;
+	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);  /* Allow RegExp as part of next stmt. */
 
 	duk__parse_stmt(comp_ctx, res, 0 /*allow_source_elem*/);
 
@@ -5738,7 +5775,7 @@ DUK_LOCAL void duk__parse_do_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, d
 
 	DUK_DDD(DUK_DDDPRINT("begin parsing do statement"));
 
-	duk__advance(comp_ctx);  /* eat 'do' */
+	duk__advance(comp_ctx);  /* Eat 'do'; allow RegExp as part of next stmt. */
 
 	pc_start = duk__get_current_pc(comp_ctx);
 	duk__parse_stmt(comp_ctx, res, 0 /*allow_source_elem*/);
@@ -5752,6 +5789,7 @@ DUK_LOCAL void duk__parse_do_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, d
 	duk__emit_jump(comp_ctx, pc_start);
 	/* no need to reset temps, as we're finished emitting code */
 
+	comp_ctx->curr_func.allow_regexp_in_adv = 1;  /* Allow RegExp as part of next stmt. */
 	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);
 
 	duk__patch_jump_here(comp_ctx, pc_label_site + 1);  /* break jump */
@@ -5781,7 +5819,8 @@ DUK_LOCAL void duk__parse_while_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res
 	pc_jump_false = duk__emit_jump_empty(comp_ctx);
 	DUK__SETTEMP(comp_ctx, temp_reset);
 
-	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);
+	comp_ctx->curr_func.allow_regexp_in_adv = 1;
+	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);  /* Allow RegExp as part of next stmt. */
 
 	duk__parse_stmt(comp_ctx, res, 0 /*allow_source_elem*/);
 	duk__emit_jump(comp_ctx, pc_start);
@@ -5817,6 +5856,7 @@ DUK_LOCAL void duk__parse_break_or_continue_stmt(duk_compiler_ctx *comp_ctx, duk
 		duk__advance(comp_ctx);
 	} else {
 		DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_BREAK_CONT_LABEL);
+		DUK_WO_NORETURN(return;);
 	}
 
 	/* Use a fast break/continue when possible.  A fast break/continue is
@@ -5858,6 +5898,7 @@ DUK_LOCAL void duk__parse_return_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *re
 	 */
 	if (!comp_ctx->curr_func.is_function) {
 		DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_RETURN);
+		DUK_WO_NORETURN(return;);
 	}
 
 	if (comp_ctx->curr_token.t == DUK_TOK_SEMICOLON ||  /* explicit semi follows */
@@ -5959,6 +6000,7 @@ DUK_LOCAL void duk__parse_throw_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res
 
 	if (comp_ctx->curr_token.lineterm) {
 		DUK_ERROR_SYNTAX(comp_ctx->thr, DUK_STR_INVALID_THROW);
+		DUK_WO_NORETURN(return;);
 	}
 
 	reg_val = duk__exprtop_toreg(comp_ctx, res, DUK__BP_FOR_EXPR /*rbp_flags*/);
@@ -6015,10 +6057,9 @@ DUK_LOCAL void duk__parse_try_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res) 
 
 	/* try part */
 	duk__advance_expect(comp_ctx, DUK_TOK_LCURLY);
-	duk__parse_stmts(comp_ctx, 0 /*allow_source_elem*/, 0 /*expect_eof*/);
+	duk__parse_stmts(comp_ctx, 0 /*allow_source_elem*/, 0 /*expect_eof*/, 1 /*regexp_after*/);
 	/* the DUK_TOK_RCURLY is eaten by duk__parse_stmts() */
-	duk__emit_op_only(comp_ctx,
-	                  DUK_OP_ENDTRY);
+	duk__emit_op_only(comp_ctx, DUK_OP_ENDTRY);
 
 	if (comp_ctx->curr_token.t == DUK_TOK_CATCH) {
 		/*
@@ -6114,7 +6155,7 @@ DUK_LOCAL void duk__parse_try_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res) 
 		DUK_DDD(DUK_DDDPRINT("varmap before parsing catch clause: %!iT",
 		                     (duk_tval *) duk_get_tval(thr, comp_ctx->curr_func.varmap_idx)));
 
-		duk__parse_stmts(comp_ctx, 0 /*allow_source_elem*/, 0 /*expect_eof*/);
+		duk__parse_stmts(comp_ctx, 0 /*allow_source_elem*/, 0 /*expect_eof*/, 1 /*regexp_after*/);
 		/* the DUK_TOK_RCURLY is eaten by duk__parse_stmts() */
 
 		if (varmap_value == -2) {
@@ -6156,7 +6197,7 @@ DUK_LOCAL void duk__parse_try_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res) 
 		duk__advance(comp_ctx);
 
 		duk__advance_expect(comp_ctx, DUK_TOK_LCURLY);
-		duk__parse_stmts(comp_ctx, 0 /*allow_source_elem*/, 0 /*expect_eof*/);
+		duk__parse_stmts(comp_ctx, 0 /*allow_source_elem*/, 0 /*expect_eof*/, 1 /*regexp_after*/);
 		/* the DUK_TOK_RCURLY is eaten by duk__parse_stmts() */
 		duk__emit_abc(comp_ctx,
 		              DUK_OP_ENDFIN,
@@ -6199,6 +6240,7 @@ DUK_LOCAL void duk__parse_try_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res) 
 
  syntax_error:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_TRY);
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_LOCAL void duk__parse_with_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res) {
@@ -6209,6 +6251,7 @@ DUK_LOCAL void duk__parse_with_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res)
 
 	if (comp_ctx->curr_func.is_strict) {
 		DUK_ERROR_SYNTAX(comp_ctx->thr, DUK_STR_WITH_IN_STRICT_MODE);
+		DUK_WO_NORETURN(return;);
 	}
 
 	comp_ctx->curr_func.catch_depth++;
@@ -6219,7 +6262,8 @@ DUK_LOCAL void duk__parse_with_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res)
 
 	duk__advance_expect(comp_ctx, DUK_TOK_LPAREN);
 	duk__exprtop_toforcedreg(comp_ctx, res, DUK__BP_FOR_EXPR /*rbp_flags*/, reg_catch);
-	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);
+	comp_ctx->curr_func.allow_regexp_in_adv = 1;
+	duk__advance_expect(comp_ctx, DUK_TOK_RPAREN);  /* Allow RegExp as part of next stmt. */
 
 	pc_trycatch = duk__get_current_pc(comp_ctx);
 	trycatch_flags = DUK_BC_TRYCATCH_FLAG_WITH_BINDING;
@@ -6231,8 +6275,7 @@ DUK_LOCAL void duk__parse_with_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res)
 	duk__emit_invalid(comp_ctx);  /* finished jump */
 
 	duk__parse_stmt(comp_ctx, res, 0 /*allow_source_elem*/);
-	duk__emit_op_only(comp_ctx,
-	                  DUK_OP_ENDTRY);
+	duk__emit_op_only(comp_ctx, DUK_OP_ENDTRY);
 
 	pc_finished = duk__get_current_pc(comp_ctx);
 
@@ -6399,13 +6442,14 @@ DUK_LOCAL void duk__parse_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_
 			break;
 		} else {
 			DUK_ERROR_SYNTAX(thr, DUK_STR_FUNC_STMT_NOT_ALLOWED);
+			DUK_WO_NORETURN(return;);
 		}
 		break;
 	}
 	case DUK_TOK_LCURLY: {
 		DUK_DDD(DUK_DDDPRINT("block statement"));
 		duk__advance(comp_ctx);
-		duk__parse_stmts(comp_ctx, 0 /*allow_source_elem*/, 0 /*expect_eof*/);
+		duk__parse_stmts(comp_ctx, 0 /*allow_source_elem*/, 0 /*expect_eof*/, 1 /*regexp_after*/);
 		/* the DUK_TOK_RCURLY is eaten by duk__parse_stmts() */
 		if (label_id >= 0) {
 			duk__patch_jump_here(comp_ctx, pc_at_entry + 1);  /* break jump */
@@ -6659,7 +6703,7 @@ DUK_LOCAL void duk__parse_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_
 				 */
 
 				if (DUK_HSTRING_GET_BYTELEN(h_dir) == 10 &&
-				    DUK_STRNCMP((const char *) DUK_HSTRING_GET_DATA(h_dir), "use strict", 10) == 0) {
+				    DUK_STRCMP((const char *) DUK_HSTRING_GET_DATA(h_dir), "use strict") == 0) {
 #if defined(DUK_USE_STRICT_DECL)
 					DUK_DDD(DUK_DDDPRINT("use strict directive detected: strict flag %ld -> %ld",
 					                     (long) comp_ctx->curr_func.is_strict, (long) 1));
@@ -6668,7 +6712,7 @@ DUK_LOCAL void duk__parse_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_
 					DUK_DDD(DUK_DDDPRINT("use strict detected but strict declarations disabled, ignoring"));
 #endif
 				} else if (DUK_HSTRING_GET_BYTELEN(h_dir) == 14 &&
-				           DUK_STRNCMP((const char *) DUK_HSTRING_GET_DATA(h_dir), "use duk notail", 14) == 0) {
+				           DUK_STRCMP((const char *) DUK_HSTRING_GET_DATA(h_dir), "use duk notail") == 0) {
 					DUK_DDD(DUK_DDDPRINT("use duk notail directive detected: notail flag %ld -> %ld",
 					                     (long) comp_ctx->curr_func.is_notail, (long) 1));
 					comp_ctx->curr_func.is_notail = 1;
@@ -6736,6 +6780,7 @@ DUK_LOCAL void duk__parse_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_
 				                     "even though no lineterm present before next token)"));
 			} else {
 				DUK_ERROR_SYNTAX(thr, DUK_STR_UNTERMINATED_STMT);
+				DUK_WO_NORETURN(return;);
 			}
 		}
 	} else {
@@ -6784,7 +6829,7 @@ DUK_LOCAL void duk__parse_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_
  *  (EOF or closing brace).
  */
 
-DUK_LOCAL void duk__parse_stmts(duk_compiler_ctx *comp_ctx, duk_bool_t allow_source_elem, duk_bool_t expect_eof) {
+DUK_LOCAL void duk__parse_stmts(duk_compiler_ctx *comp_ctx, duk_bool_t allow_source_elem, duk_bool_t expect_eof, duk_bool_t regexp_after) {
 	duk_hthread *thr = comp_ctx->thr;
 	duk_ivalue res_alloc;
 	duk_ivalue *res = &res_alloc;
@@ -6798,7 +6843,7 @@ DUK_LOCAL void duk__parse_stmts(duk_compiler_ctx *comp_ctx, duk_bool_t allow_sou
 	 * for nested functions (which may occur inside expressions).
 	 */
 
-	DUK_MEMZERO(&res_alloc, sizeof(res_alloc));
+	duk_memzero(&res_alloc, sizeof(res_alloc));
 	res->t = DUK_IVAL_PLAIN;
 	res->x1.t = DUK_ISPEC_VALUE;
 	res->x1.valstack_idx = duk_get_top(thr);
@@ -6832,6 +6877,15 @@ DUK_LOCAL void duk__parse_stmts(duk_compiler_ctx *comp_ctx, duk_bool_t allow_sou
 		duk__parse_stmt(comp_ctx, res, allow_source_elem);
 	}
 
+	/* RegExp is allowed / not allowed depending on context.  For function
+	 * declarations RegExp is allowed because it follows a function
+	 * declaration statement and may appear as part of the next statement.
+	 * For function expressions RegExp is not allowed, and it's possible
+	 * to do something like '(function () {} / 123)'.
+	 */
+	if (regexp_after) {
+		comp_ctx->curr_func.allow_regexp_in_adv = 1;
+	}
 	duk__advance(comp_ctx);
 
 	/* Tear down state. */
@@ -7155,13 +7209,11 @@ DUK_LOCAL void duk__init_varmap_and_prologue_for_pass2(duk_compiler_ctx *comp_ct
 
  error_outofregs:
 	DUK_ERROR_RANGE(thr, DUK_STR_REG_LIMIT);
-	DUK_UNREACHABLE();
-	return;
+	DUK_WO_NORETURN(return;);
 
  error_argname:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_ARG_NAME);
-	DUK_UNREACHABLE();
-	return;
+	DUK_WO_NORETURN(return;);
 }
 
 /*
@@ -7198,7 +7250,7 @@ DUK_LOCAL void duk__init_varmap_and_prologue_for_pass2(duk_compiler_ctx *comp_ct
  *  token (EOF or closing brace).
  */
 
-DUK_LOCAL void duk__parse_func_body(duk_compiler_ctx *comp_ctx, duk_bool_t expect_eof, duk_bool_t implicit_return_value, duk_small_int_t expect_token) {
+DUK_LOCAL void duk__parse_func_body(duk_compiler_ctx *comp_ctx, duk_bool_t expect_eof, duk_bool_t implicit_return_value, duk_bool_t regexp_after, duk_small_int_t expect_token) {
 	duk_compiler_func *func;
 	duk_hthread *thr;
 	duk_regconst_t reg_stmt_value = -1;
@@ -7270,7 +7322,9 @@ DUK_LOCAL void duk__parse_func_body(duk_compiler_ctx *comp_ctx, duk_bool_t expec
 	func->max_line = 0;
 #endif
 
-	/* duk__parse_stmts() expects curr_tok to be set; parse in "allow regexp literal" mode with current strictness */
+	/* duk__parse_stmts() expects curr_tok to be set; parse in "allow
+	 * regexp literal" mode with current strictness.
+	 */
 	if (expect_token >= 0) {
 		/* Eating a left curly; regexp mode is allowed by left curly
 		 * based on duk__token_lbp[] automatically.
@@ -7289,7 +7343,8 @@ DUK_LOCAL void duk__parse_func_body(duk_compiler_ctx *comp_ctx, duk_bool_t expec
 	DUK_DDD(DUK_DDDPRINT("begin 1st pass"));
 	duk__parse_stmts(comp_ctx,
 	                 1,             /* allow source elements */
-	                 expect_eof);   /* expect EOF instead of } */
+	                 expect_eof,    /* expect EOF instead of } */
+	                 regexp_after); /* regexp after */
 	DUK_DDD(DUK_DDDPRINT("end 1st pass"));
 
 	/*
@@ -7396,7 +7451,8 @@ DUK_LOCAL void duk__parse_func_body(duk_compiler_ctx *comp_ctx, duk_bool_t expec
 		DUK_DDD(DUK_DDDPRINT("begin 2nd pass"));
 		duk__parse_stmts(comp_ctx,
 		                 1,             /* allow source elements */
-		                 expect_eof);   /* expect EOF instead of } */
+		                 expect_eof,    /* expect EOF instead of } */
+		                 regexp_after); /* regexp after */
 		DUK_DDD(DUK_DDDPRINT("end 2nd pass"));
 
 		duk__update_lineinfo_currtoken(comp_ctx);
@@ -7409,6 +7465,7 @@ DUK_LOCAL void duk__parse_func_body(duk_compiler_ctx *comp_ctx, duk_bool_t expec
 			/* Should never happen but avoid infinite loop just in case. */
 			DUK_D(DUK_DPRINT("more than 3 compile passes needed, should never happen"));
 			DUK_ERROR_INTERNAL(thr);
+			DUK_WO_NORETURN(return;);
 		}
 		DUK_D(DUK_DPRINT("need additional round to compile function, round now %d", (int) compile_round));
 	}
@@ -7452,6 +7509,7 @@ DUK_LOCAL void duk__parse_func_body(duk_compiler_ctx *comp_ctx, duk_bool_t expec
 
  error_funcname:
 	DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_FUNC_NAME);
+	DUK_WO_NORETURN(return;);
 }
 
 /*
@@ -7500,6 +7558,7 @@ DUK_LOCAL void duk__parse_func_formals(duk_compiler_ctx *comp_ctx) {
 
 		if (comp_ctx->curr_token.t != DUK_TOK_IDENTIFIER) {
 			DUK_ERROR_SYNTAX(thr, DUK_STR_EXPECTED_IDENTIFIER);
+			DUK_WO_NORETURN(return;);
 		}
 		DUK_ASSERT(comp_ctx->curr_token.t == DUK_TOK_IDENTIFIER);
 		DUK_ASSERT(comp_ctx->curr_token.str1 != NULL);
@@ -7565,6 +7624,7 @@ DUK_LOCAL void duk__parse_func_like_raw(duk_compiler_ctx *comp_ctx, duk_small_ui
 			duk_to_string(thr, -1);
 		} else {
 			DUK_ERROR_SYNTAX(thr, DUK_STR_INVALID_GETSET_NAME);
+			DUK_WO_NORETURN(return;);
 		}
 		comp_ctx->curr_func.h_name = duk_known_hstring(thr, -1);  /* borrowed reference */
 	} else {
@@ -7582,6 +7642,7 @@ DUK_LOCAL void duk__parse_func_like_raw(duk_compiler_ctx *comp_ctx, duk_small_ui
 			no_advance = 1;
 			if (flags & DUK__FUNC_FLAG_DECL) {
 				DUK_ERROR_SYNTAX(thr, DUK_STR_FUNC_NAME_REQUIRED);
+				DUK_WO_NORETURN(return;);
 			}
 		}
 	}
@@ -7615,6 +7676,7 @@ DUK_LOCAL void duk__parse_func_like_raw(duk_compiler_ctx *comp_ctx, duk_small_ui
 	duk__parse_func_body(comp_ctx,
 	                     0,   /* expect_eof */
 	                     0,   /* implicit_return_value */
+	                     flags & DUK__FUNC_FLAG_DECL, /* regexp_after */
 	                     DUK_TOK_LCURLY);  /* expect_token */
 
 	/*
@@ -7667,6 +7729,14 @@ DUK_LOCAL duk_int_t duk__parse_func_like_fnum(duk_compiler_ctx *comp_ctx, duk_sm
 		comp_ctx->curr_token.t = 0;  /* this is needed for regexp mode */
 		comp_ctx->curr_token.start_line = 0;  /* needed for line number tracking (becomes prev_token.start_line) */
 		duk__advance(comp_ctx);
+
+		/* RegExp is not allowed after a function expression, e.g. in
+		 * (function () {} / 123).  A RegExp *is* allowed after a
+		 * function declaration!
+		 */
+		if (flags & DUK__FUNC_FLAG_DECL) {
+			comp_ctx->curr_func.allow_regexp_in_adv = 1;
+		}
 		duk__advance_expect(comp_ctx, DUK_TOK_RCURLY);
 
 		return fnum;
@@ -7681,9 +7751,9 @@ DUK_LOCAL duk_int_t duk__parse_func_like_fnum(duk_compiler_ctx *comp_ctx, duk_sm
 	DUK_DDD(DUK_DDDPRINT("before func: entry_top=%ld, curr_tok.start_offset=%ld",
 	                     (long) entry_top, (long) comp_ctx->curr_token.start_offset));
 
-	DUK_MEMCPY(&old_func, &comp_ctx->curr_func, sizeof(duk_compiler_func));
+	duk_memcpy(&old_func, &comp_ctx->curr_func, sizeof(duk_compiler_func));
 
-	DUK_MEMZERO(&comp_ctx->curr_func, sizeof(duk_compiler_func));
+	duk_memzero(&comp_ctx->curr_func, sizeof(duk_compiler_func));
 	duk__init_func_valstack_slots(comp_ctx);
 	DUK_ASSERT(comp_ctx->curr_func.num_formals == 0);
 
@@ -7725,6 +7795,7 @@ DUK_LOCAL duk_int_t duk__parse_func_like_fnum(duk_compiler_ctx *comp_ctx, duk_sm
 
 	if (fnum > DUK__MAX_FUNCS) {
 		DUK_ERROR_RANGE(comp_ctx->thr, DUK_STR_FUNC_LIMIT);
+		DUK_WO_NORETURN(return 0;);
 	}
 
 	/* array writes autoincrement length */
@@ -7749,7 +7820,7 @@ DUK_LOCAL duk_int_t duk__parse_func_like_fnum(duk_compiler_ctx *comp_ctx, duk_sm
 	} else {
 		duk_set_top(thr, entry_top);
 	}
-	DUK_MEMCPY((void *) &comp_ctx->curr_func, (void *) &old_func, sizeof(duk_compiler_func));
+	duk_memcpy((void *) &comp_ctx->curr_func, (void *) &old_func, sizeof(duk_compiler_func));
 
 	return fnum;
 }
@@ -7758,7 +7829,7 @@ DUK_LOCAL duk_int_t duk__parse_func_like_fnum(duk_compiler_ctx *comp_ctx, duk_sm
  *  Compile input string into an executable function template without
  *  arguments.
  *
- *  The string is parsed as the "Program" production of Ecmascript E5.
+ *  The string is parsed as the "Program" production of ECMAScript E5.
  *  Compilation context can be either global code or eval code (see E5
  *  Sections 14 and 15.1.2.1).
  *
@@ -7899,6 +7970,7 @@ DUK_LOCAL duk_ret_t duk__js_compile_raw(duk_hthread *thr, void *udata) {
 		duk__parse_func_body(comp_ctx,
 		                     1,             /* expect_eof */
 		                     1,             /* implicit_return_value */
+		                     1,             /* regexp_after (does not matter) */
 		                     -1);           /* expect_token */
 	}
 
@@ -7926,7 +7998,7 @@ DUK_INTERNAL void duk_js_compile(duk_hthread *thr, const duk_uint8_t *src_buffer
 	DUK_ASSERT(src_buffer != NULL);
 
 	/* preinitialize lexer state partially */
-	DUK_MEMZERO(&comp_stk, sizeof(comp_stk));
+	duk_memzero(&comp_stk, sizeof(comp_stk));
 	comp_stk.flags = flags;
 	DUK_LEXER_INITCTX(&comp_stk.comp_ctx_alloc.lex);
 	comp_stk.comp_ctx_alloc.lex.input = src_buffer;
@@ -7943,6 +8015,7 @@ DUK_INTERNAL void duk_js_compile(duk_hthread *thr, const duk_uint8_t *src_buffer
 	if (safe_rc != DUK_EXEC_SUCCESS) {
 		DUK_D(DUK_DPRINT("compilation failed: %!T", duk_get_tval(thr, -1)));
 		(void) duk_throw(thr);
+		DUK_WO_NORETURN(return;);
 	}
 
 	/* [ ... template ] */

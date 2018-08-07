@@ -58,7 +58,7 @@ DUK_INTERNAL void duk_hobject_pc2line_pack(duk_hthread *thr, duk_compiler_instr 
 		                     (long) hdr[hdr_index + 1]));
 #endif
 
-		DUK_MEMZERO(be_ctx, sizeof(*be_ctx));
+		duk_memzero(be_ctx, sizeof(*be_ctx));
 		be_ctx->data = ((duk_uint8_t *) hdr) + curr_offset;
 		be_ctx->length = (duk_size_t) DUK_PC2LINE_MAX_DIFF_LENGTH;
 
@@ -169,7 +169,7 @@ DUK_LOCAL duk_uint_fast32_t duk__hobject_pc2line_query_raw(duk_hthread *thr, duk
 	 *  Iterate the bitstream (line diffs) until PC is reached
 	 */
 
-	DUK_MEMZERO(bd_ctx, sizeof(*bd_ctx));
+	duk_memzero(bd_ctx, sizeof(*bd_ctx));
 	bd_ctx->data = ((duk_uint8_t *) hdr) + start_offset;
 	bd_ctx->length = (duk_size_t) (DUK_HBUFFER_FIXED_GET_SIZE(buf) - start_offset);
 
@@ -229,7 +229,7 @@ DUK_INTERNAL duk_uint_fast32_t duk_hobject_pc2line_query(duk_hthread *thr, duk_i
 	 */
 
 	duk_get_prop_stridx(thr, idx_func, DUK_STRIDX_INT_PC2LINE);
-	pc2line = (duk_hbuffer_fixed *) duk_get_hbuffer(thr, -1);
+	pc2line = (duk_hbuffer_fixed *) (void *) duk_get_hbuffer(thr, -1);
 	if (pc2line != NULL) {
 		DUK_ASSERT(!DUK_HBUFFER_HAS_DYNAMIC((duk_hbuffer *) pc2line) && !DUK_HBUFFER_HAS_EXTERNAL((duk_hbuffer *) pc2line));
 		line = duk__hobject_pc2line_query_raw(thr, pc2line, (duk_uint_fast32_t) pc);

@@ -31,27 +31,27 @@
 # A few commands which may need to be edited.  NodeJS is sometimes found
 # as 'nodejs', sometimes as 'node'; sometimes 'node' is unrelated to NodeJS
 # so check 'nodejs' first.
-GIT:=$(shell command -v git 2>/dev/null)
-NODE:=$(shell { command -v nodejs || command -v node; } 2>/dev/null)
-WGET:=$(shell command -v wget 2>/dev/null)
-JAVA:=$(shell command -v java 2>/dev/null)
-VALGRIND:=$(shell command -v valgrind 2>/dev/null)
-PYTHON:=$(shell { command -v python2 || command -v python; } 2>/dev/null)
+GIT := $(shell command -v git 2>/dev/null)
+NODE := $(shell { command -v nodejs || command -v node; } 2>/dev/null)
+WGET := $(shell command -v wget 2>/dev/null)
+JAVA := $(shell command -v java 2>/dev/null)
+VALGRIND := $(shell command -v valgrind 2>/dev/null)
+PYTHON := $(shell { command -v python2 || command -v python; } 2>/dev/null)
 
 # Scrape version from the public header; convert from e.g. 10203 -> '1.2.3'
-DUK_VERSION:=$(shell cat src-input/duktape.h.in | grep 'define ' | grep DUK_VERSION | tr -s ' ' ' ' | cut -d ' ' -f 3 | tr -d 'L')
-DUK_MAJOR:=$(shell echo "$(DUK_VERSION) / 10000" | bc)
-DUK_MINOR:=$(shell echo "$(DUK_VERSION) % 10000 / 100" | bc)
-DUK_PATCH:=$(shell echo "$(DUK_VERSION) % 100" | bc)
-DUK_VERSION_FORMATTED:=$(DUK_MAJOR).$(DUK_MINOR).$(DUK_PATCH)
-GIT_BRANCH:=$(shell git rev-parse --abbrev-ref HEAD)
-GIT_DESCRIBE:=$(shell git describe --always --dirty)
+DUK_VERSION := $(shell cat src-input/duktape.h.in | grep 'define ' | grep DUK_VERSION | tr -s ' ' ' ' | cut -d ' ' -f 3 | tr -d 'L')
+DUK_MAJOR := $(shell echo "$(DUK_VERSION) / 10000" | bc)
+DUK_MINOR := $(shell echo "$(DUK_VERSION) % 10000 / 100" | bc)
+DUK_PATCH := $(shell echo "$(DUK_VERSION) % 100" | bc)
+DUK_VERSION_FORMATTED := $(DUK_MAJOR).$(DUK_MINOR).$(DUK_PATCH)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+GIT_DESCRIBE := $(shell git describe --always --dirty)
 ifeq ($(GIT_BRANCH),master)
-GIT_INFO:=$(GIT_DESCRIBE)
+GIT_INFO := $(GIT_DESCRIBE)
 else
-GIT_INFO:=$(GIT_DESCRIBE)-$(GIT_BRANCH)
+GIT_INFO := $(GIT_DESCRIBE)-$(GIT_BRANCH)
 endif
-BUILD_DATETIME:=$(shell date +%Y%m%d%H%M%S)
+BUILD_DATETIME := $(shell date +%Y%m%d%H%M%S)
 
 # Source lists.
 DUKTAPE_CMDLINE_SOURCES = \
@@ -62,7 +62,8 @@ DUKTAPE_CMDLINE_SOURCES = \
 	extras/print-alert/duk_print_alert.c \
 	extras/console/duk_console.c \
 	extras/logging/duk_logging.c \
-	extras/module-duktape/duk_module_duktape.c
+	extras/module-duktape/duk_module_duktape.c \
+	extras/cbor/duk_cbor.c
 ifdef SYSTEMROOT  # Windows
 DUKTAPE_CMDLINE_SOURCES += examples/debug-trans-socket/duk_trans_socket_windows.c
 else
@@ -75,39 +76,40 @@ LINENOISE_SOURCES = linenoise/linenoise.c
 endif
 
 # Configure.py options for a few configuration profiles needed.
-CONFIGOPTS_NONDEBUG=--option-file util/makeduk_base.yaml
-CONFIGOPTS_NONDEBUG_SCANBUILD=--option-file util/makeduk_base.yaml --option-file util/makeduk_scanbuild.yaml
-CONFIGOPTS_NONDEBUG_PERF=--option-file config/examples/performance_sensitive.yaml
-CONFIGOPTS_NONDEBUG_SIZE=--option-file config/examples/low_memory.yaml
-CONFIGOPTS_NONDEBUG_ROM=--rom-support --rom-auto-lightfunc --option-file util/makeduk_base.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX
-CONFIGOPTS_NONDEBUG_DUKLOW=--option-file config/examples/low_memory.yaml --option-file util/makeduk_duklow.yaml --fixup-file util/makeduk_duklow_fixup.h
-CONFIGOPTS_DEBUG_DUKLOW=$(CONFIGOPTS_NONDEBUG_DUKLOW) -DDUK_USE_ASSERTIONS -DDUK_USE_SELF_TESTS
-CONFIGOPTS_NONDEBUG_DUKLOW_ROM=--rom-support --rom-auto-lightfunc --option-file config/examples/low_memory.yaml --option-file util/makeduk_duklow.yaml --fixup-file util/makeduk_duklow_fixup.h --builtin-file util/example_user_builtins1.yaml --builtin-file util/example_user_builtins2.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX -UDUK_USE_DEBUG
-CONFIGOPTS_DEBUG_DUKLOW_ROM=$(CONFIGOPTS_NONDEBUG_DUKLOW_ROM) -DDUK_USE_ASSERTIONS -DDUK_USE_SELF_TESTS
-CONFIGOPTS_NONDEBUG_DUKLOW_NOREFC=--option-file config/examples/low_memory.yaml --option-file util/makeduk_duklow.yaml --fixup-file util/makeduk_duklow_fixup.h -UDUK_USE_REFERENCE_COUNTING -UDUK_USE_DOUBLE_LINKED_HEAP
-CONFIGOPTS_DEBUG_DUKLOW_NOREFC=$(CONFIGOPTS_NONDEBUG_DUKLOW_NOREFC) -DDUK_USE_ASSERTIONS -DDUK_USE_SELF_TESTS
-CONFIGOPTS_DEBUG=--option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml
-CONFIGOPTS_DEBUG_SCANBUILD=--option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml --option-file util/makeduk_scanbuild.yaml
-CONFIGOPTS_DEBUG_ROM=--rom-support --rom-auto-lightfunc --option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX
-CONFIGOPTS_EMDUK=-UDUK_USE_FASTINT -UDUK_USE_PACKED_TVAL
-CONFIGOPTS_DUKWEB=--option-file util/dukweb_base.yaml --fixup-file util/dukweb_fixup.h
+CONFIGOPTS_NONDEBUG = --option-file util/makeduk_base.yaml
+CONFIGOPTS_NONDEBUG_SCANBUILD = --option-file util/makeduk_base.yaml --option-file util/makeduk_scanbuild.yaml
+CONFIGOPTS_NONDEBUG_PERF = --option-file config/examples/performance_sensitive.yaml
+CONFIGOPTS_NONDEBUG_SIZE = --option-file config/examples/low_memory.yaml
+CONFIGOPTS_NONDEBUG_ROM = --rom-support --rom-auto-lightfunc --option-file util/makeduk_base.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX
+CONFIGOPTS_NONDEBUG_DUKLOW = --option-file config/examples/low_memory.yaml --option-file util/makeduk_duklow.yaml --fixup-file util/makeduk_duklow_fixup.h
+CONFIGOPTS_DEBUG_DUKLOW = $(CONFIGOPTS_NONDEBUG_DUKLOW) -DDUK_USE_ASSERTIONS -DDUK_USE_SELF_TESTS
+CONFIGOPTS_NONDEBUG_DUKLOW_ROM = --rom-support --rom-auto-lightfunc --option-file config/examples/low_memory.yaml --option-file util/makeduk_duklow.yaml --fixup-file util/makeduk_duklow_fixup.h --builtin-file util/example_user_builtins1.yaml --builtin-file util/example_user_builtins2.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX -UDUK_USE_DEBUG
+CONFIGOPTS_DEBUG_DUKLOW_ROM = $(CONFIGOPTS_NONDEBUG_DUKLOW_ROM) -DDUK_USE_ASSERTIONS -DDUK_USE_SELF_TESTS
+CONFIGOPTS_NONDEBUG_DUKLOW_NOREFC = --option-file config/examples/low_memory.yaml --option-file util/makeduk_duklow.yaml --fixup-file util/makeduk_duklow_fixup.h -UDUK_USE_REFERENCE_COUNTING -UDUK_USE_DOUBLE_LINKED_HEAP
+CONFIGOPTS_DEBUG_DUKLOW_NOREFC = $(CONFIGOPTS_NONDEBUG_DUKLOW_NOREFC) -DDUK_USE_ASSERTIONS -DDUK_USE_SELF_TESTS
+CONFIGOPTS_DEBUG = --option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml
+CONFIGOPTS_DEBUG_SCANBUILD = --option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml --option-file util/makeduk_scanbuild.yaml
+CONFIGOPTS_DEBUG_ROM = --rom-support --rom-auto-lightfunc --option-file util/makeduk_base.yaml --option-file util/makeduk_debug.yaml -DDUK_USE_ROM_STRINGS -DDUK_USE_ROM_OBJECTS -DDUK_USE_ROM_GLOBAL_INHERIT -UDUK_USE_HSTRING_ARRIDX
+CONFIGOPTS_EMDUK = -UDUK_USE_FASTINT -UDUK_USE_PACKED_TVAL
+CONFIGOPTS_DUKWEB = --option-file util/dukweb_base.yaml --fixup-file util/dukweb_fixup.h
 
 # Profile guided optimization test set.
-PGO_TEST_SET=\
+PGO_TEST_SET = \
 	tests/ecmascript/test-dev-mandel2-func.js \
 	tests/ecmascript/test-dev-totp.js \
 	tests/perf/test-fib.js \
 	tests/ecmascript/test-regexp-ipv6-regexp.js
 
 # Compiler setup for Linux.
-CC	= gcc
-GXX	= g++
+CC = gcc
+GXX = g++
 
 CCOPTS_SHARED =
 CCOPTS_SHARED += -DDUK_CMDLINE_PRINTALERT_SUPPORT
 CCOPTS_SHARED += -DDUK_CMDLINE_CONSOLE_SUPPORT
 CCOPTS_SHARED += -DDUK_CMDLINE_LOGGING_SUPPORT
 CCOPTS_SHARED += -DDUK_CMDLINE_MODULE_SUPPORT
+CCOPTS_SHARED += -DDUK_CMDLINE_CBOR_SUPPORT
 ifdef SYSTEMROOT  # Windows
 # Skip fancy (linenoise)
 else
@@ -124,12 +126,14 @@ CCOPTS_SHARED += -pedantic -ansi -std=c99 -fstrict-aliasing
 # -Wextra is very picky but catches e.g. signed/unsigned comparisons
 CCOPTS_SHARED += -Wall -Wextra -Wunused-result -Wdeclaration-after-statement -Wunused-function
 CCOPTS_SHARED += -Wcast-qual
+CCOPTS_SHARED += -Wcast-align
 CCOPTS_SHARED += -Wshadow
 CCOPTS_SHARED += -Wunreachable-code  # on some compilers unreachable code is an error
 CCOPTS_SHARED += -Wmissing-prototypes
 # -Wfloat-equal is too picky, there's no apparent way to compare floats
 # (even when you know it's safe) without triggering warnings
 CCOPTS_SHARED += -Wsign-conversion
+CCOPTS_SHARED += -Wsuggest-attribute=noreturn
 CCOPTS_SHARED += -fmax-errors=3  # prevent floods of errors if e.g. parenthesis missing
 CCOPTS_SHARED += -I./linenoise
 CCOPTS_SHARED += -I./examples/cmdline
@@ -141,6 +145,7 @@ CCOPTS_SHARED += -I./extras/print-alert
 CCOPTS_SHARED += -I./extras/console
 CCOPTS_SHARED += -I./extras/logging
 CCOPTS_SHARED += -I./extras/module-duktape
+CCOPTS_SHARED += -I./extras/cbor
 #CCOPTS_SHARED += -m32   # force 32-bit compilation on a 64-bit host
 #CCOPTS_SHARED += -mx32  # force X32 compilation on a 64-bit host
 #CCOPTS_SHARED += -fstack-usage  # enable manually, then e.g. $ make clean duk; python util/pretty_stack_usage.py duktape.su
@@ -148,6 +153,7 @@ CCOPTS_SHARED += -I./extras/module-duktape
 CCOPTS_NONDEBUG = $(CCOPTS_SHARED) $(CCOPTS_FEATURES)
 CCOPTS_NONDEBUG += -Os -fomit-frame-pointer -fno-stack-protector
 CCOPTS_NONDEBUG += -g -ggdb
+#CCOPTS_NONDEBUG += -malign-double
 
 CCOPTS_DEBUG = $(CCOPTS_SHARED) $(CCOPTS_FEATURES)
 CCOPTS_DEBUG += -O0
@@ -156,13 +162,14 @@ CCOPTS_DEBUG += -g -ggdb
 CLANG_CCOPTS_NONDEBUG = $(CCOPTS_NONDEBUG)
 CLANG_CCOPTS_NONDEBUG += -Wshorten-64-to-32
 CLANG_CCOPTS_NONDEBUG += -Wcomma
+#CLANG_CCOPTS_NONDEBUG += -fsanitize=undefined
 
 GXXOPTS_SHARED = -pedantic -ansi -std=c++11 -fstrict-aliasing -Wall -Wextra -Wunused-result -Wunused-function
 GXXOPTS_SHARED += -DDUK_CMDLINE_PRINTALERT_SUPPORT
 GXXOPTS_NONDEBUG = $(GXXOPTS_SHARED) -Os -fomit-frame-pointer
-GXXOPTS_NONDEBUG += -I./examples/alloc-logging -I./examples/alloc-torture -I./examples/alloc-hybrid -I./extras/print-alert -I./extras/console -I./extras/logging -I./extras/module-duktape
+GXXOPTS_NONDEBUG += -I./examples/alloc-logging -I./examples/alloc-torture -I./examples/alloc-hybrid -I./extras/print-alert -I./extras/console -I./extras/logging -I./extras/module-duktape -I./extras/cbor
 GXXOPTS_DEBUG = $(GXXOPTS_SHARED) -O0 -g -ggdb
-GXXOPTS_DEBUG += -I./examples/alloc-logging -I./examples/alloc-torture -I./examples/alloc-hybrid -I./extras/print-alert -I./extras/console -I./extras/logging -I./extras/module-duktape
+GXXOPTS_DEBUG += -I./examples/alloc-logging -I./examples/alloc-torture -I./examples/alloc-hybrid -I./extras/print-alert -I./extras/console -I./extras/logging -I./extras/module-duktape -I./extras/cbor
 
 CCOPTS_DUKLOW = -m32
 CCOPTS_DUKLOW += -flto -fno-asynchronous-unwind-tables -ffunction-sections -Wl,--gc-sections
@@ -196,18 +203,18 @@ endif
 #
 # Reducing the TOTAL_MEMORY and TOTAL_STACK values is useful if you run
 # Duktape cmdline with resource limits (i.e. "duk -r test.js").
-#EMCCOPTS=-s TOTAL_MEMORY=2097152 -s TOTAL_STACK=524288 --memory-init-file 0
-EMCCOPTS=-O2 -std=c99 -Wall --memory-init-file 0
-EMCCOPTS_DUKVM=-O2 -std=c99 -Wall --memory-init-file 0 -DEMSCRIPTEN
-EMCCOPTS_DUKWEB_EXPORT=-s EXPORTED_FUNCTIONS='["_dukweb_is_open", "_dukweb_open","_dukweb_close","_dukweb_eval"]'
-EMDUKOPTS=-s TOTAL_MEMORY=268435456 -DDUK_CMDLINE_PRINTALERT_SUPPORT
-EMDUKOPTS+=-DEMSCRIPTEN  # enable stdin workaround in duk_cmdline.c
+#EMCCOPTS = -s TOTAL_MEMORY=2097152 -s TOTAL_STACK=524288 --memory-init-file 0
+EMCCOPTS = -O2 -std=c99 -Wall --memory-init-file 0
+EMCCOPTS_DUKVM = -O2 -std=c99 -Wall --memory-init-file 0 -DEMSCRIPTEN
+EMCCOPTS_DUKWEB_EXPORT = -s EXPORTED_FUNCTIONS='["_dukweb_is_open", "_dukweb_open","_dukweb_close","_dukweb_eval"]'
+EMDUKOPTS = -s TOTAL_MEMORY=268435456 -DDUK_CMDLINE_PRINTALERT_SUPPORT
+EMDUKOPTS += -DEMSCRIPTEN  # enable stdin workaround in duk_cmdline.c
 
 # Mandelbrot test, base-64 encoded.
-MAND_BASE64=dyA9IDgwOyBoID0gNDA7IGl0ZXIgPSAxMDA7IGZvciAoaSA9IDA7IGkgLSBoOyBpICs9IDEpIHsgeTAgPSAoaSAvIGgpICogNC4wIC0gMi4wOyByZXMgPSBbXTsgZm9yIChqID0gMDsgaiAtIHc7IGogKz0gMSkgeyB4MCA9IChqIC8gdykgKiA0LjAgLSAyLjA7IHh4ID0gMDsgeXkgPSAwOyBjID0gIiMiOyBmb3IgKGsgPSAwOyBrIC0gaXRlcjsgayArPSAxKSB7IHh4MiA9IHh4Knh4OyB5eTIgPSB5eSp5eTsgaWYgKE1hdGgubWF4KDAsIDQuMCAtICh4eDIgKyB5eTIpKSkgeyB5eSA9IDIqeHgqeXkgKyB5MDsgeHggPSB4eDIgLSB5eTIgKyB4MDsgfSBlbHNlIHsgYyA9ICIuIjsgYnJlYWs7IH0gfSByZXNbcmVzLmxlbmd0aF0gPSBjOyB9IHByaW50KHJlcy5qb2luKCIiKSk7IH0K
+MAND_BASE64 = dyA9IDgwOyBoID0gNDA7IGl0ZXIgPSAxMDA7IGZvciAoaSA9IDA7IGkgLSBoOyBpICs9IDEpIHsgeTAgPSAoaSAvIGgpICogNC4wIC0gMi4wOyByZXMgPSBbXTsgZm9yIChqID0gMDsgaiAtIHc7IGogKz0gMSkgeyB4MCA9IChqIC8gdykgKiA0LjAgLSAyLjA7IHh4ID0gMDsgeXkgPSAwOyBjID0gIiMiOyBmb3IgKGsgPSAwOyBrIC0gaXRlcjsgayArPSAxKSB7IHh4MiA9IHh4Knh4OyB5eTIgPSB5eSp5eTsgaWYgKE1hdGgubWF4KDAsIDQuMCAtICh4eDIgKyB5eTIpKSkgeyB5eSA9IDIqeHgqeXkgKyB5MDsgeHggPSB4eDIgLSB5eTIgKyB4MDsgfSBlbHNlIHsgYyA9ICIuIjsgYnJlYWs7IH0gfSByZXNbcmVzLmxlbmd0aF0gPSBjOyB9IHByaW50KHJlcy5qb2luKCIiKSk7IH0K
 
 # Options for runtests.js.
-RUNTESTSOPTS=--prep-test-path util/prep_test.py --minify-uglifyjs2 UglifyJS2/bin/uglifyjs --util-include-path tests/ecmascript --known-issues doc/testcase-known-issues.yaml
+RUNTESTSOPTS = --prep-test-path util/prep_test.py --minify-uglifyjs2 UglifyJS2/bin/uglifyjs --util-include-path tests/ecmascript --known-issues doc/testcase-known-issues.yaml
 
 # Compile 'duk' only by default
 .PHONY:	all
@@ -233,7 +240,7 @@ clean:
 	@rm -f duk-perf-pgo duk-perf-pgo.O2 duk-perf-pgo.O3 duk-perf-pgo.O4
 	@rm -f duk-size
 	@rm -f duk-rom dukd-rom
-	@rm -f duk-clang duk-perf-clang
+	@rm -f duk-clang duk-perf-clang duk-sanitize-clang
 	@rm -f duk-g++ dukd-g++ duk-perf-g++
 	@rm -f duk-low duk-low-norefc duk-low-rom
 	@rm -f emduk emduk.js
@@ -265,6 +272,7 @@ clean:
 	@rm -f dukweb.js
 	@rm -rf /tmp/dukweb-test/
 	@rm -f massif-*.out
+	@rm -f literal_intern_test
 
 .PHONY: cleanall
 cleanall: clean
@@ -461,6 +469,10 @@ duk-clang: linenoise prep/nondebug
 	clang -o $@ -Wcast-align -Wshift-sign-overflow -Iprep/nondebug $(CLANG_CCOPTS_NONDEBUG) prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 	@ls -l $@
 	-@size $@
+duk-sanitize-clang: linenoise prep/nondebug
+	clang -o $@ -Wcast-align -Wshift-sign-overflow -fsanitize=undefined -Iprep/nondebug $(CLANG_CCOPTS_NONDEBUG) prep/nondebug/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
+	@ls -l $@
+	-@size $@
 duk-perf-clang: linenoise prep/nondebug-perf
 	clang -o $@ -Wcast-align -Wshift-sign-overflow -Iprep/nondebug-perf $(CLANG_CCOPTS_NONDEBUG) prep/nondebug-perf/duktape.c $(DUKTAPE_CMDLINE_SOURCES) $(LINENOISE_SOURCES) $(CCLIBS)
 	@ls -l $@
@@ -573,6 +585,11 @@ dukweb.js: emscripten prep/dukweb
 		-Iprep/dukweb prep/dukweb/duktape.c dukweb/dukweb.c -o dukweb.js
 	cat dukweb/dukweb_extra.js >> dukweb.js
 	@wc dukweb.js
+literal_intern_test: prep/nondebug misc/literal_intern_test.c
+	$(CC) -o $@ -std=c99 -O2 -fstrict-aliasing -Wall -Wextra \
+		-Iprep/nondebug prep/nondebug/duktape.c misc/literal_intern_test.c -lm
+literalinterntest: literal_intern_test
+	bash -c 'for i in 0 1 2 3 10 11 12 13 20 21 22 23; do echo; echo "*** $$i ***"; echo; for j in 1 2 3 4 5; do time ./literal_intern_test $$i; sleep 10; done; done'
 
 # Miscellaneous dumps.
 .PHONY: dump-public
@@ -621,7 +638,7 @@ releasetest: xmldoctest closuretest bluebirdtest luajstest jsinterpretertest lod
 	@echo ""
 	@echo "### Release tests successful!"  # These tests now have output checks.
 
-# Runtests-based Ecmascript and API tests.
+# Runtests-based ECMAScript and API tests.
 .PHONY:	runtestsdeps
 runtestsdeps:	runtests/node_modules UglifyJS2
 runtests/node_modules:
@@ -812,9 +829,8 @@ checklisttest:
 # Third party download/unpack targets, libraries etc.
 linenoise:
 	# git clone https://github.com/antirez/linenoise.git
-	# Use forked repo to get compile warnings fixed (not yet fixed in
-	# linenoise master).
-	git clone -b fix-compile-warnings https://github.com/svaarala/linenoise.git
+	# Use forked repo to get compile warnings fixed.
+	git clone -b fix-compile-warnings-duktape https://github.com/svaarala/linenoise.git
 regfuzz-0.1.tar.gz:
 	# https://code.google.com/p/regfuzz/
 	# SHA1: 774be8e3dda75d095225ba699ac59969d92ac970

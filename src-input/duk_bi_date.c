@@ -200,7 +200,7 @@ DUK_LOCAL duk_bool_t duk__parse_string_iso8601_subset(duk_hthread *thr, const ch
 	duk_small_uint_t i;
 
 	/* During parsing, month and day are one-based; set defaults here. */
-	DUK_MEMZERO(parts, sizeof(parts));
+	duk_memzero(parts, sizeof(parts));
 	DUK_ASSERT(parts[DUK_DATE_IDX_YEAR] == 0);  /* don't care value, year is mandatory */
 	parts[DUK_DATE_IDX_MONTH] = 1;
 	parts[DUK_DATE_IDX_DAY] = 1;
@@ -427,13 +427,13 @@ DUK_LOCAL duk_uint8_t duk__days_in_month[12] = {
 };
 
 /* Maximum iteration count for computing UTC-to-local time offset when
- * creating an Ecmascript time value from local parts.
+ * creating an ECMAScript time value from local parts.
  */
 #define DUK__LOCAL_TZOFFSET_MAXITER   4
 
 /* Because 'day since epoch' can be negative and is used to compute weekday
  * using a modulo operation, add this multiple of 7 to avoid negative values
- * when year is below 1970 epoch.  Ecmascript time values are restricted to
+ * when year is below 1970 epoch.  ECMAScript time values are restricted to
  * +/- 100 million days from epoch, so this adder fits nicely into 32 bits.
  * Round to a multiple of 7 (= floor(100000000 / 7) * 7) and add margin.
  */
@@ -624,10 +624,10 @@ DUK_INTERNAL void duk_bi_date_timeval_to_parts(duk_double_t d, duk_int_t *parts,
 	d = DUK_FLOOR(d);  /* remove fractions if present */
 	DUK_ASSERT(DUK_FLOOR(d) == d);
 
-	/* The timevalue must be in valid Ecmascript range, but since a local
+	/* The timevalue must be in valid ECMAScript range, but since a local
 	 * time offset can be applied, we need to allow a +/- 24h leeway to
 	 * the value.  In other words, although the UTC time is within the
-	 * Ecmascript range, the local part values can be just outside of it.
+	 * ECMAScript range, the local part values can be just outside of it.
 	 */
 	DUK_UNREF(duk_bi_date_timeval_in_leeway_range);
 	DUK_ASSERT(duk_bi_date_timeval_in_leeway_range(d));
@@ -670,7 +670,7 @@ DUK_INTERNAL void duk_bi_date_timeval_to_parts(duk_double_t d, duk_int_t *parts,
 	                     (long) parts[DUK_DATE_IDX_MILLISECOND]));
 
 	/* This assert depends on the input parts representing time inside
-	 * the Ecmascript range.
+	 * the ECMAScript range.
 	 */
 	DUK_ASSERT(t2 + DUK__WEEKDAY_MOD_ADDER >= 0);
 	parts[DUK_DATE_IDX_WEEKDAY] = (t2 + 4 + DUK__WEEKDAY_MOD_ADDER) % 7;  /* E5.1 Section 15.9.1.6 */
@@ -790,7 +790,7 @@ DUK_INTERNAL duk_double_t duk_bi_date_get_timeval_from_dparts(duk_double_t *dpar
 	 * computation happens with intermediate results coerced to
 	 * double values (instead of using something more accurate).
 	 * E.g. E5.1 Section 15.9.1.11 requires use of IEEE 754
-	 * rules (= Ecmascript '+' and '*' operators).
+	 * rules (= ECMAScript '+' and '*' operators).
 	 *
 	 * Without 'volatile' even this approach fails on some platform
 	 * and compiler combinations.  For instance, gcc 4.8.1 on Ubuntu
@@ -897,6 +897,7 @@ DUK_LOCAL duk_double_t duk__push_this_get_timeval_tzoffset(duk_hthread *thr, duk
 	h = duk_get_hobject(thr, -1);  /* XXX: getter with class check, useful in built-ins */
 	if (h == NULL || DUK_HOBJECT_GET_CLASS_NUMBER(h) != DUK_HOBJECT_CLASS_DATE) {
 		DUK_ERROR_TYPE(thr, "expected Date");
+		DUK_WO_NORETURN(return 0.0;);
 	}
 
 	duk_get_prop_stridx_short(thr, -1, DUK_STRIDX_INT_VALUE);
@@ -909,6 +910,7 @@ DUK_LOCAL duk_double_t duk__push_this_get_timeval_tzoffset(duk_hthread *thr, duk
 		}
 		if (flags & DUK_DATE_FLAG_NAN_TO_RANGE_ERROR) {
 			DUK_ERROR_RANGE(thr, "Invalid Date");
+			DUK_WO_NORETURN(return 0.0;);
 		}
 	}
 	/* if no NaN handling flag, may still be NaN here, but not Inf */
@@ -1525,7 +1527,7 @@ DUK_INTERNAL duk_ret_t duk_bi_date_constructor_now(duk_hthread *thr) {
  *  Notes:
  *
  *    - Date.prototype.toGMTString() and Date.prototype.toUTCString() are
- *      required to be the same Ecmascript function object (!), so it is
+ *      required to be the same ECMAScript function object (!), so it is
  *      omitted from here.
  *
  *    - Date.prototype.toUTCString(): E5.1 specification does not require a
@@ -1720,5 +1722,40 @@ DUK_INTERNAL duk_ret_t duk_bi_date_prototype_set_time(duk_hthread *thr) {
 
 	return 1;
 }
+
+/*
+ *  Misc.
+ */
+
+#if defined(DUK_USE_SYMBOL_BUILTIN)
+DUK_INTERNAL duk_ret_t duk_bi_date_prototype_toprimitive(duk_hthread *thr) {
+	duk_size_t hintlen;
+	const char *hintstr;
+	duk_int_t hint;
+
+	/* Invokes OrdinaryToPrimitive() with suitable hint.  Note that the
+	 * method is generic, and works on non-Date arguments too.
+	 *
+	 * https://www.ecma-international.org/ecma-262/6.0/#sec-date.prototype-@@toprimitive
+	 */
+
+	duk_push_this(thr);
+	duk_require_object(thr, -1);
+	DUK_ASSERT_TOP(thr, 2);
+
+	hintstr = duk_require_lstring(thr, 0, &hintlen);
+	if ((hintlen == 6 && DUK_STRCMP(hintstr, "string") == 0) ||
+	    (hintlen == 7 && DUK_STRCMP(hintstr, "default") == 0)) {
+		hint = DUK_HINT_STRING;
+	} else if (hintlen == 6 && DUK_STRCMP(hintstr, "number") == 0) {
+		hint = DUK_HINT_NUMBER;
+	} else {
+		DUK_DCERROR_TYPE_INVALID_ARGS(thr);
+	}
+
+	duk_to_primitive_ordinary(thr, -1, hint);
+	return 1;
+}
+#endif  /* DUK_USE_SYMBOL_BUILTIN */
 
 #endif  /* DUK_USE_DATE_BUILTIN */

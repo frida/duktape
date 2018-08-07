@@ -31,7 +31,7 @@ DUK_LOCAL void duk__convert_filetime_to_ularge(const FILETIME *ft, ULARGE_INTEGE
 #endif  /* DUK_USE_DATE_NOW_WINDOWS_SUBMS */
 
 DUK_LOCAL void duk__set_systime_jan1970(SYSTEMTIME *st) {
-	DUK_MEMZERO((void *) st, sizeof(*st));
+	duk_memzero((void *) st, sizeof(*st));
 	st->wYear = 1970;
 	st->wMonth = 1;
 	st->wDayOfWeek = 4;  /* not sure whether or not needed; Thursday */
@@ -99,7 +99,7 @@ DUK_INTERNAL duk_int_t duk_bi_date_get_local_tzoffset_windows(duk_double_t d) {
 
 	/* XXX: handling of timestamps outside Windows supported range.
 	 * How does Windows deal with dates before 1600?  Does windows
-	 * support all Ecmascript years (like -200000 and +200000)?
+	 * support all ECMAScript years (like -200000 and +200000)?
 	 * Should equivalent year mapping be used here too?  If so, use
 	 * a shared helper (currently integrated into timeval-to-parts).
 	 */
@@ -115,7 +115,10 @@ DUK_INTERNAL duk_int_t duk_bi_date_get_local_tzoffset_windows(duk_double_t d) {
 
 	ft1.dwLowDateTime = tmp2.LowPart;
 	ft1.dwHighDateTime = tmp2.HighPart;
-	FileTimeToSystemTime((const FILETIME *) &ft1, &st2);
+	if (FileTimeToSystemTime((const FILETIME *) &ft1, &st2) == 0) {
+		DUK_D(DUK_DPRINT("FileTimeToSystemTime() failed, return tzoffset 0"));
+		return 0;
+	}
 	if (SystemTimeToTzSpecificLocalTime((LPTIME_ZONE_INFORMATION) NULL, &st2, &st3) == 0) {
 		DUK_D(DUK_DPRINT("SystemTimeToTzSpecificLocalTime() failed, return tzoffset 0"));
 		return 0;
@@ -150,9 +153,14 @@ DUK_INTERNAL duk_int_t duk_bi_date_get_local_tzoffset_windows_no_dst(duk_double_
 
 	ft1.dwLowDateTime = tmp1.LowPart;
 	ft1.dwHighDateTime = tmp1.HighPart;
-	FileTimeToLocalFileTime((const FILETIME *) &ft1, &ft2);
-
-	FileTimeToSystemTime((const FILETIME *) &ft2, &st2);
+	if (FileTimeToLocalFileTime((const FILETIME *) &ft1, &ft2) == 0) {
+		DUK_D(DUK_DPRINT("FileTimeToLocalFileTime() failed, return tzoffset 0"));
+		return 0;
+	}
+	if (FileTimeToSystemTime((const FILETIME *) &ft2, &st2) == 0) {
+		DUK_D(DUK_DPRINT("FileTimeToSystemTime() failed, return tzoffset 0"));
+		return 0;
+	}
 	duk__convert_systime_to_ularge((const SYSTEMTIME *) &st2, &tmp2);
 
 	return (duk_int_t) (((LONGLONG) tmp2.QuadPart - (LONGLONG) tmp1.QuadPart) / DUK_I64_CONSTANT(10000000));  /* seconds */

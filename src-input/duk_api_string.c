@@ -17,7 +17,7 @@ DUK_LOCAL void duk__concat_and_join_helper(duk_hthread *thr, duk_idx_t count_in,
 	if (DUK_UNLIKELY(count_in <= 0)) {
 		if (count_in < 0) {
 			DUK_ERROR_RANGE_INVALID_COUNT(thr);
-			return;
+			DUK_WO_NORETURN(return;);
 		}
 		DUK_ASSERT(count_in == 0);
 		duk_push_hstring_empty(thr);
@@ -73,11 +73,11 @@ DUK_LOCAL void duk__concat_and_join_helper(duk_hthread *thr, duk_idx_t count_in,
 	for (i = count; i >= 1; i--) {
 		if (is_join && i != count) {
 			h = duk_require_hstring(thr, -((duk_idx_t) count) - 2);  /* extra -1 for buffer */
-			DUK_MEMCPY(buf + idx, DUK_HSTRING_GET_DATA(h), DUK_HSTRING_GET_BYTELEN(h));
+			duk_memcpy(buf + idx, DUK_HSTRING_GET_DATA(h), DUK_HSTRING_GET_BYTELEN(h));
 			idx += DUK_HSTRING_GET_BYTELEN(h);
 		}
 		h = duk_require_hstring(thr, -((duk_idx_t) i) - 1);  /* extra -1 for buffer */
-		DUK_MEMCPY(buf + idx, DUK_HSTRING_GET_DATA(h), DUK_HSTRING_GET_BYTELEN(h));
+		duk_memcpy(buf + idx, DUK_HSTRING_GET_DATA(h), DUK_HSTRING_GET_BYTELEN(h));
 		idx += DUK_HSTRING_GET_BYTELEN(h);
 	}
 
@@ -104,6 +104,7 @@ DUK_LOCAL void duk__concat_and_join_helper(duk_hthread *thr, duk_idx_t count_in,
 
  error_overflow:
 	DUK_ERROR_RANGE(thr, DUK_STR_RESULT_TOO_LONG);
+	DUK_WO_NORETURN(return;);
 }
 
 DUK_EXTERNAL void duk_concat(duk_hthread *thr, duk_idx_t count) {
@@ -141,8 +142,8 @@ DUK_INTERNAL void duk_concat_2(duk_hthread *thr) {
 	buf = (duk_uint8_t *) duk_push_fixed_buffer_nozero(thr, len);
 	DUK_ASSERT(buf != NULL);
 
-	DUK_MEMCPY((void *) buf, (const void *) DUK_HSTRING_GET_DATA(h1), (size_t) len1);
-	DUK_MEMCPY((void *) (buf + len1), (const void *) DUK_HSTRING_GET_DATA(h2), (size_t) len2);
+	duk_memcpy((void *) buf, (const void *) DUK_HSTRING_GET_DATA(h1), (size_t) len1);
+	duk_memcpy((void *) (buf + len1), (const void *) DUK_HSTRING_GET_DATA(h2), (size_t) len2);
 	(void) duk_buffer_to_string(thr, -1);  /* Safe if inputs are safe. */
 
 	/* [ ... str1 str2 buf ] */
@@ -153,6 +154,7 @@ DUK_INTERNAL void duk_concat_2(duk_hthread *thr) {
 
  error_overflow:
 	DUK_ERROR_RANGE(thr, DUK_STR_RESULT_TOO_LONG);
+	DUK_WO_NORETURN(return;);
 }
 #endif  /* DUK_USE_PREFER_SIZE */
 

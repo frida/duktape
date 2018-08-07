@@ -54,7 +54,7 @@ DUK_INTERNAL duk_ret_t duk_bi_error_prototype_to_string(duk_hthread *thr) {
 	duk_get_prop_stridx_short(thr, -1, DUK_STRIDX_NAME);
 	if (duk_is_undefined(thr, -1)) {
 		duk_pop(thr);
-		duk_push_string(thr, "Error");
+		duk_push_literal(thr, "Error");
 	} else {
 		duk_to_string(thr, -1);
 	}
@@ -84,7 +84,7 @@ DUK_INTERNAL duk_ret_t duk_bi_error_prototype_to_string(duk_hthread *thr) {
 		duk_pop(thr);
 		return 1;
 	}
-	duk_push_string(thr, ": ");
+	duk_push_literal(thr, ": ");
 	duk_insert(thr, -2);  /* ... name ': ' message */
 	duk_concat(thr, 3);
 
@@ -153,13 +153,13 @@ DUK_LOCAL duk_ret_t duk__error_getter_helper(duk_hthread *thr, duk_small_int_t o
 			duk_get_prop_index(thr, idx_td, (duk_uarridx_t) i);
 			duk_get_prop_index(thr, idx_td, (duk_uarridx_t) (i + 1));
 			d = duk_to_number_m1(thr);
-			pc = (duk_int_t) DUK_FMOD(d, DUK_DOUBLE_2TO32);
-			flags = (duk_uint_t) DUK_FLOOR(d / DUK_DOUBLE_2TO32);
+			pc = duk_double_to_int_t(DUK_FMOD(d, DUK_DOUBLE_2TO32));
+			flags = duk_double_to_uint_t(DUK_FLOOR(d / DUK_DOUBLE_2TO32));
 			t = (duk_small_int_t) duk_get_type(thr, -2);
 
 			if (t == DUK_TYPE_OBJECT || t == DUK_TYPE_LIGHTFUNC) {
 				/*
-				 *  Ecmascript/native function call or lightfunc call
+				 *  ECMAScript/native function call or lightfunc call
 				 */
 
 				count_func++;

@@ -23,6 +23,7 @@ DUK_LOCAL duk_double_t duk__push_this_number_plain(duk_hthread *thr) {
 	    (DUK_HOBJECT_GET_CLASS_NUMBER(h) != DUK_HOBJECT_CLASS_NUMBER)) {
 		DUK_DDD(DUK_DDDPRINT("unacceptable this value: %!T", (duk_tval *) duk_get_tval(thr, -1)));
 		DUK_ERROR_TYPE(thr, "number expected");
+		DUK_WO_NORETURN(return 0.0;);
 	}
 	duk_get_prop_stridx_short(thr, -1, DUK_STRIDX_INT_VALUE);
 	DUK_ASSERT(duk_is_number(thr, -1));
@@ -129,8 +130,11 @@ DUK_INTERNAL duk_ret_t duk_bi_number_prototype_to_fixed(duk_hthread *thr) {
 	duk_small_int_t c;
 	duk_small_uint_t n2s_flags;
 
-	frac_digits = (duk_small_int_t) duk_to_int_check_range(thr, 0, 0, 20);
+	/* In ES5.1 frac_digits is coerced first; in ES2015 the 'this number
+	 * value' check is done first.
+	 */
 	d = duk__push_this_number_plain(thr);
+	frac_digits = (duk_small_int_t) duk_to_int_check_range(thr, 0, 0, 20);
 
 	c = (duk_small_int_t) DUK_FPCLASSIFY(d);
 	if (c == DUK_FP_NAN || c == DUK_FP_INFINITE) {

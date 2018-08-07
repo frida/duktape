@@ -141,7 +141,7 @@ DUK_INTERNAL duk_small_int_t duk_unicode_encode_cesu8(duk_ucodepoint_t cp, duk_u
 		/*
 		 *  Unicode codepoints above U+FFFF are encoded as surrogate
 		 *  pairs here.  This ensures that all CESU-8 codepoints are
-		 *  16-bit values as expected in Ecmascript.  The surrogate
+		 *  16-bit values as expected in ECMAScript.  The surrogate
 		 *  pairs always get a 3-byte encoding (each) in CESU-8.
 		 *  See: http://en.wikipedia.org/wiki/Surrogate_pair
 		 *
@@ -280,8 +280,7 @@ DUK_INTERNAL duk_ucodepoint_t duk_unicode_decode_xutf8_checked(duk_hthread *thr,
 		return cp;
 	}
 	DUK_ERROR_INTERNAL(thr);
-	DUK_UNREACHABLE();
-	return 0;
+	DUK_WO_NORETURN(return 0;);
 }
 
 /* Compute (extended) utf-8 length without codepoint encoding validation,
@@ -430,7 +429,7 @@ DUK_LOCAL duk_small_int_t duk__uni_range_match(const duk_uint8_t *unitab, duk_si
 	duk_bitdecoder_ctx bd_ctx;
 	duk_codepoint_t prev_re;
 
-	DUK_MEMZERO(&bd_ctx, sizeof(bd_ctx));
+	duk_memzero(&bd_ctx, sizeof(bd_ctx));
 	bd_ctx.data = (const duk_uint8_t *) unitab;
 	bd_ctx.length = (duk_size_t) unilen;
 
@@ -982,7 +981,7 @@ duk_codepoint_t duk__case_transform_helper(duk_hthread *thr,
 	}
 
 	/* 1:1 or special conversions, but not locale/context specific: script generated rules */
-	DUK_MEMZERO(&bd_ctx, sizeof(bd_ctx));
+	duk_memzero(&bd_ctx, sizeof(bd_ctx));
 	if (uppercase) {
 		bd_ctx.data = (const duk_uint8_t *) duk_unicode_caseconv_uc;
 		bd_ctx.length = (duk_size_t) sizeof(duk_unicode_caseconv_uc);

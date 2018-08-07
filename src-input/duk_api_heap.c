@@ -64,22 +64,6 @@ DUK_EXTERNAL duk_hthread *duk_create_heap(duk_alloc_function alloc_func,
 	return thr;
 }
 
-DUK_EXTERNAL void duk_set_global_access_functions(duk_hthread *thr, duk_global_access_functions *functions) {
-	duk_heap *heap;
-
-	DUK_ASSERT(thr != NULL);
-	DUK_ASSERT_API_ENTRY(thr);
-
-	heap = thr->heap;
-	DUK_ASSERT(heap != NULL);
-	if (functions != NULL) {
-		heap->global_access_funcs_storage = *functions;
-		heap->global_access_funcs = &heap->global_access_funcs_storage;
-	} else {
-		heap->global_access_funcs = NULL;
-	}
-}
-
 DUK_EXTERNAL void duk_destroy_heap(duk_hthread *thr) {
 	duk_heap *heap;
 
@@ -121,7 +105,7 @@ DUK_EXTERNAL void duk_suspend(duk_hthread *thr, duk_thread_state *state) {
 	duk_push_tval(thr, &lj->value2);
 
 	/* XXX: creating_error == 0 is asserted above, so no need to store. */
-	DUK_MEMCPY((void *) &snapshot->lj, (const void *) lj, sizeof(duk_ljstate));
+	duk_memcpy((void *) &snapshot->lj, (const void *) lj, sizeof(duk_ljstate));
 	snapshot->creating_error = heap->creating_error;
 	snapshot->curr_thread = heap->curr_thread;
 	snapshot->call_recursion_depth = heap->call_recursion_depth;
@@ -151,7 +135,7 @@ DUK_EXTERNAL void duk_resume(duk_hthread *thr, const duk_thread_state *state) {
 
 	heap = thr->heap;
 
-	DUK_MEMCPY((void *) &heap->lj, (const void *) &snapshot->lj, sizeof(duk_ljstate));
+	duk_memcpy((void *) &heap->lj, (const void *) &snapshot->lj, sizeof(duk_ljstate));
 	heap->creating_error = snapshot->creating_error;
 	heap->curr_thread = snapshot->curr_thread;
 	heap->call_recursion_depth = snapshot->call_recursion_depth;

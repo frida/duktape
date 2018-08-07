@@ -19,8 +19,13 @@ example: |
 
 tags:
   - property
+  - string
 
 seealso:
+  - duk_del_prop
+  - duk_del_prop_index
   - duk_del_prop_lstring
+  - duk_del_prop_literal
+  - duk_del_prop_heapptr
 
 introduced: 1.0.0

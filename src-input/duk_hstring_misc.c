@@ -33,7 +33,7 @@ DUK_INTERNAL duk_ucodepoint_t duk_hstring_char_code_at_raw(duk_hthread *thr, duk
 	                     (const void *) p_start, (const void *) p_end,
 	                     (const void *) p));
 
-	/* For invalid UTF-8 (never happens for standard Ecmascript strings)
+	/* For invalid UTF-8 (never happens for standard ECMAScript strings)
 	 * return U+FFFD replacement character.
 	 */
 	if (duk_unicode_decode_xutf8(thr, &p, p_start, p_end, &cp1)) {
@@ -189,7 +189,7 @@ DUK_INTERNAL duk_bool_t duk_hstring_equals_ascii_cstring(duk_hstring *h, const c
 	if (len != DUK_HSTRING_GET_BYTELEN(h)) {
 		return 0;
 	}
-	if (DUK_MEMCMP((const void *) cstr, (const void *) DUK_HSTRING_GET_DATA(h), len) == 0) {
+	if (duk_memcmp((const void *) cstr, (const void *) DUK_HSTRING_GET_DATA(h), len) == 0) {
 		return 1;
 	}
 	return 0;

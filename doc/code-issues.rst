@@ -15,7 +15,7 @@ Some code conventions are checked by the ``make codepolicycheck`` target.
 Basic conventions
 =================
 
-Indentantion, naming, etc
+Indentation, naming, etc.
 -------------------------
 
 Indent with tab.  On continuation lines indent with tab to shared indent
@@ -33,7 +33,7 @@ Names are lowercase, underscore separated::
           /* ... */
   }
 
-Local functions, arrays, structs, typedefs, etc have a double underscore
+Local functions, arrays, structs, typedefs, etc. have a double underscore
 after "duk"::
 
   typedef int duk__temptype;
@@ -60,7 +60,7 @@ interest only can have a local name or have a double underscore after "DUK"::
   /* select DUK_FOO provider */
   #define DUK_FOO  DUK_FOO_ALT2
 
-There is only one space after a ``#define``, ``#if``, etc, but there may be
+There is only one space after a ``#define``, ``#if``, etc., but there may be
 multiple spaces between the a macro name and its definition.  There is no
 strict rule on the alignment of a macro value; successive definitions usually
 keep values in the same column.
@@ -171,7 +171,7 @@ Comment styles
 --------------
 
 A block or "banner" comment is used in file headers and to distinguish logical
-sections containing (typically) multiple functions, definitions, variables, etc::
+sections containing (typically) multiple functions, definitions, variables, etc.::
 
     /*
      *  First line is empty and there are two spaces between the star
@@ -220,7 +220,7 @@ ending period (i.e. the text is not a sentence)::
     }
 
 A comment on the same line as a statement is separate by two spaces.  Don't
-use C++ style comments as they're not portable::
+use C++ style comments, as they're not portable::
 
     static void duk__helper(char *values, int count) {
             int i;  /* loop counter */
@@ -765,7 +765,7 @@ There are several issues related to symbol visibility:
 * Minimality: Duktape should only expose the function and data symbols that
   are used by calling programs.  This is a hygiene issue but also affects
   compiler optimization: if a function is internal, it doesn't need to conform
-  to a rigid ABI which allows some optimizations.  See e.g.
+  to a rigid ABI, which allows some optimizations.  See e.g.
   https://gcc.gnu.org/wiki/Visibility.
 
 * Single file vs. separate files: symbols need to be declared differently
@@ -872,7 +872,7 @@ MSVC DLL import/export
 ----------------------
 
 For MSVC, DLL import/export attributes are needed to build as a DLL.
-When compiling Duktape public symbols should be declared as "dllexport"
+When compiling Duktape, public symbols should be declared as "dllexport"
 in both header files and the actual declarations.  When compiling a
 user application, the same header symbols must be declared as "dllimport".
 The compilation context is available through ``DUK_COMPILING_DUKTAPE``.
@@ -1341,6 +1341,41 @@ Switch statement
 
 Any integral type should work as a switch argument, so avoid casting it.
 
+Differences in malloc(), realloc(), and free()
+----------------------------------------------
+
+For malloc(), zero size is special:
+
+* A malloc() with zero size cannot fail, but may return either NULL or a
+  non-NULL pointer which must be free()'d.
+
+* Safest strategy is to:
+
+  - Consider malloc() failed if return value is NULL *and* requested size != 0.
+    Otherwise consider successful.
+
+  - If successful, store result pointer in internal data structures.  Ensure
+    that eventually free() is called for the pointer; free(NULL) is acceptable
+    so no guard is needed.
+
+For free():
+
+* free(NULL) is allowed and guaranteed to be a no-op.  Duktape relies on this.
+
+For realloc(), zero size is special as well:
+
+* A realloc() with a zero size cannot fail, but may return either NULL or a
+  non-NULL pointer which must be free()'d.
+
+* Safest strategy is to:
+
+  - Consider realloc() failed if return value is NULL *and* requested size != 0.
+    Otherwise consider successful.
+
+  - If successful, store result pointer in internal data structures (replacing
+    a previous value).  Ensure that eventually free() is called for the
+    pointer; free(NULL) is acceptable so no guard is needed.
+
 String handling
 ---------------
 
@@ -1562,7 +1597,7 @@ For these, too, there are fast variants:
 
 * ``duk_small_uint_fast_t``: same but unsigned.
 
-Exact 32-bit types are needed in some cases e.g. for Ecmascript semantics and
+Exact 32-bit types are needed in some cases e.g. for ECMAScript semantics and
 or guaranteeing portable overflow / underflow handling.  Also, 64-bit
 arithmetic emulation (implemented on 32 bit types) relies on exact unsigned
 overflows / underflows.  The wrapped C99 types are used in these cases.
@@ -1952,7 +1987,7 @@ character constants (``DUK_ASC_xxx``) defined in Duktape internal headers.
 String literals
 ---------------
 
-C strings which end up visible to user code (either through Ecmascript
+C strings which end up visible to user code (either through ECMAScript
 or through the C API) must be converted to UTF-8 at some point.
 
 Ideally the strings would be written directly in UTF-8 (ASCII in practice)

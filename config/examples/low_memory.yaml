@@ -11,6 +11,16 @@
 #   - Does not enable ROM string/object support by default, enable manually
 #
 
+# Consider switching alignment to align-by-1 or align-by-4 for more compact
+# memory layout if the architecture supports it.
+#DUK_USE_ALIGN_BY: 1
+
+# With the vast majority of compilers some of the 'undefined behavior'
+# assumptions are fine, and produce smaller and faster code, so enable
+# by default for lowmem targets.  You may need to disable this for some
+# compilers.
+DUK_USE_ALLOW_UNDEFINED_BEHAVIOR: true
+
 DUK_USE_PREFER_SIZE: true
 DUK_USE_EXEC_PREFER_SIZE: true
 DUK_USE_FAST_REFCOUNT_DEFAULT: false
@@ -60,6 +70,9 @@ DUK_USE_STRTAB_SHRINK_LIMIT: 0         # doesn't matter if minsize==masize
 DUK_USE_STRTAB_GROW_LIMIT: 65536       # -""-
 DUK_USE_STRTAB_RESIZE_CHECK_MASK: 255  # -""-
 #DUK_USE_STRTAB_PTRCOMP: true  # sometimes useful with pointer compression
+
+# Disable literal pinning and litcache.
+DUK_USE_LITCACHE_SIZE: false
 
 DUK_USE_HSTRING_ARRIDX: false
 DUK_USE_HSTRING_LAZY_CLEN: false  # non-lazy charlen is smaller
@@ -126,6 +139,8 @@ DUK_USE_ES6: false
 DUK_USE_ES7: false
 DUK_USE_ES8: false
 DUK_USE_ES9: false
+DUK_USE_BASE64_SUPPORT: false
+DUK_USE_HEX_SUPPORT: false
 DUK_USE_COROUTINE_SUPPORT: false
 DUK_USE_SOURCE_NONBMP: false  # <300 bytes footprint
 DUK_USE_ES6_PROXY: false  # roughly 2kB footprint

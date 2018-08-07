@@ -142,10 +142,12 @@ DUK_INTERNAL_DECL duk_hobject *duk_to_hobject(duk_hthread *thr, duk_idx_t idx);
 DUK_INTERNAL_DECL duk_double_t duk_to_number_m1(duk_hthread *thr);
 DUK_INTERNAL_DECL duk_double_t duk_to_number_m2(duk_hthread *thr);
 
+DUK_INTERNAL_DECL duk_bool_t duk_to_boolean_top_pop(duk_hthread *thr);
+
 #if defined(DUK_USE_DEBUGGER_SUPPORT)  /* only needed by debugger for now */
 DUK_INTERNAL_DECL duk_hstring *duk_safe_to_hstring(duk_hthread *thr, duk_idx_t idx);
 #endif
-DUK_INTERNAL_DECL void duk_push_class_string_tval(duk_hthread *thr, duk_tval *tv);
+DUK_INTERNAL_DECL void duk_push_class_string_tval(duk_hthread *thr, duk_tval *tv, duk_bool_t avoid_side_effects);
 
 DUK_INTERNAL_DECL duk_int_t duk_to_int_clamped_raw(duk_hthread *thr, duk_idx_t idx, duk_int_t minval, duk_int_t maxval, duk_bool_t *out_clamped);  /* out_clamped=NULL, RangeError if outside range */
 DUK_INTERNAL_DECL duk_int_t duk_to_int_clamped(duk_hthread *thr, duk_idx_t idx, duk_int_t minval, duk_int_t maxval);
@@ -283,6 +285,8 @@ DUK_INTERNAL_DECL void duk_xdef_prop_stridx_builtin(duk_hthread *thr, duk_idx_t 
 
 DUK_INTERNAL_DECL void duk_xdef_prop_stridx_thrower(duk_hthread *thr, duk_idx_t obj_idx, duk_small_uint_t stridx);  /* [] -> [] */
 
+DUK_INTERNAL_DECL duk_bool_t duk_get_method_stridx(duk_hthread *thr, duk_idx_t idx, duk_small_uint_t stridx);
+
 DUK_INTERNAL_DECL void duk_pack(duk_hthread *thr, duk_idx_t count);
 DUK_INTERNAL_DECL duk_idx_t duk_unpack_array_like(duk_hthread *thr, duk_idx_t idx);
 #if 0
@@ -318,6 +322,10 @@ DUK_INTERNAL_DECL void duk_insert_undefined_n(duk_hthread *thr, duk_idx_t idx, d
 DUK_INTERNAL_DECL void duk_concat_2(duk_hthread *thr);
 
 DUK_INTERNAL_DECL duk_int_t duk_pcall_method_flags(duk_hthread *thr, duk_idx_t nargs, duk_small_uint_t call_flags);
+
+#if defined(DUK_USE_SYMBOL_BUILTIN)
+DUK_INTERNAL_DECL void duk_to_primitive_ordinary(duk_hthread *thr, duk_idx_t idx, duk_int_t hint);
+#endif
 
 /* Raw internal valstack access macros: access is unsafe so call site
  * must have a guarantee that the index is valid.  When that is the case,

@@ -159,7 +159,7 @@ DUK_LOCAL void duk__sort_enum_keys_es6(duk_hthread *thr, duk_hobject *h_obj, duk
 		 * are very often in order already.
 		 */
 		if (idx != idx_insert) {
-			DUK_MEMMOVE((void *) (keys + idx_insert + 1),
+			duk_memmove((void *) (keys + idx_insert + 1),
 			            (const void *) (keys + idx_insert),
 			            ((size_t) (idx - idx_insert) * sizeof(duk_hstring *)));
 			keys[idx_insert] = h_curr;
@@ -477,30 +477,6 @@ DUK_INTERNAL void duk_hobject_enumerator_create(duk_hthread *thr, duk_small_uint
 			/* [enum_target res] */
 		}
 
-		if (curr == thr->builtins[DUK_BIDX_GLOBAL]) {
-			duk_global_access_functions *funcs = thr->heap->global_access_funcs;
-
-			if (funcs != NULL) {
-				if (funcs->enumerate_func(thr, funcs->udata) == 1) {
-					duk_size_t length, i;
-
-					length = duk_get_length(thr, -1);
-					for (i = 0; i < length; i++) {
-						duk_get_prop_index(thr, -1, (duk_uarridx_t) i);
-						duk_push_true(thr);
-
-						/* [ enum_target res keys key true ] */
-						duk_put_prop(thr, -4);
-
-						/* [ enum_target res keys ] */
-					}
-
-					duk_pop_unsafe(thr);
-					/* [ enum_target res ] */
-				}
-			}
-		}
-
 		/* Sort enumerated keys according to ES2015 requirements for
 		 * the "inheritance level" just processed.  This is far from
 		 * optimal, ES2015 semantics could be achieved more efficiently
@@ -667,7 +643,7 @@ DUK_INTERNAL duk_bool_t duk_hobject_enumerator_next(duk_hthread *thr, duk_bool_t
 }
 
 /*
- *  Get enumerated keys in an Ecmascript array.  Matches Object.keys() behavior
+ *  Get enumerated keys in an ECMAScript array.  Matches Object.keys() behavior
  *  described in E5 Section 15.2.3.14.
  */
 

@@ -12,6 +12,9 @@
  *  - To enable Duktape.Logger, define DUK_CMDLINE_LOGGING_SUPPORT
  *    and add extras/logging/duk_logging.c to compilation.
  *
+ *  - To enable CBOR, define DUK_CMDLINE_CBOR_SUPPORT and add
+ *    extras/cbor/duk_cbor.c to compilation.
+ *
  *  - To enable Duktape 1.x module loading support (require(),
  *    Duktape.modSearch() etc), define DUK_CMDLINE_MODULE_SUPPORT and add
  *    extras/module-duktape/duk_module_duktape.c to compilation.
@@ -67,6 +70,9 @@
 #endif
 #if defined(DUK_CMDLINE_MODULE_SUPPORT)
 #include "duk_module_duktape.h"
+#endif
+#if defined(DUK_CMDLINE_CBOR_SUPPORT)
+#include "duk_cbor.h"
 #endif
 #if defined(DUK_CMDLINE_FILEIO)
 #include <errno.h>
@@ -1164,6 +1170,11 @@ static duk_context *create_duktape_heap(int alloc_provider, int debugger, int lo
 	duk_module_duktape_init(ctx);
 #endif
 
+	/* Register CBOR. */
+#if defined(DUK_CMDLINE_CBOR_SUPPORT)
+	duk_cbor_init(ctx, 0 /*flags*/);
+#endif
+
 	/* Trivial readFile/writeFile bindings for testing. */
 #if defined(DUK_CMDLINE_FILEIO)
 	duk_push_c_function(ctx, fileio_read_file, 1 /*nargs*/);
@@ -1554,7 +1565,12 @@ int main(int argc, char *argv[]) {
 			"   --recreate-heap    recreate heap after every file\n"
 			"   --no-heap-destroy  force GC, but don't destroy heap at end (leak testing)\n"
 	                "\n"
-	                "If <filename> is omitted, interactive mode is started automatically.\n");
+	                "If <filename> is omitted, interactive mode is started automatically.\n"
+			"\n"
+	                "Input files can be either Ecmascript source files or bytecode files.\n"
+	                "Bytecode files are not validated prior to loading, so that incompatible\n"
+			"or crafted files can cause memory unsafe behavior.  See discussion in\n"
+			"https://github.com/svaarala/duktape/blob/master/doc/bytecode.rst#memory-safety-and-bytecode-validation.\n");
 	fflush(stderr);
 	exit(1);
 }
