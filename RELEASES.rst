@@ -3396,8 +3396,41 @@ Planned
 2.4.0 (XXXX-XX-XX)
 ------------------
 
+* Add duk_push_bare_array() to push an Array instance which doesn't
+  inherit from anything (GH-2064)
+
+* Enable Symbol built-in by default (DUK_USE_SYMBOL_BUILTIN) (GH-1969)
+
+* Remove arguments.caller for strict argument objects to match revised
+  ES2017 behavior (GH-2009)
+
+* When using Proxy wrapping in console extra, don't return a fake NOP
+  function for console.toJSON to avoid confusing JX serialization of the
+  console object (GH-2052, GH-2054, GH-2055)
+
+* Disable Proxy wrapper for 'duk' console binding because it is no longer
+  the preferred console implementation method (GH-2055)
+
+* Fix Object.getOwnPropertySymbols() behavior for the virtual properties
+  of arrays, Strings, and buffer objects: string keys were incorrectly
+  included in the result (GH-1978, GH-1979)
+
+* Fix compile error (missing DUK_DCERROR_UNSUPPORTED macro) when compiling
+  with RegExp support disabled (GH-1990, GH-1991)
+
+* Fix configure.py -D option to accept parenthesized macros, e.g.
+  '-DFOO(bar)=quux', which were used in some examples but were not
+  actually functional (GH-2013, GH-2014)
+
+* Fix several assertion failures with possible memory unsafe behavior
+  (GH-2025, GH-2026, GH-2031, GH-2033, GH-2035, GH-2036, GH-2065)
+
 * Trivial fixes and cleanups: Windows Date provider return code check
   consistency (GH-1956)
+
+* Various portability fixes (GH-1931, GH-1976)
+
+* Add duk_to_stacktrace() and duk_safe_to_stacktrace() to make it easier to get stacktraces in C
 
 3.0.0 (XXXX-XX-XX)
 ------------------
