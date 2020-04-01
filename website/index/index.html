@@ -37,7 +37,7 @@ Duktape API to call ECMAScript functions from C code and vice versa.</p>
 <h1>Main features</h1>
 <ul>
 <li>Embeddable, portable, compact:
-    can run on platforms with 160kB flash and 64kB system RAM</li>
+    can run on platforms with 160kB flash and 64kB RAM</li>
 <li><a href="http://www.ecma-international.org/ecma-262/5.1/">ECMAScript E5/E5.1</a>,
     with some semantics updated from ES2015+</li>
 <li>Partial support for
@@ -48,6 +48,7 @@ Duktape API to call ECMAScript functions from C code and vice versa.</p>
 </li>
 <li>ES2015 <a href="https://www.khronos.org/registry/typedarray/specs/latest/">TypedArray</a>
     and <a href="https://nodejs.org/docs/v6.9.1/api/buffer.html">Node.js Buffer</a> bindings</li>
+<li><a href="http://cbor.io/">CBOR</a> bindings</li>
 <li><a href="https://encoding.spec.whatwg.org/#api">Encoding API</a> bindings based on the WHATWG Encoding Living Standard</li>
 <li><a href="https://www.w3.org/TR/hr-time/#dom-performance-now">performance.now()</a></li>
 <li>Built-in debugger</li>
@@ -69,15 +70,17 @@ Duktape API to call ECMAScript functions from C code and vice versa.</p>
 <p>For a "Hello world" <a href="https://github.com/svaarala/duktape/blob/master/util/index_page_sizes.sh">example</a>:</p>
 <table>
 <tr><th>Config</th><th>Code footprint (kB)</th><th>Startup RAM (kB)</th></tr>
-<tr><td>thumb default</td><td>146</td><td>73</td></tr>
-<tr><td>thumb lowmem</td><td>96</td><td>26</td></tr>
-<tr><td>thumb full lowmem</td><td>120</td><td>1.5</td></tr>
-<tr><td>x86 default</td><td>176</td><td>74</td></tr>
-<tr><td>x86 lowmem</td><td>121</td><td>27</td></tr>
-<tr><td>x86 full lowmem</td><td>146</td><td>1.5</td></tr>
+<tr><td>thumb default</td><td>148</td><td>78</td></tr>
+<tr><td>thumb lowmem</td><td>96</td><td>27</td></tr>
+<tr><td>thumb full lowmem</td><td>119</td><td>1.5</td></tr>
+<tr><td>x86 default</td><td>187</td><td>78</td></tr>
+<tr><td>x86 lowmem</td><td>124</td><td>27</td></tr>
+<tr><td>x86 full lowmem</td><td>148</td><td>1.5</td></tr>
 </table>
 
+<!--
 <p>See <a href="http://duktape.org/benchmarks.html">Benchmarks</a>.</p>
+-->
 
 <p>See <a href="https://github.com/svaarala/duktape/blob/master/doc/low-memory.rst#optimizing-code-footprint">GCC options</a>
 for minimizing code footprint.  Full <a href="https://github.com/svaarala/duktape/blob/master/doc/low-memory.rst">lowmem</a>
@@ -112,6 +115,7 @@ issue to be added to the list.</p>
 <li><a href="http://jerryscript.net/">JerryScript</a> (Apache License v2.0)</li>
 <li><a href="http://mujs.com/">MuJS</a> (Affero GPL)</li>
 <li><a href="https://code.google.com/p/quad-wheel/">quad-wheel</a> (MIT License)</li>
+<li><a href="https://bellard.org/quickjs/">QuickJS</a> (MIT License)</li>
 <li><a href="https://github.com/gfwilliams/tiny-js">tiny-js</a> (MIT license)</li>
 <li><a href="https://github.com/cesanta/v7">v7</a> (GPL v2.0)</li>
 </ul>
@@ -141,7 +145,7 @@ $ ./test
 here to disable ECMAScript 6 <code>Proxy</code> object support:</p>
 
 <pre>
-$ python2 duktape-2.2.0/tools/configure.py --output-directory src-duktape \
+$ python2 duktape-2.5.0/tools/configure.py --output-directory src-duktape \
       -UDUK_USE_ES6_PROXY
 $ ls src-duktape/
 <span class="index-shell-output">duk_config.h  duk_source_meta.json  duktape.c  duktape.h</span>

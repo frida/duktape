@@ -67,40 +67,49 @@ struct duk_bitencoder_ctx {
 
 /*
  *  Raw write/read macros for big endian, unaligned basic values.
- *  Caller ensures there's enough space.  The macros update the pointer
- *  argument automatically on resizes.  The idiom seems a bit odd, but
- *  leads to compact code.
+ *  Caller ensures there's enough space.  The INC macro variants
+ *  update the pointer argument automatically.
  */
 
 #define DUK_RAW_WRITE_U8(ptr,val)  do { \
+		*(ptr) = (duk_uint8_t) (val); \
+	} while (0)
+#define DUK_RAW_WRITE_U16_BE(ptr,val) duk_raw_write_u16_be((ptr), (duk_uint16_t) (val))
+#define DUK_RAW_WRITE_U32_BE(ptr,val) duk_raw_write_u32_be((ptr), (duk_uint32_t) (val))
+#define DUK_RAW_WRITE_FLOAT_BE(ptr,val) duk_raw_write_float_be((ptr), (duk_float_t) (val))
+#define DUK_RAW_WRITE_DOUBLE_BE(ptr,val) duk_raw_write_double_be((ptr), (duk_double_t) (val))
+#define DUK_RAW_WRITE_XUTF8(ptr,val) duk_raw_write_xutf8((ptr), (duk_ucodepoint_t) (val))
+
+#define DUK_RAW_WRITEINC_U8(ptr,val)  do { \
 		*(ptr)++ = (duk_uint8_t) (val); \
 	} while (0)
-#define DUK_RAW_WRITE_U16_BE(ptr,val) duk_raw_write_u16_be(&(ptr), (duk_uint16_t) (val))
-#define DUK_RAW_WRITE_U32_BE(ptr,val) duk_raw_write_u32_be(&(ptr), (duk_uint32_t) (val))
-#define DUK_RAW_WRITE_DOUBLE_BE(ptr,val) duk_raw_write_double_be(&(ptr), (duk_double_t) (val))
-#define DUK_RAW_WRITE_XUTF8(ptr,val)  do { \
-		/* 'ptr' is evaluated both as LHS and RHS. */ \
-		duk_uint8_t *duk__ptr; \
-		duk_small_int_t duk__len; \
-		duk__ptr = (duk_uint8_t *) (ptr); \
-		duk__len = duk_unicode_encode_xutf8((duk_ucodepoint_t) (val), duk__ptr); \
-		duk__ptr += duk__len; \
-		(ptr) = duk__ptr; \
-	} while (0)
-#define DUK_RAW_WRITE_CESU8(ptr,val)  do { \
-		/* 'ptr' is evaluated both as LHS and RHS. */ \
-		duk_uint8_t *duk__ptr; \
-		duk_small_int_t duk__len; \
-		duk__ptr = (duk_uint8_t *) (ptr); \
-		duk__len = duk_unicode_encode_cesu8((duk_ucodepoint_t) (val), duk__ptr); \
-		duk__ptr += duk__len; \
-		(ptr) = duk__ptr; \
-	} while (0)
+#define DUK_RAW_WRITEINC_U16_BE(ptr,val) duk_raw_writeinc_u16_be(&(ptr), (duk_uint16_t) (val))
+#define DUK_RAW_WRITEINC_U32_BE(ptr,val) duk_raw_writeinc_u32_be(&(ptr), (duk_uint32_t) (val))
+#define DUK_RAW_WRITEINC_FLOAT_BE(ptr,val) duk_raw_writeinc_float_be(&(ptr), (duk_float_t) (val))
+#define DUK_RAW_WRITEINC_DOUBLE_BE(ptr,val) duk_raw_writeinc_double_be(&(ptr), (duk_double_t) (val))
+#define DUK_RAW_WRITEINC_XUTF8(ptr,val) duk_raw_writeinc_xutf8(&(ptr), (duk_ucodepoint_t) (val))
+#define DUK_RAW_WRITEINC_CESU8(ptr,val) duk_raw_writeinc_cesu8(&(ptr), (duk_ucodepoint_t) (val))
 
-#define DUK_RAW_READ_U8(ptr) ((duk_uint8_t) (*(ptr)++))
-#define DUK_RAW_READ_U16_BE(ptr) duk_raw_read_u16_be(&(ptr));
-#define DUK_RAW_READ_U32_BE(ptr) duk_raw_read_u32_be(&(ptr));
-#define DUK_RAW_READ_DOUBLE_BE(ptr) duk_raw_read_double_be(&(ptr));
+#define DUK_RAW_READ_U8(ptr) ((duk_uint8_t) (*(ptr)))
+#define DUK_RAW_READ_U16_BE(ptr) duk_raw_read_u16_be((ptr));
+#define DUK_RAW_READ_U32_BE(ptr) duk_raw_read_u32_be((ptr));
+#define DUK_RAW_READ_DOUBLE_BE(ptr) duk_raw_read_double_be((ptr));
+
+#define DUK_RAW_READINC_U8(ptr) ((duk_uint8_t) (*(ptr)++))
+#define DUK_RAW_READINC_U16_BE(ptr) duk_raw_readinc_u16_be(&(ptr));
+#define DUK_RAW_READINC_U32_BE(ptr) duk_raw_readinc_u32_be(&(ptr));
+#define DUK_RAW_READINC_DOUBLE_BE(ptr) duk_raw_readinc_double_be(&(ptr));
+
+/*
+ *  Double and float byte order operations.
+ */
+
+DUK_INTERNAL_DECL void duk_dblunion_host_to_little(duk_double_union *u);
+DUK_INTERNAL_DECL void duk_dblunion_little_to_host(duk_double_union *u);
+DUK_INTERNAL_DECL void duk_dblunion_host_to_big(duk_double_union *u);
+DUK_INTERNAL_DECL void duk_dblunion_big_to_host(duk_double_union *u);
+DUK_INTERNAL_DECL void duk_fltunion_host_to_big(duk_float_union *u);
+DUK_INTERNAL_DECL void duk_fltunion_big_to_host(duk_float_union *u);
 
 /*
  *  Buffer writer (dynamic buffer only)
@@ -159,24 +168,20 @@ struct duk_bufwriter_ctx {
 		                 (const char *) (bw_ctx)->p_base, \
 		                 (duk_size_t) ((bw_ctx)->p - (bw_ctx)->p_base)); \
 	} while (0)
+
 /* Pointers may be NULL for a while when 'buf' size is zero and before any
  * ENSURE calls have been made.  Once an ENSURE has been made, the pointers
  * are required to be non-NULL so that it's always valid to use memcpy() and
  * memmove(), even for zero size.
  */
-#define DUK_BW_ASSERT_VALID_EXPR(thr,bw_ctx) \
-	DUK_ASSERT_EXPR((bw_ctx) != NULL && \
-	                (bw_ctx)->buf != NULL && \
-			((DUK_HBUFFER_DYNAMIC_GET_SIZE((bw_ctx)->buf) == 0) || \
-				((bw_ctx)->p != NULL && \
-		                 (bw_ctx)->p_base != NULL && \
-		                 (bw_ctx)->p_limit != NULL && \
-		                 (bw_ctx)->p_limit >= (bw_ctx)->p_base && \
-		                 (bw_ctx)->p >= (bw_ctx)->p_base && \
-		                 (bw_ctx)->p <= (bw_ctx)->p_limit)))
-#define DUK_BW_ASSERT_VALID(thr,bw_ctx) do { \
-		DUK_BW_ASSERT_VALID_EXPR((thr), (bw_ctx)); \
-	} while (0)
+#if defined(DUK_USE_ASSERTIONS)
+DUK_INTERNAL_DECL void duk_bw_assert_valid(duk_hthread *thr, duk_bufwriter_ctx *bw_ctx);
+#define DUK_BW_ASSERT_VALID_EXPR(thr,bw_ctx)  (duk_bw_assert_valid((thr), (bw_ctx)))
+#define DUK_BW_ASSERT_VALID(thr,bw_ctx)  do { duk_bw_assert_valid((thr), (bw_ctx)); } while (0)
+#else
+#define DUK_BW_ASSERT_VALID_EXPR(thr,bw_ctx)  DUK_ASSERT_EXPR(1)
+#define DUK_BW_ASSERT_VALID(thr,bw_ctx)  do {} while (0)
+#endif
 
 /* Working with the pointer and current size. */
 
@@ -533,12 +538,26 @@ DUK_INTERNAL_DECL duk_uint8_t *duk_bw_insert_ensure_area(duk_hthread *thr, duk_b
 DUK_INTERNAL_DECL void duk_bw_remove_raw_slice(duk_hthread *thr, duk_bufwriter_ctx *bw, duk_size_t off, duk_size_t len);
 /* No duk_bw_remove_ensure_slice(), functionality would be identical. */
 
-DUK_INTERNAL_DECL duk_uint16_t duk_raw_read_u16_be(duk_uint8_t **p);
-DUK_INTERNAL_DECL duk_uint32_t duk_raw_read_u32_be(duk_uint8_t **p);
-DUK_INTERNAL_DECL duk_double_t duk_raw_read_double_be(duk_uint8_t **p);
-DUK_INTERNAL_DECL void duk_raw_write_u16_be(duk_uint8_t **p, duk_uint16_t val);
-DUK_INTERNAL_DECL void duk_raw_write_u32_be(duk_uint8_t **p, duk_uint32_t val);
-DUK_INTERNAL_DECL void duk_raw_write_double_be(duk_uint8_t **p, duk_double_t val);
+DUK_INTERNAL_DECL duk_uint16_t duk_raw_read_u16_be(const duk_uint8_t *p);
+DUK_INTERNAL_DECL duk_uint32_t duk_raw_read_u32_be(const duk_uint8_t *p);
+DUK_INTERNAL_DECL duk_float_t duk_raw_read_float_be(const duk_uint8_t *p);
+DUK_INTERNAL_DECL duk_double_t duk_raw_read_double_be(const duk_uint8_t *p);
+DUK_INTERNAL_DECL duk_uint16_t duk_raw_readinc_u16_be(const duk_uint8_t **p);
+DUK_INTERNAL_DECL duk_uint32_t duk_raw_readinc_u32_be(const duk_uint8_t **p);
+DUK_INTERNAL_DECL duk_float_t duk_raw_readinc_float_be(const duk_uint8_t **p);
+DUK_INTERNAL_DECL duk_double_t duk_raw_readinc_double_be(const duk_uint8_t **p);
+DUK_INTERNAL_DECL void duk_raw_write_u16_be(duk_uint8_t *p, duk_uint16_t val);
+DUK_INTERNAL_DECL void duk_raw_write_u32_be(duk_uint8_t *p, duk_uint32_t val);
+DUK_INTERNAL_DECL void duk_raw_write_float_be(duk_uint8_t *p, duk_float_t val);
+DUK_INTERNAL_DECL void duk_raw_write_double_be(duk_uint8_t *p, duk_double_t val);
+DUK_INTERNAL_DECL duk_small_int_t duk_raw_write_xutf8(duk_uint8_t *p, duk_ucodepoint_t val);
+DUK_INTERNAL_DECL duk_small_int_t duk_raw_write_cesu8(duk_uint8_t *p, duk_ucodepoint_t val);
+DUK_INTERNAL_DECL void duk_raw_writeinc_u16_be(duk_uint8_t **p, duk_uint16_t val);
+DUK_INTERNAL_DECL void duk_raw_writeinc_u32_be(duk_uint8_t **p, duk_uint32_t val);
+DUK_INTERNAL_DECL void duk_raw_writeinc_float_be(duk_uint8_t **p, duk_float_t val);
+DUK_INTERNAL_DECL void duk_raw_writeinc_double_be(duk_uint8_t **p, duk_double_t val);
+DUK_INTERNAL_DECL void duk_raw_writeinc_xutf8(duk_uint8_t **p, duk_ucodepoint_t val);
+DUK_INTERNAL_DECL void duk_raw_writeinc_cesu8(duk_uint8_t **p, duk_ucodepoint_t val);
 
 #if defined(DUK_USE_DEBUGGER_SUPPORT)  /* For now only needed by the debugger. */
 DUK_INTERNAL_DECL void duk_byteswap_bytes(duk_uint8_t *p, duk_small_uint_t len);
@@ -689,6 +708,8 @@ DUK_INTERNAL_DECL duk_uint_t duk_double_to_uint_t(duk_double_t x);
 DUK_INTERNAL_DECL duk_int32_t duk_double_to_int32_t(duk_double_t x);
 DUK_INTERNAL_DECL duk_uint32_t duk_double_to_uint32_t(duk_double_t x);
 DUK_INTERNAL_DECL duk_float_t duk_double_to_float_t(duk_double_t x);
+DUK_INTERNAL_DECL duk_bool_t duk_double_equals(duk_double_t x, duk_double_t y);
+DUK_INTERNAL_DECL duk_bool_t duk_float_equals(duk_float_t x, duk_float_t y);
 
 /*
  *  Miscellaneous

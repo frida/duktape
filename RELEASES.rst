@@ -3337,9 +3337,9 @@ Miscellaneous:
 
 * Makefile.sharedlibrary portability improvements (GH-1922, GH-1923)
 
-* Change spelling from ECMAScript to ECMAScript throughout the internal source
-  code; as far as external behavior is concerned this only affects a few
-  debug prints (GH-1894)
+* Change spelling to "ECMAScript" throughout the internal source code; as
+  far as external behavior is concerned this only affects a few debug prints
+  (GH-1894)
 
 * Fix NULL pointer dereference in error augmentation when DUK_USE_TRACEBACKS
   was disabled (GH-1909)
@@ -3390,19 +3390,27 @@ Miscellaneous:
   https://github.com/svaarala/duktape/blob/master/misc/clang_aliasing.c),
   and the workaround is to use unpacked duk_tval prior to Clang 5.0 (GH-1764)
 
-Planned
-=======
-
-2.4.0 (XXXX-XX-XX)
+2.4.0 (2019-07-28)
 ------------------
+
+* Add duk_to_stacktrace() and duk_safe_to_stacktrace() to make it easier to
+  get stacktraces in C code (GH-2059, GH-2086)
 
 * Add duk_push_bare_array() to push an Array instance which doesn't
   inherit from anything (GH-2064)
+
+* Add duk_require_constructable() and duk_require_constructor_call() to
+  the public API (previously they were internal helpers) (GH-2102)
 
 * Enable Symbol built-in by default (DUK_USE_SYMBOL_BUILTIN) (GH-1969)
 
 * Remove arguments.caller for strict argument objects to match revised
   ES2017 behavior (GH-2009)
+
+* Add DUK_USE_NATIVE_STACK_CHECK() macro config option (disabled by default)
+  for a platform specific stack space check in recursive and stack heavy
+  code paths; this is more accurate than the default fixed recursion limit
+  (GH-1995)
 
 * When using Proxy wrapping in console extra, don't return a fake NOP
   function for console.toJSON to avoid confusing JX serialization of the
@@ -3411,9 +3419,68 @@ Planned
 * Disable Proxy wrapper for 'duk' console binding because it is no longer
   the preferred console implementation method (GH-2055)
 
+* Update UnicodeData.txt and SpecialCasing.txt used for building internal
+  Unicode control data to Unicode version 12.1.0 (GH-2085)
+
+* Use bare objects/arrays in more places internally: variable map and
+  formals array of functions loaded from bytecode (to match behavior of
+  compiled functions), context dump array for duk_push_context_dump(),
+  and error tracedata (GH-2089)
+
+* Expose DUK_INTERNAL_SYMBOL() macro; while an application shouldn't
+  normally need to use this macro at all, it may be useful in some cases
+  to peek into Duktape internals (with no versioning guarantees) (GH-2118)
+
+* Accept non-plain buffer types in some examples/extras (cmdline, eventloop,
+  logging, print-alert) (GH-2107)
+
+* Fix eventloop example .write() method buffer handling which relied on
+  Duktape.Buffer, also fix a related TCP client example bug (GH-2107)
+
+* Minor changes to CBOR extra type handling: encode non-UTF-8 strings
+  as CBOR byte strings (instead of text strings), encode Symbols as empty
+  objects, refuse to decode Symbols, encode pointers as "(%p)" instead of
+  "%p" to match JX, decode integers in most cases to fastints when possible
+  (GH-2121, GH-2154)
+
+* Minor performance improvements to CBOR extra (GH-2121, GH-2154)
+
+* Add (untested) support for mixed endian targets to CBOR extra (GH-2121)
+
+* Remove support for unnecessary DUK_USE_USER_DECLARE config option, use
+  configure.py fixup line/file instead (GH-2123)
+
+* Remove ncurses dependency from the eventloop example, add a new example
+  for running a lot of timers, improve init error reporting (GH-2126,
+  GH-2128)
+
+* Add --no-auto-complete option to 'duk' to disable linenoise auto
+  completion (GH-2131)
+
+* Add support for keeping an array's internal array part in
+  Object.defineProperty(), previously the array part was always
+  abandoned if an array index was defined using Object.defineProperty()
+  (even if property attributes were correct) (GH-2146)
+
+* Rework some internal property handling call sites and helpers to e.g.
+  avoid inheriting internal properties when not intended (GH-2149)
+
+* Improve assertion coverage for internal structures during mark-and-sweep
+  (GH-2092)
+
+* Fix incorrect parsing of post-increment/post-decrement followed by
+  division (e.g. "z++ / 20"), the slash was interpreted as beginning
+  a regexp (GH-2140)
+
+* Fix incorrect handling of zero-length dynamic buffer in base-64 fast path
+  decoder (GH-2027, GH-2088)
+
 * Fix Object.getOwnPropertySymbols() behavior for the virtual properties
   of arrays, Strings, and buffer objects: string keys were incorrectly
   included in the result (GH-1978, GH-1979)
+
+* Fix Date .setTime(), setYear(), etc behavior for a frozen Date instance;
+  they should be allowed, but were rejected with a TypeError (GH-2149)
 
 * Fix compile error (missing DUK_DCERROR_UNSUPPORTED macro) when compiling
   with RegExp support disabled (GH-1990, GH-1991)
@@ -3422,17 +3489,114 @@ Planned
   '-DFOO(bar)=quux', which were used in some examples but were not
   actually functional (GH-2013, GH-2014)
 
+* Fix error handling corner case when a property-based call (foo.bar())
+  caused an error and Duktape.errCreate returned a callable value (such
+  as Float64Array); this caused an assertion failure (GH-2061, GH-2087)
+
+* Fix coercion of +'+' and +'-' to NaN instead of 0 (GH-2019, GH-2134)
+
+* Fix possible out-of-memory in call stack unwind by preallocating the
+  environment property table on creation (GH-476, GH-2021, GH-2106)
+
+* Fix possibility for unbounded native recursion without call stack limit
+  backstop when call handling triggers a Proxy trap (GH-2032, GH-2108)
+
 * Fix several assertion failures with possible memory unsafe behavior
-  (GH-2025, GH-2026, GH-2031, GH-2033, GH-2035, GH-2036, GH-2065)
+  (GH-2022, GH-2023, GH-2024, GH-2025, GH-2026, GH-2031, GH-2033, GH-2035,
+  GH-2036, GH-2065, GH-2115, GH-2138, GH-2146)
+
+* Fix incorrect assertion with no underlying bug for resolving bound
+  function chains with a Proxy object (rather than a plain function)
+  as the final non-bound function (GH-2049, GH-2103)
+
+* Fix incorrect assertion with no underlying bug for "thr == heap_thread"
+  during heap destruction finalizer runs; the assert is untrue when a
+  finalizer (executed during heap destruction) resumes a coroutine (GH-2030,
+  GH-2132, GH-2133)
+
+* Fix compile error for extras/eventloop due to missing a header file
+  (c_eventloop.h) in the dist package (GH-2090)
+
+* Fix CBOR decoding of text strings and byte strings with a lot of
+  concatenated pieces in the CBOR extra (GH-2093)
+
+* Fix CBOR decoding of (ignored) 64-bit tags in the CBOR extra (GH-2095)
+
+* Fix a CBOR encoding wrap check in the CBOR extra (GH-2121)
 
 * Trivial fixes and cleanups: Windows Date provider return code check
   consistency (GH-1956)
 
+* Fix MSVC ARM64 detection (GH-2078)
+
+* Use GCC (>= 5.0) and Clang builtin bswap macros, add internal DUK_BSWAP64()
+  macro (GH-2122)
+
+* Short term workaround for a noreturn-related issue with GCC 5+ (GH-2155)
+  where some internal duk_require_constructor_call() calls are entirely
+  missing in compiler output in certain circumstances (GCC 5+, noreturn
+  attributes enabled, debugger support enabled); the workaround is to
+  disable noreturn macros for GCC 5+ for now (GH-2156)
+
 * Various portability fixes (GH-1931, GH-1976)
 
-* Add duk_to_stacktrace() and duk_safe_to_stacktrace() to make it easier to get stacktraces in C
+2.5.0 (2019-11-24)
+------------------
+
+* Rename the 'global' binding to 'globalThis' to match updated
+  proposal-global; enable the binding by default; update
+  polyfills/global.js (GH-2160)
+
+* Add duk_pull() API call (GH-2184)
+
+* Add experimental duk_cbor_encode() and duk_cbor_decode() API calls (GH-2163)
+
+* Move CBOR extra into an actual Duktape built-in, enabled by default (GH-2163)
+
+* Include "end of input" in error message if SyntaxError occurs at end of
+  file (GH-2152, GH-2165)
+
+* Add missing DUK_DEFPROP_xxx convenience constants for the 'EC' combination
+  (like DUK_DEFPROP_EC, DUK_DEFPROP_HAVE_EC, etc) which were accidentally
+  missing from the API header (GH-2187)
+
+* Fix behavior of proxied Array objects for: Array.isArray(), duk_is_array(),
+  Object.prototype.toString(), JSON.stringify(), Array.prototype.concat()
+  (GH-2041, GH-2175, GH-2176)
+
+* Fix a harmless assert in Math.atan2() when compiling with gcc -m32 (GH-2164)
+
+* Fix (suppress) -Wfloat-equal warnings for GCC and Clang (GH-234, GH-2164)
+
+* Fix compile warning when base64 support disabled (GH-2159)
+
+* Fix some compile warnings (GH-2161, GH-2172)
+
+* Add RISC-V architecture detection in duk_config.h; previous versions
+  also compiled on RISC-V but identified as "generic" (GH-2174)
+
+* Avoid ast/endian.h header on Solaris (GH-2180)
+
+* Minor performance and footprint improvements (GH-2167, GH-2177)
+
+Planned
+=======
 
 3.0.0 (XXXX-XX-XX)
 ------------------
 
-* TBD
+* Remove prepared source variants other than src/ (matches Duktape 2.x
+  src-noline/) from the distributable (GH-2209)
+
+* Accept unlabelled function statements outside of top level for strict
+  functions (using hoist semantics), previously they were rejected with
+  a SyntaxError (GH-2213)
+
+* Accept unescaped U+2028 and U+2029 in string literals so that all
+  JSON.stringify() output parses with eval() (ES2019) (GH-2235)
+
+* Don't treat U+180E as whitespace e.g. for String trim() purposes,
+  (ES2016, requires Unicode 8.0.0 or higher) (GH-2236)
+
+* Use wasm for dukweb.js compilation (including duktape.org site),
+  fix async loading of emcc-compiled code in dukweb.html (GH-2244)

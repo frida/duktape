@@ -368,8 +368,8 @@ DUK_LOCAL const duk_uint8_t duk__token_lbp[] = {
 	DUK__MK_LBP(DUK__BP_MULTIPLICATIVE),                      /* DUK_TOK_DIV */
 	DUK__MK_LBP(DUK__BP_MULTIPLICATIVE),                      /* DUK_TOK_MOD */
 	DUK__MK_LBP(DUK__BP_EXPONENTIATION),                      /* DUK_TOK_EXP */
-	DUK__MK_LBP(DUK__BP_POSTFIX),                             /* DUK_TOK_INCREMENT */
-	DUK__MK_LBP(DUK__BP_POSTFIX),                             /* DUK_TOK_DECREMENT */
+	DUK__MK_LBP_FLAGS(DUK__BP_POSTFIX, DUK__TOKEN_LBP_FLAG_NO_REGEXP),  /* DUK_TOK_INCREMENT */
+	DUK__MK_LBP_FLAGS(DUK__BP_POSTFIX, DUK__TOKEN_LBP_FLAG_NO_REGEXP),  /* DUK_TOK_DECREMENT */
 	DUK__MK_LBP(DUK__BP_SHIFT),                               /* DUK_TOK_ALSHIFT */
 	DUK__MK_LBP(DUK__BP_SHIFT),                               /* DUK_TOK_ARSHIFT */
 	DUK__MK_LBP(DUK__BP_SHIFT),                               /* DUK_TOK_RSHIFT */
@@ -780,7 +780,7 @@ DUK_LOCAL void duk__convert_to_func_template(duk_compiler_ctx *comp_ctx) {
 	p_const = (duk_tval *) (void *) DUK_HBUFFER_FIXED_GET_DATA_PTR(thr->heap, h_data);
 	for (i = 0; i < consts_count; i++) {
 		DUK_ASSERT(i <= DUK_UARRIDX_MAX);  /* const limits */
-		tv = duk_hobject_find_existing_array_entry_tval_ptr(thr->heap, func->h_consts, (duk_uarridx_t) i);
+		tv = duk_hobject_find_array_entry_tval_ptr(thr->heap, func->h_consts, (duk_uarridx_t) i);
 		DUK_ASSERT(tv != NULL);
 		DUK_TVAL_SET_TVAL(p_const, tv);
 		p_const++;
@@ -794,7 +794,7 @@ DUK_LOCAL void duk__convert_to_func_template(duk_compiler_ctx *comp_ctx) {
 	for (i = 0; i < funcs_count; i++) {
 		duk_hobject *h;
 		DUK_ASSERT(i * 3 <= DUK_UARRIDX_MAX);  /* func limits */
-		tv = duk_hobject_find_existing_array_entry_tval_ptr(thr->heap, func->h_funcs, (duk_uarridx_t) (i * 3));
+		tv = duk_hobject_find_array_entry_tval_ptr(thr->heap, func->h_funcs, (duk_uarridx_t) (i * 3));
 		DUK_ASSERT(tv != NULL);
 		DUK_ASSERT(DUK_TVAL_IS_OBJECT(tv));
 		h = DUK_TVAL_GET_OBJECT(tv);
@@ -1036,7 +1036,7 @@ DUK_LOCAL void duk__convert_to_func_template(duk_compiler_ctx *comp_ctx) {
 
 		p = p_start;
 		while (p < p_end) {
-			DUK_DDD(DUK_DDDPRINT("BC %04ld: %!I        ; 0x%08lx op=%ld (%!C) a=%ld b=%ld c=%ld",
+			DUK_DDD(DUK_DDDPRINT("BC %04ld: %!I        ; 0x%08lx op=%ld (%!X) a=%ld b=%ld c=%ld",
 			                     (long) (p - p_start),
 			                     (duk_instr_t) (*p),
 			                     (unsigned long) (*p),
@@ -1586,7 +1586,7 @@ DUK_LOCAL void duk__emit_abc(duk_compiler_ctx *comp_ctx, duk_small_uint_t op, du
 		goto error_outofregs;
 	}
 	ins = DUK_ENC_OP_ABC(op, abc);
-	DUK_DDD(DUK_DDDPRINT("duk__emit_abc: 0x%08lx line=%ld pc=%ld op=%ld (%!C) abc=%ld (%!I)",
+	DUK_DDD(DUK_DDDPRINT("duk__emit_abc: 0x%08lx line=%ld pc=%ld op=%ld (%!X) abc=%ld (%!I)",
 	                     (unsigned long) ins, (long) comp_ctx->curr_token.start_line,
 	                     (long) duk__get_current_pc(comp_ctx), (long) op, (long) op,
 	                     (long) abc, (duk_instr_t) ins));
@@ -3712,12 +3712,12 @@ DUK_LOCAL void duk__expr_nud(duk_compiler_ctx *comp_ctx, duk_ivalue *res) {
 			if (DUK_TVAL_IS_NUMBER(tv_val)) {
 				duk_double_t d;
 				d = DUK_TVAL_GET_NUMBER(tv_val);
-				if (d == 0.0) {
+				if (duk_double_equals(d, 0.0)) {
 					/* Matches both +0 and -0 on purpose. */
 					DUK_DDD(DUK_DDDPRINT("inlined lnot: !0 -> true"));
 					DUK_TVAL_SET_BOOLEAN_TRUE(tv_val);
 					return;
-				} else if (d == 1.0) {
+				} else if (duk_double_equals(d, 1.0)) {
 					DUK_DDD(DUK_DDDPRINT("inlined lnot: !1 -> false"));
 					DUK_TVAL_SET_BOOLEAN_FALSE(tv_val);
 					return;
@@ -6385,10 +6385,13 @@ DUK_LOCAL void duk__parse_stmt(duk_compiler_ctx *comp_ctx, duk_ivalue *res, duk_
 		 */
 		test_func_decl = allow_source_elem;
 #if defined(DUK_USE_NONSTD_FUNC_STMT)
-		/* Lenient: allow function declarations outside top level in
-		 * non-strict mode but reject them in strict mode.
+		/* Lenient: allow function declarations outside top level in both
+		 * strict and non-strict modes.  However, don't allow labelled
+		 * function declarations in strict mode.
 		 */
-		test_func_decl = test_func_decl || !comp_ctx->curr_func.is_strict;
+		test_func_decl = test_func_decl ||
+		                 !comp_ctx->curr_func.is_strict ||
+		                 label_id < 0;
 #endif  /* DUK_USE_NONSTD_FUNC_STMT */
 		/* Strict: never allow function declarations outside top level. */
 		if (test_func_decl) {

@@ -119,6 +119,7 @@ DUK_INTERNAL duk_bool_t duk_js_toboolean(duk_tval *tv) {
 	}
 	}
 	DUK_UNREACHABLE();
+	DUK_WO_UNREACHABLE(return 0;);
 }
 
 /*
@@ -146,7 +147,8 @@ DUK_INTERNAL duk_bool_t duk_js_toboolean(duk_tval *tv) {
  *      ("0x123") and infinities
  *
  *    - Unlike source code literals, ToNumber() coerces empty strings
- *      and strings with only whitespace to zero (not NaN).
+ *      and strings with only whitespace to zero (not NaN).  However,
+ *      while '' coerces to 0, '+' and '-' coerce to NaN.
  */
 
 /* E5 Section 9.3.1 */
@@ -259,6 +261,7 @@ DUK_INTERNAL duk_double_t duk_js_tonumber(duk_hthread *thr, duk_tval *tv) {
 	}
 
 	DUK_UNREACHABLE();
+	DUK_WO_UNREACHABLE(return 0.0;);
 }
 
 /*
@@ -361,7 +364,7 @@ DUK_INTERNAL duk_int32_t duk_js_toint32(duk_hthread *thr, duk_tval *tv) {
 	d = duk__toint32_touint32_helper(d, 1);
 	DUK_ASSERT(DUK_FPCLASSIFY(d) == DUK_FP_ZERO || DUK_FPCLASSIFY(d) == DUK_FP_NORMAL);
 	DUK_ASSERT(d >= -2147483648.0 && d <= 2147483647.0);  /* [-0x80000000,0x7fffffff] */
-	DUK_ASSERT(d == ((duk_double_t) ((duk_int32_t) d)));  /* whole, won't clip */
+	DUK_ASSERT(duk_double_equals(d, (duk_double_t) ((duk_int32_t) d)));  /* whole, won't clip */
 	return (duk_int32_t) d;
 }
 
@@ -379,7 +382,7 @@ DUK_INTERNAL duk_uint32_t duk_js_touint32(duk_hthread *thr, duk_tval *tv) {
 	d = duk__toint32_touint32_helper(d, 0);
 	DUK_ASSERT(DUK_FPCLASSIFY(d) == DUK_FP_ZERO || DUK_FPCLASSIFY(d) == DUK_FP_NORMAL);
 	DUK_ASSERT(d >= 0.0 && d <= 4294967295.0);  /* [0x00000000, 0xffffffff] */
-	DUK_ASSERT(d == ((duk_double_t) ((duk_uint32_t) d)));  /* whole, won't clip */
+	DUK_ASSERT(duk_double_equals(d, (duk_double_t) ((duk_uint32_t) d)));  /* whole, won't clip */
 	return (duk_uint32_t) d;
 
 }
@@ -438,7 +441,7 @@ DUK_LOCAL duk_bool_t duk__js_equals_number(duk_double_t x, duk_double_t y) {
 	 * equal regardless of sign.  Could also use a macro, but this inlines
 	 * already nicely (no difference on gcc, for instance).
 	 */
-	if (x == y) {
+	if (duk_double_equals(x, y)) {
 		/* IEEE requires that NaNs compare false */
 		DUK_ASSERT(DUK_FPCLASSIFY(x) != DUK_FP_NAN);
 		DUK_ASSERT(DUK_FPCLASSIFY(y) != DUK_FP_NAN);
@@ -485,7 +488,7 @@ DUK_LOCAL duk_bool_t duk__js_samevalue_number(duk_double_t x, duk_double_t y) {
 	duk_small_int_t cx = (duk_small_int_t) DUK_FPCLASSIFY(x);
 	duk_small_int_t cy = (duk_small_int_t) DUK_FPCLASSIFY(y);
 
-	if (x == y) {
+	if (duk_double_equals(x, y)) {
 		/* IEEE requires that NaNs compare false */
 		DUK_ASSERT(DUK_FPCLASSIFY(x) != DUK_FP_NAN);
 		DUK_ASSERT(DUK_FPCLASSIFY(y) != DUK_FP_NAN);
@@ -610,7 +613,7 @@ DUK_INTERNAL duk_bool_t duk_js_equals_helper(duk_hthread *thr, duk_tval *tv_x, d
 			DUK_ASSERT(DUK_TVAL_IS_NUMBER(tv_x));
 			DUK_ASSERT(DUK_TVAL_IS_NUMBER(tv_y));
 			DUK_UNREACHABLE();
-			return 0;
+			DUK_WO_UNREACHABLE(return 0;);
 		}
 		}
 	}
@@ -1174,11 +1177,9 @@ DUK_LOCAL duk_bool_t duk__js_instanceof_helper(duk_hthread *thr, duk_tval *tv_x,
 		val = DUK_HOBJECT_GET_PROTOTYPE(thr->heap, val);
 	} while (--sanity > 0);
 
-	if (DUK_UNLIKELY(sanity == 0)) {
-		DUK_ERROR_RANGE(thr, DUK_STR_PROTOTYPE_CHAIN_LIMIT);
-		DUK_WO_NORETURN(return 0;);
-	}
-	DUK_UNREACHABLE();
+	DUK_ASSERT(sanity == 0);
+	DUK_ERROR_RANGE(thr, DUK_STR_PROTOTYPE_CHAIN_LIMIT);
+	DUK_WO_NORETURN(return 0;);
 
  pop2_and_false:
 	duk_pop_2_unsafe(thr);
@@ -1342,6 +1343,26 @@ DUK_INTERNAL duk_small_uint_t duk_js_typeof_stridx(duk_tval *tv_x) {
 
 	DUK_ASSERT_STRIDX_VALID(stridx);
 	return stridx;
+}
+
+/*
+ *  IsArray()
+ */
+
+DUK_INTERNAL duk_bool_t duk_js_isarray_hobject(duk_hobject *h) {
+	DUK_ASSERT(h != NULL);
+#if defined(DUK_USE_ES6_PROXY)
+	h = duk_hobject_resolve_proxy_target(h);
+#endif
+	return (DUK_HOBJECT_GET_CLASS_NUMBER(h) == DUK_HOBJECT_CLASS_ARRAY ? 1 : 0);
+}
+
+DUK_INTERNAL duk_bool_t duk_js_isarray(duk_tval *tv) {
+	DUK_ASSERT(tv != NULL);
+	if (DUK_TVAL_IS_OBJECT(tv)) {
+		return duk_js_isarray_hobject(DUK_TVAL_GET_OBJECT(tv));
+	}
+	return 0;
 }
 
 /*

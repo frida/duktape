@@ -14,13 +14,17 @@ objects, methods, and values.</p>
 </thead>
 <tbody>
 <tr>
-<td class="propname"><a href="#builtin-global">global</a></td>
+<td class="propname"><a href="#builtin-global">globalThis</a></td>
 <td>References the global object itself.
     See <a href="https://github.com/tc39/proposal-global">proposal-global</a>.</td>
 </tr>
 <tr>
 <td class="propname"><a href="#builtin-duktape">Duktape</a></td>
 <td>The Duktape built-in object.  Contains miscellaneous implementation specific stuff.</td>
+</tr>
+<tr>
+<td class="propname"><a href="#builtin-cbor">CBOR</a></td>
+<td>Experimental <a href="http://cbor.io/">CBOR</a> API based on <a href="https://github.com/paroga/cbor-js">cbor-js</a>.</td>
 </tr>
 <tr>
 <td class="propname"><a href="#builtin-textencoder">TextEncoder</a></td>
@@ -42,17 +46,12 @@ objects, methods, and values.</p>
 </tbody>
 </table>
 
-<h2 id="builtin-global">global</h2>
+<h2 id="builtin-global">globalThis</h2>
 
 <p>References the global object itself, see
 <a href="https://github.com/tc39/proposal-global">proposal-global</a>.
-Disabled by default, enable using <code>DUK_USE_GLOBAL_BINDING</code>.</p>
-
-<div class="note">
-This binding might be removed as there is some concern whether the
-binding has too many backward compatibility issues for browsers, see
-<a href="https://github.com/tc39/proposal-global/issues/20">global breaks flickr.com</a>.
-</div>
+(The binding was initially named 'global' but this was changed due to
+some web sites breaking.).</p>
 
 <h2 id="builtin-duktape">The Duktape object</h2>
 
@@ -78,7 +77,8 @@ binding has too many backward compatibility issues for browsers, see
         of a value in a version specific format.  The C API equivalent
         is <code>duk_inspect_value()</code>.</td></tr>
 <tr><td class="propname"><a href="#builtin-duktape-act">act</a></td>
-    <td>Get information about call stack entry.</td></tr>
+    <td>Get information about call stack entry.  The C API equivalent
+        is <code>duk_inspect_callstack_entry()</code>.</td></tr>
 <tr><td class="propname"><a href="#builtin-duktape-gc">gc</a></td>
     <td>Trigger mark-and-sweep garbage collection.</td></tr>
 <tr><td class="propname"><a href="#builtin-duktape-compact">compact</a></td>
@@ -102,12 +102,12 @@ will also be numerically higher.  For example:</p>
 <pre class="ecmascript-code">
 if (typeof Duktape !== 'object') {
     print('not Duktape');
-} else if (Duktape.version &gt;= 10203) {
-    print('Duktape 1.2.3 or higher');
-} else if (Duktape.version &gt;= 800) {
-    print('Duktape 0.8.0 or higher (but lower than 1.2.3)');
+} else if (Duktape.version &gt;= 20403) {
+    print('Duktape 2.4.3 or higher');
+} else if (Duktape.version &gt;= 10500) {
+    print('Duktape 1.5.0 or higher (but lower than 2.4.3)');
 } else {
-    print('Duktape lower than 0.8.0');
+    print('Duktape lower than 1.5.0');
 }
 </pre>
 
@@ -154,6 +154,10 @@ ll u n p2 a4 x64 linux gcc     // l|b|m integer endianness, l|b|m IEEE double en
                                // linux|windows|etc: operating system
                                // gcc|clang|msvc|etc: compiler
 </pre>
+
+<p>For endianness, "l" stands for little endian, "b" for big endian, and "m"
+for mixed endian (legacy ARM devices, see e.g.
+<a href="http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0056d/Bcfhgcgd.html">The FPA architecture</a>).</p>
 
 <h3 id="builtin-duktape-fin">fin()</h3>
 
@@ -313,7 +317,7 @@ a non-object argument, this call is a no-op.  The argument value is returned by
 the function, which allows code such as:</p>
 <pre class="ecmascript-code">
 var obj = {
-    foo: Duktape.compact({ bar:123 })
+    foo: Duktape.compact({ bar: 123 })
 }
 </pre>
 
@@ -419,6 +423,38 @@ cases:</p>
 <tr><td colspan="2">No properties at the moment.</td></tr>
 </tbody>
 </table>
+
+<h2 id="builtin-cbor">CBOR</h2>
+
+<p>CBOR (Concise Binary Object Representation) is a compact binary encoding
+for arbitrary structured values.  It is faster than JSON and can encode some
+ECMAScript values more accurately.  It is suitable as an alternative to JSON
+for state serialization, IPC, etc.  See:</p>
+<ul>
+<li><a href="http://cbor.io/">CBOR &#8212; Concise Binary Object Representation (cbor.io)</a></li>
+<li><a href="https://tools.ietf.org/html/rfc7049">Concise Binary Object Representation (CBOR) (RFC 7049)</a></li>
+</ul>
+
+<p>The <code>CBOR</code> object provides encode/decode functions to convert
+arbitrary ECMAScript values to CBOR and vice versa.  There's no official
+CBOR API yet, so the API is based, for now, on
+<a href="https://github.com/paroga/cbor-js">cbor-js</a>.
+There's also a <a href="api.html#taglist-cbor">C API for CBOR</a>.</p>
+
+<div class="note">
+The binding is currently experimental, and details are likely to change over
+time.  For example, custom CBOR tags are being registered to serialize ECMAScript
+values more accurately.
+</div>
+
+<p>Example:</p>
+
+<pre class="ecmascript-code">
+var enc = CBOR.encode([ 'foo', 'bar', { quux: true } ]);
+print(Duktape.enc('hex', enc));  // = 8363666f6f63626172a16471757578f5
+var dec = CBOR.decode(enc);
+print(Duktape.enc('jx', dec));   // = ["foo","bar",{quux:true}]
+</pre>
 
 <h2 id="builtin-textencoder">TextEncoder</h2>
 

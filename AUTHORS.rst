@@ -58,6 +58,15 @@ and agreed to irrevocably license their contributions under the Duktape
 * Ozhan Duz (https://github.com/webfolderio)
 * Akos Kiss (https://github.com/akosthekiss)
 * TheBrokenRail (https://github.com/TheBrokenRail)
+* Jesse Doyle (https://github.com/jessedoyle)
+* Gero Kuehn (https://github.com/dc6jgk)
+* James Swift (https://github.com/phraemer)
+* Luis de Bethencourt (https://github.com/luisbg)
+* Ian Whyman (https://github.com/v00d00)
+* Rick Sayre (https://github.com/whorfin)
+* Craig Leres (https://github.com/leres)
+* Maurici Abad (https://github.com/mauriciabad)
+* Nancy Li (https://github.com/NancyLi1013)
 
 Other contributions
 ===================
@@ -99,6 +108,7 @@ bugs, provided ideas, etc; roughly in order of appearance):
 * Wilhelm Wanecek (https://github.com/wanecek)
 * Andrew Janke (https://github.com/apjanke)
 * Unamer (https://github.com/unamer)
+* Karl Dahlke (eklhad@gmail.com)
 
 If you are accidentally missing from this list, send me an e-mail
 (``sami.vaarala@iki.fi``) and I'll fix the omission.

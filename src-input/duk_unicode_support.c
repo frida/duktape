@@ -397,6 +397,90 @@ DUK_INTERNAL duk_size_t duk_unicode_unvalidated_utf8_length(const duk_uint8_t *d
 }
 #endif  /* DUK_USE_PREFER_SIZE */
 
+/* Check whether a string is UTF-8 compatible or not. */
+DUK_INTERNAL duk_bool_t duk_unicode_is_utf8_compatible(const duk_uint8_t *buf, duk_size_t len) {
+	duk_size_t i = 0;
+#if !defined(DUK_USE_PREFER_SIZE)
+	duk_size_t len_safe;
+#endif
+
+	/* Many practical strings are ASCII only, so use a fast path check
+	 * to check chunks of bytes at once with minimal branch cost.
+	 */
+#if !defined(DUK_USE_PREFER_SIZE)
+	len_safe = len & ~0x03UL;
+	for (; i < len_safe; i += 4) {
+		duk_uint8_t t = buf[i] | buf[i + 1] | buf[i + 2] | buf[i + 3];
+		if (DUK_UNLIKELY((t & 0x80U) != 0U)) {
+			/* At least one byte was outside 0x00-0x7f, break
+			 * out to slow path (and remain there).
+			 *
+			 * XXX: We could also deal with the problem character
+			 * and resume fast path later.
+			 */
+			break;
+		}
+	}
+#endif
+
+	for (; i < len;) {
+		duk_uint8_t t;
+		duk_size_t left;
+		duk_size_t ncont;
+		duk_uint32_t cp;
+		duk_uint32_t mincp;
+
+		t = buf[i++];
+		if (DUK_LIKELY((t & 0x80U) == 0U)) {
+			/* Fast path, ASCII. */
+			continue;
+		}
+
+		/* Non-ASCII start byte, slow path.
+		 *
+		 * 10xx xxxx          -> continuation byte
+		 * 110x xxxx + 1*CONT -> [0x80, 0x7ff]
+		 * 1110 xxxx + 2*CONT -> [0x800, 0xffff], must reject [0xd800,0xdfff]
+		 * 1111 0xxx + 3*CONT -> [0x10000, 0x10ffff]
+		 */
+		left = len - i;
+		if (t <= 0xdfU) {  /* 1101 1111 = 0xdf */
+			if (t <= 0xbfU) {  /* 1011 1111 = 0xbf */
+				return 0;
+			}
+			ncont = 1;
+			mincp = 0x80UL;
+			cp = t & 0x1fU;
+		} else if (t <= 0xefU) {  /* 1110 1111 = 0xef */
+			ncont = 2;
+			mincp = 0x800UL;
+			cp = t & 0x0fU;
+		} else if (t <= 0xf7U) {  /* 1111 0111 = 0xf7 */
+			ncont = 3;
+			mincp = 0x10000UL;
+			cp = t & 0x07U;
+		} else {
+			return 0;
+		}
+		if (left < ncont) {
+			return 0;
+		}
+		while (ncont > 0U) {
+			t = buf[i++];
+			if ((t & 0xc0U) != 0x80U) {  /* 10xx xxxx */
+				return 0;
+			}
+			cp = (cp << 6) + (t & 0x3fU);
+			ncont--;
+		}
+		if (cp < mincp || cp > 0x10ffffUL || (cp >= 0xd800UL && cp <= 0xdfffUL)) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
 /*
  *  Unicode range matcher
  *
@@ -467,48 +551,43 @@ DUK_INTERNAL duk_small_int_t duk_unicode_is_whitespace(duk_codepoint_t cp) {
 	 *  E5 Section 7.2 specifies six characters specifically as
 	 *  white space:
 	 *
-	 *    0009;<control>;Cc;0;S;;;;;N;CHARACTER TABULATION;;;;
-	 *    000B;<control>;Cc;0;S;;;;;N;LINE TABULATION;;;;
-	 *    000C;<control>;Cc;0;WS;;;;;N;FORM FEED (FF);;;;
-	 *    0020;SPACE;Zs;0;WS;;;;;N;;;;;
-	 *    00A0;NO-BREAK SPACE;Zs;0;CS;<noBreak> 0020;;;;N;NON-BREAKING SPACE;;;;
-	 *    FEFF;ZERO WIDTH NO-BREAK SPACE;Cf;0;BN;;;;;N;BYTE ORDER MARK;;;;
+	 *    - 0009: <control>
+	 *    - 000B: <control>
+	 *    - 000C: <control>
+	 *    - 0020: SPACE
+	 *    - 00A0: NO-BREAK SPACE
+	 *    - FEFF: ZERO WIDTH NO-BREAK SPACE
 	 *
 	 *  It also specifies any Unicode category 'Zs' characters as white
-	 *  space.  These can be extracted with the "tools/extract_chars.py" script.
-	 *  Current result:
+	 *  space.  Current result (Unicode 12.1.0):
 	 *
-	 *    RAW OUTPUT:
-	 *    ===========
-	 *    0020;SPACE;Zs;0;WS;;;;;N;;;;;
-	 *    00A0;NO-BREAK SPACE;Zs;0;CS;<noBreak> 0020;;;;N;NON-BREAKING SPACE;;;;
-	 *    1680;OGHAM SPACE MARK;Zs;0;WS;;;;;N;;;;;
-	 *    180E;MONGOLIAN VOWEL SEPARATOR;Zs;0;WS;;;;;N;;;;;
-	 *    2000;EN QUAD;Zs;0;WS;2002;;;;N;;;;;
-	 *    2001;EM QUAD;Zs;0;WS;2003;;;;N;;;;;
-	 *    2002;EN SPACE;Zs;0;WS;<compat> 0020;;;;N;;;;;
-	 *    2003;EM SPACE;Zs;0;WS;<compat> 0020;;;;N;;;;;
-	 *    2004;THREE-PER-EM SPACE;Zs;0;WS;<compat> 0020;;;;N;;;;;
-	 *    2005;FOUR-PER-EM SPACE;Zs;0;WS;<compat> 0020;;;;N;;;;;
-	 *    2006;SIX-PER-EM SPACE;Zs;0;WS;<compat> 0020;;;;N;;;;;
-	 *    2007;FIGURE SPACE;Zs;0;WS;<noBreak> 0020;;;;N;;;;;
-	 *    2008;PUNCTUATION SPACE;Zs;0;WS;<compat> 0020;;;;N;;;;;
-	 *    2009;THIN SPACE;Zs;0;WS;<compat> 0020;;;;N;;;;;
-	 *    200A;HAIR SPACE;Zs;0;WS;<compat> 0020;;;;N;;;;;
-	 *    202F;NARROW NO-BREAK SPACE;Zs;0;CS;<noBreak> 0020;;;;N;;;;;
-	 *    205F;MEDIUM MATHEMATICAL SPACE;Zs;0;WS;<compat> 0020;;;;N;;;;;
-	 *    3000;IDEOGRAPHIC SPACE;Zs;0;WS;<wide> 0020;;;;N;;;;;
+	 *    CATEGORY: Zs
+	 *    - 0020: SPACE
+	 *    - 00A0: NO-BREAK SPACE
+	 *    - 1680: OGHAM SPACE MARK
+	 *    - 2000: EN QUAD
+	 *    - 2001: EM QUAD
+	 *    - 2002: EN SPACE
+	 *    - 2003: EM SPACE
+	 *    - 2004: THREE-PER-EM SPACE
+	 *    - 2005: FOUR-PER-EM SPACE
+	 *    - 2006: SIX-PER-EM SPACE
+	 *    - 2007: FIGURE SPACE
+	 *    - 2008: PUNCTUATION SPACE
+	 *    - 2009: THIN SPACE
+	 *    - 200A: HAIR SPACE
+	 *    - 202F: NARROW NO-BREAK SPACE
+	 *    - 205F: MEDIUM MATHEMATICAL SPACE
+	 *    - 3000: IDEOGRAPHIC SPACE
 	 *
 	 *    RANGES:
-	 *    =======
-	 *    0x0020
-	 *    0x00a0
-	 *    0x1680
-	 *    0x180e
-	 *    0x2000 ... 0x200a
-	 *    0x202f
-	 *    0x205f
-	 *    0x3000
+	 *    - 0020
+	 *    - 00A0
+	 *    - 1680
+	 *    - 2000-200A
+	 *    - 202F
+	 *    - 205F
+	 *    - 3000
 	 *
 	 *  A manual decoder (below) is probably most compact for this.
 	 */
@@ -530,8 +609,7 @@ DUK_INTERNAL duk_small_int_t duk_unicode_is_whitespace(duk_codepoint_t cp) {
 		if (lo <= 0x0aU || lo == 0x2fU || lo == 0x5fU) {
 			return 1;
 		}
-	} else if (cp == 0x1680L || cp == 0x180eL || cp == 0x3000L ||
-	           cp == 0xfeffL) {
+	} else if (cp == 0x1680L || cp == 0x3000L || cp == 0xfeffL) {
 		return 1;
 	}
 

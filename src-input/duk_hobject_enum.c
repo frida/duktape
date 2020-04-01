@@ -217,11 +217,11 @@ DUK_INTERNAL void duk_hobject_enumerator_create(duk_hthread *thr, duk_small_uint
 	 * real object to check against.
 	 */
 	duk_push_hobject(thr, enum_target);
-	duk_put_prop_stridx_short(thr, -2, DUK_STRIDX_INT_TARGET);
+	duk_put_prop_stridx_short(thr, -2, DUK_STRIDX_INT_TARGET);  /* Target is bare, plain put OK. */
 
 	/* Initialize index so that we skip internal control keys. */
 	duk_push_int(thr, DUK__ENUM_START_INDEX);
-	duk_put_prop_stridx_short(thr, -2, DUK_STRIDX_INT_NEXT);
+	duk_put_prop_stridx_short(thr, -2, DUK_STRIDX_INT_NEXT);  /* Target is bare, plain put OK. */
 
 	/*
 	 *  Proxy object handling
@@ -255,7 +255,7 @@ DUK_INTERNAL void duk_hobject_enumerator_create(duk_hthread *thr, duk_small_uint
 		enum_target = h_proxy_target;
 
 		duk_push_hobject(thr, enum_target);  /* -> [ ... enum_target res handler undefined target ] */
-		duk_put_prop_stridx_short(thr, -4, DUK_STRIDX_INT_TARGET);
+		duk_put_prop_stridx_short(thr, -4, DUK_STRIDX_INT_TARGET);  /* Target is bare, plain put OK. */
 
 		duk_pop_2(thr);  /* -> [ ... enum_target res ] */
 		goto skip_proxy;
@@ -483,30 +483,6 @@ DUK_INTERNAL void duk_hobject_enumerator_create(duk_hthread *thr, duk_small_uint
 			/* [enum_target res] */
 		}
 
-		if (curr == thr->builtins[DUK_BIDX_GLOBAL]) {
-			duk_global_access_functions *funcs = thr->heap->global_access_funcs;
-
-			if (funcs != NULL) {
-				if (funcs->enumerate_func(thr, funcs->udata) == 1) {
-					duk_size_t length, i;
-
-					length = duk_get_length(thr, -1);
-					for (i = 0; i < length; i++) {
-						duk_get_prop_index(thr, -1, (duk_uarridx_t) i);
-						duk_push_true(thr);
-
-						/* [ enum_target res keys key true ] */
-						duk_put_prop(thr, -4);
-
-						/* [ enum_target res keys ] */
-					}
-
-					duk_pop_unsafe(thr);
-					/* [ enum_target res ] */
-				}
-			}
-		}
-
 		/* Sort enumerated keys according to ES2015 requirements for
 		 * the "inheritance level" just processed.  This is far from
 		 * optimal, ES2015 semantics could be achieved more efficiently
@@ -606,7 +582,7 @@ DUK_INTERNAL duk_bool_t duk_hobject_enumerator_next(duk_hthread *thr, duk_bool_t
 	 * be the proxy, and checking key existence against the proxy is not
 	 * required (or sensible, as the keys may be fully virtual).
 	 */
-	duk_get_prop_stridx_short(thr, -1, DUK_STRIDX_INT_TARGET);
+	duk_xget_owndataprop_stridx_short(thr, -1, DUK_STRIDX_INT_TARGET);
 	enum_target = duk_require_hobject(thr, -1);
 	DUK_ASSERT(enum_target != NULL);
 #if defined(DUK_USE_ES6_PROXY)
@@ -703,6 +679,7 @@ DUK_INTERNAL duk_ret_t duk_hobject_get_enumerated_keys(duk_hthread *thr, duk_sma
 	/* XXX: uninit would be OK */
 	tv = duk_push_harray_with_size_outptr(thr, (duk_uint32_t) count);
 	DUK_ASSERT(count == 0 || tv != NULL);
+	DUK_ASSERT(!duk_is_bare_object(thr, -1));
 
 	/* Fill result array, no side effects. */
 

@@ -61,7 +61,7 @@ DUK_LOCAL duk_uint32_t duk__push_this_obj_len_u32(duk_hthread *thr) {
 
 	/* XXX: push more directly? */
 	(void) duk_push_this_coercible_to_object(thr);
-	DUK_ASSERT_HOBJECT_VALID(duk_get_hobject(thr, -1));
+	DUK_HOBJECT_ASSERT_VALID(duk_get_hobject(thr, -1));
 	duk_get_prop_stridx_short(thr, -1, DUK_STRIDX_LENGTH);
 	len = duk_to_uint32(thr, -1);
 
@@ -155,7 +155,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_constructor(duk_hthread *thr) {
 		/* XXX: expensive check (also shared elsewhere - so add a shared internal API call?) */
 		d = duk_get_number(thr, 0);
 		len = duk_to_uint32(thr, 0);
-		if (((duk_double_t) len) != d) {
+		if (!duk_double_equals((duk_double_t) len, d)) {
 			DUK_DCERROR_RANGE_INVALID_LENGTH(thr);
 		}
 
@@ -165,6 +165,7 @@ DUK_INTERNAL duk_ret_t duk_bi_array_constructor(duk_hthread *thr) {
 		len_prealloc = len < 64 ? len : 64;
 		a = duk_push_harray_with_size(thr, len_prealloc);
 		DUK_ASSERT(a != NULL);
+		DUK_ASSERT(!duk_is_bare_object(thr, -1));
 		a->length = len;
 		return 1;
 	}
@@ -178,10 +179,8 @@ DUK_INTERNAL duk_ret_t duk_bi_array_constructor(duk_hthread *thr) {
  */
 
 DUK_INTERNAL duk_ret_t duk_bi_array_constructor_is_array(duk_hthread *thr) {
-	duk_hobject *h;
-
-	h = duk_get_hobject_with_class(thr, 0, DUK_HOBJECT_CLASS_ARRAY);
-	duk_push_boolean(thr, (h != NULL));
+	DUK_ASSERT_TOP(thr, 1);
+	duk_push_boolean(thr, duk_js_isarray(DUK_GET_TVAL_POSIDX(thr, 0)));
 	return 1;
 }
 
@@ -274,13 +273,13 @@ DUK_INTERNAL duk_ret_t duk_bi_array_prototype_concat(duk_hthread *thr) {
 #if defined(DUK_USE_SYMBOL_BUILTIN)
 			duk_get_prop_stridx(thr, i, DUK_STRIDX_WELLKNOWN_SYMBOL_IS_CONCAT_SPREADABLE);
 			if (duk_is_undefined(thr, -1)) {
-				spreadable = (DUK_HOBJECT_GET_CLASS_NUMBER(h) == DUK_HOBJECT_CLASS_ARRAY);
+				spreadable = duk_js_isarray_hobject(h);
 			} else {
 				spreadable = duk_to_boolean(thr, -1);
 			}
 			duk_pop_nodecref_unsafe(thr);
 #else
-			spreadable = (DUK_HOBJECT_GET_CLASS_NUMBER(h) == DUK_HOBJECT_CLASS_ARRAY);
+			spreadable = duk_js_isarray_hobject(h);
 #endif
 		}
 

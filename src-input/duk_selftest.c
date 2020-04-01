@@ -174,7 +174,7 @@ DUK_LOCAL duk_uint_t duk__selftest_byte_order(void) {
 		DUK__FAILED("duk_uint32_t byte order");
 	}
 
-	if (u2.d != (double) 102030405060.0) {
+	if (!duk_double_equals(u2.d, 102030405060.0)) {
 		DUK__FAILED("double byte order");
 	}
 
@@ -187,10 +187,28 @@ DUK_LOCAL duk_uint_t duk__selftest_byte_order(void) {
 
 DUK_LOCAL duk_uint_t duk__selftest_bswap_macros(void) {
 	duk_uint_t error_count = 0;
+	volatile duk_uint32_t x32_input, x32_output;
 	duk_uint32_t x32;
+	volatile duk_uint16_t x16_input, x16_output;
 	duk_uint16_t x16;
 	duk_double_union du;
 	duk_double_t du_diff;
+#if defined(DUK_BSWAP64)
+	volatile duk_uint64_t x64_input, x64_output;
+	duk_uint64_t x64;
+#endif
+
+	/* Cover both compile time and runtime bswap operations, as these
+	 * may have different bugs.
+	 */
+
+	x16_input = 0xbeefUL;
+	x16 = x16_input;
+	x16 = DUK_BSWAP16(x16);
+	x16_output = x16;
+	if (x16_output != (duk_uint16_t) 0xefbeUL) {
+		DUK__FAILED("DUK_BSWAP16");
+	}
 
 	x16 = 0xbeefUL;
 	x16 = DUK_BSWAP16(x16);
@@ -198,11 +216,35 @@ DUK_LOCAL duk_uint_t duk__selftest_bswap_macros(void) {
 		DUK__FAILED("DUK_BSWAP16");
 	}
 
+	x32_input = 0xdeadbeefUL;
+	x32 = x32_input;
+	x32 = DUK_BSWAP32(x32);
+	x32_output = x32;
+	if (x32_output != (duk_uint32_t) 0xefbeaddeUL) {
+		DUK__FAILED("DUK_BSWAP32");
+	}
+
 	x32 = 0xdeadbeefUL;
 	x32 = DUK_BSWAP32(x32);
 	if (x32 != (duk_uint32_t) 0xefbeaddeUL) {
 		DUK__FAILED("DUK_BSWAP32");
 	}
+
+#if defined(DUK_BSWAP64)
+	x64_input = DUK_U64_CONSTANT(0x8899aabbccddeeff);
+	x64 = x64_input;
+	x64 = DUK_BSWAP64(x64);
+	x64_output = x64;
+	if (x64_output != (duk_uint64_t) DUK_U64_CONSTANT(0xffeeddccbbaa9988)) {
+		DUK__FAILED("DUK_BSWAP64");
+	}
+
+	x64 = DUK_U64_CONSTANT(0x8899aabbccddeeff);
+	x64 = DUK_BSWAP64(x64);
+	if (x64 != (duk_uint64_t) DUK_U64_CONSTANT(0xffeeddccbbaa9988)) {
+		DUK__FAILED("DUK_BSWAP64");
+	}
+#endif
 
 	/* >>> struct.unpack('>d', '4000112233445566'.decode('hex'))
 	 * (2.008366013071895,)
@@ -507,7 +549,7 @@ DUK_LOCAL duk_uint_t duk__selftest_cast_double_to_small_uint(void) {
 	u = (duk_small_uint_t) d1;
 	d2 = (duk_double_t) u;
 
-	if (!(d1 == 1.0 && u == 1 && d2 == 1.0 && d1 == d2)) {
+	if (!(duk_double_equals(d1, 1.0) && u == 1 && duk_double_equals(d2, 1.0) && duk_double_equals(d1, d2))) {
 		DUK__FAILED("double to duk_small_uint_t cast failed");
 	}
 
@@ -517,7 +559,7 @@ DUK_LOCAL duk_uint_t duk__selftest_cast_double_to_small_uint(void) {
 	uv = (duk_small_uint_t) d1v;
 	d2v = (duk_double_t) uv;
 
-	if (!(d1v == 1.0 && uv == 1 && d2v == 1.0 && d1v == d2v)) {
+	if (!(duk_double_equals(d1v, 1.0) && uv == 1 && duk_double_equals(d2v, 1.0) && duk_double_equals(d1v, d2v))) {
 		DUK__FAILED("double to duk_small_uint_t cast failed");
 	}
 

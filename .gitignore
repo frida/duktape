@@ -27,6 +27,10 @@
 /duk-low-norefc
 /duk-low-rom
 /libduktape.*
+/docker-input.zip
+/docker-output.zip
+/docker/*/gitconfig
+/docker/*/prepare_repo.sh
 /build/
 /prep/
 /dist/
@@ -39,9 +43,10 @@
 /UglifyJS2/
 /closure-compiler/
 /linenoise/
-/emscripten/
 /underscore/
 /lodash/
+/lz-string/
+/cbor-js/
 /test262-d067d2f0ca30/
 /test262-es5-tests/
 /es5-tests.zip
@@ -67,9 +72,12 @@
 /FlameGraph
 /dtrace4linux
 /flow
+/v20140814.tar.gz
+/citylots.json
 /massif-*.out
 /ms_print.*
 /dukweb.js
+/dukweb.wasm
 /debugger/jquery-ui-1.11.2.zip
 /debugger/jquery-ui-1.11.2/
 /debugger/node_modules/

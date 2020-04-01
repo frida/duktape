@@ -174,9 +174,9 @@ objects:
     bidx: true
 
     properties:
-      # 'global' binding giving easy to access to the global object.
+      # 'globalThis' binding giving easy to access to the global object.
       # Not yet standard, see https://github.com/tc39/proposal-global.
-      - key: "global"
+      - key: "globalThis"
         value:
           type: object
           id: bi_global
@@ -282,6 +282,13 @@ objects:
           type: object
           id: bi_json
         present_if: DUK_USE_JSON_BUILTIN
+
+      # CBOR
+      - key: "CBOR"
+        value:
+          type: object
+          id: bi_cbor
+        present_if: DUK_USE_CBOR_BUILTIN
 
       # Duktape specific
       - key: "Duktape"
@@ -2330,6 +2337,7 @@ objects:
           setter_magic: 0
         attributes: "c"
         duktape: true
+      # XXX: columnNumber
 
       - key: "toString"
         value:
@@ -5340,6 +5348,30 @@ objects:
           length: 4
           varargs: false
         nodejs_buffer: true
+
+  #
+  #  CBOR
+  #
+
+  - id: bi_cbor
+    class: Object
+    internal_prototype: bi_object_prototype
+    bidx: false
+    present_if: DUK_USE_CBOR_BUILTIN
+
+    properties:
+      - key: "encode"
+        value:
+          type: function
+          native: duk_bi_cbor_encode
+          length: 1
+        attributes: "wc"
+      - key: "decode"
+        value:
+          type: function
+          native: duk_bi_cbor_decode
+          length: 1
+        attributes: "wc"
 
   #
   #  Encoding API

@@ -24,20 +24,20 @@
  *  Dump/load helpers, xxx_raw() helpers do no buffer checks
  */
 
-DUK_LOCAL duk_uint8_t *duk__load_string_raw(duk_hthread *thr, duk_uint8_t *p) {
+DUK_LOCAL const duk_uint8_t *duk__load_string_raw(duk_hthread *thr, const duk_uint8_t *p) {
 	duk_uint32_t len;
 
-	len = DUK_RAW_READ_U32_BE(p);
+	len = DUK_RAW_READINC_U32_BE(p);
 	duk_push_lstring(thr, (const char *) p, len);
 	p += len;
 	return p;
 }
 
-DUK_LOCAL duk_uint8_t *duk__load_buffer_raw(duk_hthread *thr, duk_uint8_t *p) {
+DUK_LOCAL const duk_uint8_t *duk__load_buffer_raw(duk_hthread *thr, const duk_uint8_t *p) {
 	duk_uint32_t len;
 	duk_uint8_t *buf;
 
-	len = DUK_RAW_READ_U32_BE(p);
+	len = DUK_RAW_READINC_U32_BE(p);
 	buf = (duk_uint8_t *) duk_push_fixed_buffer_nozero(thr, (duk_size_t) len);
 	DUK_ASSERT(buf != NULL);
 	duk_memcpy((void *) buf, (const void *) p, (size_t) len);
@@ -54,7 +54,7 @@ DUK_LOCAL duk_uint8_t *duk__dump_hstring_raw(duk_uint8_t *p, duk_hstring *h) {
 	len = DUK_HSTRING_GET_BYTELEN(h);
 	DUK_ASSERT(len <= 0xffffffffUL);  /* string limits */
 	tmp32 = (duk_uint32_t) len;
-	DUK_RAW_WRITE_U32_BE(p, tmp32);
+	DUK_RAW_WRITEINC_U32_BE(p, tmp32);
 	duk_memcpy((void *) p,
 	           (const void *) DUK_HSTRING_GET_DATA(h),
 	           len);
@@ -73,7 +73,7 @@ DUK_LOCAL duk_uint8_t *duk__dump_hbuffer_raw(duk_hthread *thr, duk_uint8_t *p, d
 	len = DUK_HBUFFER_GET_SIZE(h);
 	DUK_ASSERT(len <= 0xffffffffUL);  /* buffer limits */
 	tmp32 = (duk_uint32_t) len;
-	DUK_RAW_WRITE_U32_BE(p, tmp32);
+	DUK_RAW_WRITEINC_U32_BE(p, tmp32);
 	/* When len == 0, buffer data pointer may be NULL. */
 	duk_memcpy_unsafe((void *) p,
 	                  (const void *) DUK_HBUFFER_GET_DATA_PTR(thr->heap, h),
@@ -86,7 +86,7 @@ DUK_LOCAL duk_uint8_t *duk__dump_string_prop(duk_hthread *thr, duk_uint8_t *p, d
 	duk_hstring *h_str;
 	duk_tval *tv;
 
-	tv = duk_hobject_find_existing_entry_tval_ptr(thr->heap, (duk_hobject *) func, DUK_HTHREAD_GET_STRING(thr, stridx));
+	tv = duk_hobject_find_entry_tval_ptr_stridx(thr->heap, (duk_hobject *) func, stridx);
 	if (tv != NULL && DUK_TVAL_IS_STRING(tv)) {
 		h_str = DUK_TVAL_GET_STRING(tv);
 		DUK_ASSERT(h_str != NULL);
@@ -103,7 +103,7 @@ DUK_LOCAL duk_uint8_t *duk__dump_string_prop(duk_hthread *thr, duk_uint8_t *p, d
 DUK_LOCAL duk_uint8_t *duk__dump_buffer_prop(duk_hthread *thr, duk_uint8_t *p, duk_bufwriter_ctx *bw_ctx, duk_hobject *func, duk_small_uint_t stridx) {
 	duk_tval *tv;
 
-	tv = duk_hobject_find_existing_entry_tval_ptr(thr->heap, (duk_hobject *) func, DUK_HTHREAD_GET_STRING(thr, stridx));
+	tv = duk_hobject_find_entry_tval_ptr_stridx(thr->heap, (duk_hobject *) func, stridx);
 	if (tv != NULL && DUK_TVAL_IS_BUFFER(tv)) {
 		duk_hbuffer *h_buf;
 		h_buf = DUK_TVAL_GET_BUFFER(tv);
@@ -113,7 +113,7 @@ DUK_LOCAL duk_uint8_t *duk__dump_buffer_prop(duk_hthread *thr, duk_uint8_t *p, d
 		p = duk__dump_hbuffer_raw(thr, p, h_buf);
 	} else {
 		p = DUK_BW_ENSURE_RAW(thr, bw_ctx, 4U, p);
-		DUK_RAW_WRITE_U32_BE(p, 0);
+		DUK_RAW_WRITEINC_U32_BE(p, 0);
 	}
 	return p;
 }
@@ -122,27 +122,23 @@ DUK_LOCAL duk_uint8_t *duk__dump_uint32_prop(duk_hthread *thr, duk_uint8_t *p, d
 	duk_tval *tv;
 	duk_uint32_t val;
 
-	tv = duk_hobject_find_existing_entry_tval_ptr(thr->heap, (duk_hobject *) func, DUK_HTHREAD_GET_STRING(thr, stridx));
+	tv = duk_hobject_find_entry_tval_ptr_stridx(thr->heap, (duk_hobject *) func, stridx);
 	if (tv != NULL && DUK_TVAL_IS_NUMBER(tv)) {
 		val = (duk_uint32_t) DUK_TVAL_GET_NUMBER(tv);
 	} else {
 		val = def_value;
 	}
 	p = DUK_BW_ENSURE_RAW(thr, bw_ctx, 4U, p);
-	DUK_RAW_WRITE_U32_BE(p, val);
+	DUK_RAW_WRITEINC_U32_BE(p, val);
 	return p;
 }
 
 DUK_LOCAL duk_uint8_t *duk__dump_varmap(duk_hthread *thr, duk_uint8_t *p, duk_bufwriter_ctx *bw_ctx, duk_hobject *func) {
-	duk_tval *tv;
+	duk_hobject *h;
 
-	tv = duk_hobject_find_existing_entry_tval_ptr(thr->heap, (duk_hobject *) func, DUK_HTHREAD_STRING_INT_VARMAP(thr));
-	if (tv != NULL && DUK_TVAL_IS_OBJECT(tv)) {
-		duk_hobject *h;
+	h = duk_hobject_get_varmap(thr, (duk_hobject *) func);
+	if (h != NULL) {
 		duk_uint_fast32_t i;
-
-		h = DUK_TVAL_GET_OBJECT(tv);
-		DUK_ASSERT(h != NULL);
 
 		/* We know _Varmap only has own properties so walk property
 		 * table directly.  We also know _Varmap is dense and all
@@ -171,20 +167,19 @@ DUK_LOCAL duk_uint8_t *duk__dump_varmap(duk_hthread *thr, duk_uint8_t *p, duk_bu
 			DUK_ASSERT(DUK_HSTRING_MAX_BYTELEN <= 0x7fffffffUL);  /* ensures no overflow */
 			p = DUK_BW_ENSURE_RAW(thr, bw_ctx, 4U + DUK_HSTRING_GET_BYTELEN(key) + 4U, p);
 			p = duk__dump_hstring_raw(p, key);
-			DUK_RAW_WRITE_U32_BE(p, val);
+			DUK_RAW_WRITEINC_U32_BE(p, val);
 		}
 	}
 	p = DUK_BW_ENSURE_RAW(thr, bw_ctx, 4U, p);
-	DUK_RAW_WRITE_U32_BE(p, 0);  /* end of _Varmap */
+	DUK_RAW_WRITEINC_U32_BE(p, 0);  /* end of _Varmap */
 	return p;
 }
 
 DUK_LOCAL duk_uint8_t *duk__dump_formals(duk_hthread *thr, duk_uint8_t *p, duk_bufwriter_ctx *bw_ctx, duk_hobject *func) {
-	duk_tval *tv;
+	duk_harray *h;
 
-	tv = duk_hobject_find_existing_entry_tval_ptr(thr->heap, (duk_hobject *) func, DUK_HTHREAD_STRING_INT_FORMALS(thr));
-	if (tv != NULL && DUK_TVAL_IS_OBJECT(tv)) {
-		duk_harray *h;
+	h = duk_hobject_get_formals(thr, (duk_hobject *) func);
+	if (h != NULL) {
 		duk_uint32_t i;
 
 		/* Here we rely on _Formals being a dense array containing
@@ -192,14 +187,10 @@ DUK_LOCAL duk_uint8_t *duk__dump_formals(duk_hthread *thr, duk_uint8_t *p, duk_b
 		 * tweaked by the application (which we don't support right
 		 * now).
 		 */
-		h = (duk_harray *) DUK_TVAL_GET_OBJECT(tv);
-		DUK_ASSERT(h != NULL);
-		DUK_ASSERT(DUK_HOBJECT_IS_ARRAY((duk_hobject *) h));
-		DUK_ASSERT(h->length <= DUK_HOBJECT_GET_ASIZE((duk_hobject *) h));
 
 		p = DUK_BW_ENSURE_RAW(thr, bw_ctx, 4U, p);
 		DUK_ASSERT(h->length != DUK__NO_FORMALS);  /* limits */
-		DUK_RAW_WRITE_U32_BE(p, h->length);
+		DUK_RAW_WRITEINC_U32_BE(p, h->length);
 
 		for (i = 0; i < h->length; i++) {
 			duk_tval *tv_val;
@@ -220,7 +211,7 @@ DUK_LOCAL duk_uint8_t *duk__dump_formals(duk_hthread *thr, duk_uint8_t *p, duk_b
 	} else {
 		DUK_DD(DUK_DDPRINT("dumping function without _Formals, emit marker to indicate missing _Formals"));
 		p = DUK_BW_ENSURE_RAW(thr, bw_ctx, 4U, p);
-		DUK_RAW_WRITE_U32_BE(p, DUK__NO_FORMALS);  /* marker: no formals */
+		DUK_RAW_WRITEINC_U32_BE(p, DUK__NO_FORMALS);  /* marker: no formals */
 	}
 	return p;
 }
@@ -260,27 +251,27 @@ static duk_uint8_t *duk__dump_func(duk_hthread *thr, duk_hcompfunc *func, duk_bu
 
 	/* Fixed header info. */
 	tmp32 = count_instr;
-	DUK_RAW_WRITE_U32_BE(p, tmp32);
+	DUK_RAW_WRITEINC_U32_BE(p, tmp32);
 	tmp32 = (duk_uint32_t) DUK_HCOMPFUNC_GET_CONSTS_COUNT(thr->heap, func);
-	DUK_RAW_WRITE_U32_BE(p, tmp32);
+	DUK_RAW_WRITEINC_U32_BE(p, tmp32);
 	tmp32 = (duk_uint32_t) DUK_HCOMPFUNC_GET_FUNCS_COUNT(thr->heap, func);
-	DUK_RAW_WRITE_U32_BE(p, tmp32);
+	DUK_RAW_WRITEINC_U32_BE(p, tmp32);
 	tmp16 = func->nregs;
-	DUK_RAW_WRITE_U16_BE(p, tmp16);
+	DUK_RAW_WRITEINC_U16_BE(p, tmp16);
 	tmp16 = func->nargs;
-	DUK_RAW_WRITE_U16_BE(p, tmp16);
+	DUK_RAW_WRITEINC_U16_BE(p, tmp16);
 #if defined(DUK_USE_DEBUGGER_SUPPORT)
 	tmp32 = func->start_line;
-	DUK_RAW_WRITE_U32_BE(p, tmp32);
+	DUK_RAW_WRITEINC_U32_BE(p, tmp32);
 	tmp32 = func->end_line;
-	DUK_RAW_WRITE_U32_BE(p, tmp32);
+	DUK_RAW_WRITEINC_U32_BE(p, tmp32);
 #else
-	DUK_RAW_WRITE_U32_BE(p, 0);
-	DUK_RAW_WRITE_U32_BE(p, 0);
+	DUK_RAW_WRITEINC_U32_BE(p, 0);
+	DUK_RAW_WRITEINC_U32_BE(p, 0);
 #endif
 	tmp32 = DUK_HEAPHDR_GET_FLAGS((duk_heaphdr *) func);  /* masks flags, only duk_hobject flags */
 	tmp32 &= ~(DUK_HOBJECT_FLAG_HAVE_FINALIZER);  /* finalizer flag is lost */
-	DUK_RAW_WRITE_U32_BE(p, tmp32);
+	DUK_RAW_WRITEINC_U32_BE(p, tmp32);
 
 	/* Bytecode instructions: endian conversion needed unless
 	 * platform is big endian.
@@ -294,7 +285,7 @@ static duk_uint8_t *duk__dump_func(duk_hthread *thr, duk_hcompfunc *func, duk_bu
 #else
 	while (ins != ins_end) {
 		tmp32 = (duk_uint32_t) (*ins);
-		DUK_RAW_WRITE_U32_BE(p, tmp32);
+		DUK_RAW_WRITEINC_U32_BE(p, tmp32);
 		ins++;
 	}
 #endif
@@ -319,7 +310,7 @@ static duk_uint8_t *duk__dump_func(duk_hthread *thr, duk_hcompfunc *func, duk_bu
 			p = DUK_BW_ENSURE_RAW(thr, bw_ctx, 1U + 8U, p);
 			*p++ = DUK__SER_NUMBER;
 			d = DUK_TVAL_GET_NUMBER(tv);
-			DUK_RAW_WRITE_DOUBLE_BE(p, d);
+			DUK_RAW_WRITEINC_DOUBLE_BE(p, d);
 		}
 		tv++;
 	}
@@ -380,7 +371,7 @@ static duk_uint8_t *duk__dump_func(duk_hthread *thr, duk_hcompfunc *func, duk_bu
 		DUK_ASSERT((duk_size_t) (p_end - p) >= (duk_size_t) (n)); \
 	} while (0)
 
-static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t *p_end) {
+static const duk_uint8_t *duk__load_func(duk_hthread *thr, const duk_uint8_t *p, const duk_uint8_t *p_end) {
 	duk_hcompfunc *h_fun;
 	duk_hbuffer *h_data;
 	duk_size_t data_size;
@@ -404,12 +395,12 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 
 	DUK_ASSERT(thr != NULL);
 
-	DUK_DD(DUK_DDPRINT("loading function, p=%p, p_end=%p", (void *) p, (void *) p_end));
+	DUK_DD(DUK_DDPRINT("loading function, p=%p, p_end=%p", (const void *) p, (const void *) p_end));
 
 	DUK__ASSERT_LEFT(3 * 4);
-	count_instr = DUK_RAW_READ_U32_BE(p);
-	count_const = DUK_RAW_READ_U32_BE(p);
-	count_funcs = DUK_RAW_READ_U32_BE(p);
+	count_instr = DUK_RAW_READINC_U32_BE(p);
+	count_const = DUK_RAW_READINC_U32_BE(p);
+	count_funcs = DUK_RAW_READINC_U32_BE(p);
 
 	data_size = sizeof(duk_tval) * count_const +
 	            sizeof(duk_hobject *) * count_funcs +
@@ -437,17 +428,17 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 	DUK_ASSERT(DUK_HCOMPFUNC_GET_BYTECODE(thr->heap, h_fun) == NULL);
 	DUK_ASSERT(DUK_HOBJECT_GET_PROTOTYPE(thr->heap, (duk_hobject *) h_fun) == thr->builtins[DUK_BIDX_FUNCTION_PROTOTYPE]);
 
-	h_fun->nregs = DUK_RAW_READ_U16_BE(p);
-	h_fun->nargs = DUK_RAW_READ_U16_BE(p);
+	h_fun->nregs = DUK_RAW_READINC_U16_BE(p);
+	h_fun->nargs = DUK_RAW_READINC_U16_BE(p);
 #if defined(DUK_USE_DEBUGGER_SUPPORT)
-	h_fun->start_line = DUK_RAW_READ_U32_BE(p);
-	h_fun->end_line = DUK_RAW_READ_U32_BE(p);
+	h_fun->start_line = DUK_RAW_READINC_U32_BE(p);
+	h_fun->end_line = DUK_RAW_READINC_U32_BE(p);
 #else
 	p += 8;  /* skip line info */
 #endif
 
 	/* duk_hcompfunc flags; quite version specific */
-	tmp32 = DUK_RAW_READ_U32_BE(p);
+	tmp32 = DUK_RAW_READINC_U32_BE(p);
 	DUK_HEAPHDR_SET_FLAGS((duk_heaphdr *) h_fun, tmp32);  /* masks flags to only change duk_hobject flags */
 
 	/* standard prototype (no need to set here, already set) */
@@ -462,6 +453,7 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 	DUK_ASSERT(DUK_HOBJECT_HAS_COMPFUNC(&h_fun->obj));
 	DUK_ASSERT(!DUK_HOBJECT_HAS_NATFUNC(&h_fun->obj));
 	DUK_ASSERT(!DUK_HOBJECT_IS_THREAD(&h_fun->obj));
+	DUK_ASSERT(!DUK_HOBJECT_IS_PROXY(&h_fun->obj));
 	DUK_ASSERT(!DUK_HOBJECT_HAS_EXOTIC_ARRAY(&h_fun->obj));
 	DUK_ASSERT(!DUK_HOBJECT_HAS_EXOTIC_STRINGOBJ(&h_fun->obj));
 	DUK_ASSERT(!DUK_HOBJECT_HAS_EXOTIC_ARGUMENTS(&h_fun->obj));
@@ -482,7 +474,7 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 #else
 	q = fun_data + sizeof(duk_tval) * count_const + sizeof(duk_hobject *) * count_funcs;
 	for (n = count_instr; n > 0; n--) {
-		*((duk_instr_t *) (void *) q) = DUK_RAW_READ_U32_BE(p);
+		*((duk_instr_t *) (void *) q) = DUK_RAW_READINC_U32_BE(p);
 		q += sizeof(duk_instr_t);
 	}
 #endif
@@ -490,7 +482,7 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 	/* Load constants onto value stack but don't yet copy to buffer. */
 	for (n = count_const; n > 0; n--) {
 		DUK__ASSERT_LEFT(1);
-		const_type = DUK_RAW_READ_U8(p);
+		const_type = DUK_RAW_READINC_U8(p);
 		switch (const_type) {
 		case DUK__SER_STRING: {
 			p = duk__load_string_raw(thr, p);
@@ -503,7 +495,7 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 			duk_tval tv_tmp;
 			duk_double_t val;
 			DUK__ASSERT_LEFT(8);
-			val = DUK_RAW_READ_DOUBLE_BE(p);
+			val = DUK_RAW_READINC_DOUBLE_BE(p);
 			DUK_TVAL_SET_NUMBER_CHKFAST_SLOW(&tv_tmp, val);
 			duk_push_tval(thr, &tv_tmp);
 			break;
@@ -570,7 +562,7 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 	duk_set_top(thr, idx_base + 1);
 
 	/* Setup function properties. */
-	tmp32 = DUK_RAW_READ_U32_BE(p);
+	tmp32 = DUK_RAW_READINC_U32_BE(p);
 	duk_push_u32(thr, tmp32);
 	duk_xdef_prop_stridx_short(thr, -2, DUK_STRIDX_LENGTH, DUK_PROPDESC_FLAGS_C);
 
@@ -593,7 +585,7 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 		DUK_ASSERT(new_env->thread == NULL);  /* Closed. */
 		DUK_ASSERT(new_env->varmap == NULL);
 		DUK_ASSERT(new_env->regbase_byteoff == 0);
-		DUK_ASSERT_HDECENV_VALID(new_env);
+		DUK_HDECENV_ASSERT_VALID(new_env);
 		DUK_ASSERT(DUK_HOBJECT_GET_PROTOTYPE(thr->heap, (duk_hobject *) new_env) == NULL);
 		DUK_HOBJECT_SET_PROTOTYPE(thr->heap, (duk_hobject *) new_env, func_env);
 		DUK_HOBJECT_INCREF(thr, func_env);
@@ -626,9 +618,11 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 
 	if (DUK_HOBJECT_HAS_CONSTRUCTABLE((duk_hobject *) h_fun)) {
 		/* Restore empty external .prototype only for constructable
-		 * functions.
+		 * functions.  The prototype object should inherit from
+		 * Object.prototype.
 		 */
 		duk_push_object(thr);
+		DUK_ASSERT(!duk_is_bare_object(thr, -1));
 		duk_dup_m2(thr);
 		duk_xdef_prop_stridx_short(thr, -2, DUK_STRIDX_CONSTRUCTOR, DUK_PROPDESC_FLAGS_WC);  /* func.prototype.constructor = func */
 		duk_compact_m1(thr);
@@ -640,7 +634,7 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 	duk_xdef_prop_stridx_short(thr, -2, DUK_STRIDX_INT_PC2LINE, DUK_PROPDESC_FLAGS_WC);
 #endif  /* DUK_USE_PC2LINE */
 
-	duk_push_object(thr);  /* _Varmap */
+	duk_push_bare_object(thr);  /* _Varmap */
 	for (;;) {
 		/* XXX: awkward */
 		p = duk__load_string_raw(thr, p);
@@ -648,7 +642,7 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 			duk_pop(thr);
 			break;
 		}
-		tmp32 = DUK_RAW_READ_U32_BE(p);
+		tmp32 = DUK_RAW_READINC_U32_BE(p);
 		duk_push_u32(thr, tmp32);
 		duk_put_prop(thr, -3);
 	}
@@ -658,9 +652,9 @@ static duk_uint8_t *duk__load_func(duk_hthread *thr, duk_uint8_t *p, duk_uint8_t
 	/* _Formals may have been missing in the original function, which is
 	 * handled using a marker length.
 	 */
-	arr_limit = DUK_RAW_READ_U32_BE(p);
+	arr_limit = DUK_RAW_READINC_U32_BE(p);
 	if (arr_limit != DUK__NO_FORMALS) {
-		duk_push_array(thr);  /* _Formals */
+		duk_push_bare_array(thr);  /* _Formals */
 		for (arr_idx = 0; arr_idx < arr_limit; arr_idx++) {
 			p = duk__load_string_raw(thr, p);
 			duk_put_prop_index(thr, -2, arr_idx);
@@ -712,7 +706,7 @@ DUK_EXTERNAL void duk_dump_function(duk_hthread *thr) {
 }
 
 DUK_EXTERNAL void duk_load_function(duk_hthread *thr) {
-	duk_uint8_t *p_buf, *p, *p_end;
+	const duk_uint8_t *p_buf, *p, *p_end;
 	duk_size_t sz;
 
 	DUK_ASSERT_API_ENTRY(thr);

@@ -68,20 +68,17 @@
  */
 #define DUK_MS_FLAG_EMERGENCY                (1U << 0)
 
-/* Voluntary mark-and-sweep: triggered periodically. */
-#define DUK_MS_FLAG_VOLUNTARY                (1U << 1)
-
 /* Postpone rescue decisions for reachable objects with FINALIZED set.
  * Used during finalize_list processing to avoid incorrect rescue
  * decisions due to finalize_list being a reachability root.
  */
-#define DUK_MS_FLAG_POSTPONE_RESCUE          (1U << 2)
+#define DUK_MS_FLAG_POSTPONE_RESCUE          (1U << 1)
 
 /* Don't compact objects; needed during object property table resize
  * to prevent a recursive resize.  It would suffice to protect only the
  * current object being resized, but this is not yet implemented.
  */
-#define DUK_MS_FLAG_NO_OBJECT_COMPACTION     (1U << 3)
+#define DUK_MS_FLAG_NO_OBJECT_COMPACTION     (1U << 2)
 
 /*
  *  Thread switching
@@ -338,6 +335,13 @@ struct duk_litcache_entry {
  *  Main heap structure
  */
 
+#if defined(DUK_USE_ASSERTIONS)
+DUK_INTERNAL_DECL void duk_heap_assert_valid(duk_heap *heap);
+#define DUK_HEAP_ASSERT_VALID(heap)  do { duk_heap_assert_valid((heap)); } while (0)
+#else
+#define DUK_HEAP_ASSERT_VALID(heap)  do {} while (0)
+#endif
+
 struct duk_heap {
 	duk_small_uint_t flags;
 
@@ -350,9 +354,6 @@ struct duk_heap {
 	 * level callbacks like fatal function, pointer compression, etc.
 	 */
 	void *heap_udata;
-
-	duk_global_access_functions *global_access_funcs;
-	duk_global_access_functions global_access_funcs_storage;
 
 	/* Fatal error handling, called e.g. when a longjmp() is needed but
 	 * lj.jmpbuf_ptr is NULL.  fatal_func must never return; it's not
@@ -412,6 +413,11 @@ struct duk_heap {
 
 	/* Mark-and-sweep running flag.  Prevents re-entry, and also causes
 	 * refzero events to be ignored (= objects won't be queued to refzero_list).
+	 *
+	 * 0: mark-and-sweep not running
+	 * 1: mark-and-sweep is running
+	 * 2: heap destruction active or debugger active, prevent mark-and-sweep
+	 *    and refzero processing (but mark-and-sweep not itself running)
 	 */
 	duk_uint_t ms_running;
 
@@ -630,6 +636,11 @@ struct duk_heap {
 	duk_int_t stats_putprop_proxy;
 	duk_int_t stats_getvar_all;
 	duk_int_t stats_putvar_all;
+	duk_int_t stats_envrec_delayedcreate;
+	duk_int_t stats_envrec_create;
+	duk_int_t stats_envrec_newenv;
+	duk_int_t stats_envrec_oldenv;
+	duk_int_t stats_envrec_pushclosure;
 #endif
 };
 

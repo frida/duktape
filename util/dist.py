@@ -320,6 +320,7 @@ def main():
         'duk_bi_array.c',
         'duk_bi_boolean.c',
         'duk_bi_buffer.c',
+        'duk_bi_cbor.c',
         'duk_bi_date.c',
         'duk_bi_date_unix.c',
         'duk_bi_date_windows.c',
@@ -357,10 +358,12 @@ def main():
         'duk_error_misc.c',
         'duk_error_throw.c',
         'duk_exception.h',
+        'duk_fltunion.h',
         'duk_forwdecl.h',
         'duk_harray.h',
         'duk_hboundfunc.h',
         'duk_hbuffer_alloc.c',
+        'duk_hbuffer_assert.c',
         'duk_hbuffer.h',
         'duk_hbuffer_ops.c',
         'duk_hbufobj.h',
@@ -370,6 +373,7 @@ def main():
         'duk_heap.h',
         'duk_heap_hashstring.c',
         'duk_heaphdr.h',
+        'duk_heaphdr_assert.c',
         'duk_heap_finalize.c',
         'duk_heap_markandsweep.c',
         'duk_heap_memory.c',
@@ -380,6 +384,7 @@ def main():
         'duk_henv.h',
         'duk_hnatfunc.h',
         'duk_hobject_alloc.c',
+        'duk_hobject_assert.c',
         'duk_hobject_class.c',
         'duk_hobject_enum.c',
         'duk_hobject.h',
@@ -388,6 +393,7 @@ def main():
         'duk_hobject_props.c',
         'duk_hproxy.h',
         'duk_hstring.h',
+        'duk_hstring_assert.c',
         'duk_hstring_misc.c',
         'duk_hthread_alloc.c',
         'duk_hthread_builtins.c',
@@ -434,6 +440,7 @@ def main():
         'duk_util_double.c',
         'duk_util_cast.c',
         'duk_util_memory.c',
+        'duk_util_memrw.c',
         'duk_util_misc.c',
         'strings.yaml',
         'SpecialCasing.txt',
@@ -454,7 +461,6 @@ def main():
         'config-options',
         'helper-snippets',
         'header-snippets',
-        'other-defines',
         'examples'
     ]:
         # Copy directories in their entirety
@@ -534,15 +540,15 @@ def main():
     copy_files([
         'README.rst',
         'c_eventloop.c',
+        'c_eventloop.h',
         'c_eventloop.js',
         'ecma_eventloop.js',
         'main.c',
         'poll.c',
-        'ncurses.c',
         'socket.c',
         'fileio.c',
-        'curses-timers.js',
         'basic-test.js',
+        'timer-test.js',
         'server-socket-test.js',
         'client-socket-test.js'
     ], os.path.join('examples', 'eventloop'), os.path.join(dist, 'examples', 'eventloop'))
@@ -789,8 +795,8 @@ def main():
     with open(os.path.join(dist, 'duk_dist_meta.json'), 'wb') as f:
         f.write(json.dumps(doc, indent=4))
 
-    # Build prepared sources (src/, src-noline/, src-separate/) with default
-    # config.  This is done using tools and metadata in the dist directory.
+    # Build prepared sources with default config.  This is done using
+    # tools and metadata in the dist directory.
 
     logger.debug('Create prepared sources for default configuration')
 
@@ -815,9 +821,12 @@ def main():
         cmd += forward_loglevel
         exec_print_stdout(cmd)
 
-    prep_default_sources('src', [ '--line-directives' ])
-    prep_default_sources('src-noline', [])
-    prep_default_sources('src-separate', [ '--separate-sources' ])
+    prep_default_sources('src', [])
+
+    # Duktape 2.x:
+    #prep_default_sources('src', [ '--line-directives' ])
+    #prep_default_sources('src-noline', [])
+    #prep_default_sources('src-separate', [ '--separate-sources' ])
 
     # Clean up remaining temp files.
 

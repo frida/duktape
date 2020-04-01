@@ -379,7 +379,7 @@ DUK_LOCAL duk_small_int_t duk__dec_string_escape(duk_json_dec_ctx *js_ctx, duk_u
 		return 1;  /* syntax error */
 	}
 
-	DUK_RAW_WRITE_XUTF8(*ext_p, cp);
+	DUK_RAW_WRITEINC_XUTF8(*ext_p, cp);
 
 	return 0;
 }
@@ -972,7 +972,7 @@ DUK_LOCAL void duk__dec_reviver_walk(duk_json_dec_ctx *js_ctx) {
 
 	h = duk_get_hobject(thr, -1);
 	if (h != NULL) {
-		if (DUK_HOBJECT_GET_CLASS_NUMBER(h) == DUK_HOBJECT_CLASS_ARRAY) {
+		if (duk_js_isarray_hobject(h)) {
 			arr_len = (duk_uarridx_t) duk_get_length(thr, -1);
 			for (i = 0; i < arr_len; i++) {
 				/* [ ... holder name val ] */
@@ -1323,7 +1323,7 @@ DUK_LOCAL void duk__enc_quote_string(duk_json_enc_ctx *js_ctx, duk_hstring *h_st
 					q = duk__emit_esc_auto_fast(js_ctx, cp, q);
 				} else {
 					/* as is */
-					DUK_RAW_WRITE_XUTF8(q, cp);
+					DUK_RAW_WRITEINC_XUTF8(q, cp);
 				}
 			}
 		}
@@ -1651,7 +1651,7 @@ DUK_LOCAL void duk__enc_pointer(duk_json_enc_ctx *js_ctx, void *ptr) {
 #if defined(DUK_USE_BUFFEROBJECT_SUPPORT)
 #if defined(DUK_USE_JX) || defined(DUK_USE_JC)
 DUK_LOCAL void duk__enc_bufobj(duk_json_enc_ctx *js_ctx, duk_hbufobj *h_bufobj) {
-	DUK_ASSERT_HBUFOBJ_VALID(h_bufobj);
+	DUK_HBUFOBJ_ASSERT_VALID(h_bufobj);
 
 	if (h_bufobj->buf == NULL || !DUK_HBUFOBJ_VALID_SLICE(h_bufobj)) {
 		DUK__EMIT_STRIDX(js_ctx, DUK_STRIDX_LC_NULL);
@@ -2056,7 +2056,7 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 			/* With JX/JC a bufferobject gets serialized specially. */
 			duk_hbufobj *h_bufobj;
 			h_bufobj = (duk_hbufobj *) h;
-			DUK_ASSERT_HBUFOBJ_VALID(h_bufobj);
+			DUK_HBUFOBJ_ASSERT_VALID(h_bufobj);
 			duk__enc_bufobj(js_ctx, h_bufobj);
 			goto pop2_emitted;
 		}
@@ -2087,7 +2087,7 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 #endif
 		case DUK_HOBJECT_CLASS_BOOLEAN: {
 			DUK_DDD(DUK_DDDPRINT("value is a Boolean/Buffer/Pointer object -> get internal value"));
-			duk_get_prop_stridx_short(thr, -1, DUK_STRIDX_INT_VALUE);
+			duk_xget_owndataprop_stridx_short(thr, -1, DUK_STRIDX_INT_VALUE);
 			duk_remove_m2(thr);
 			break;
 		}
@@ -2175,7 +2175,7 @@ DUK_LOCAL duk_bool_t duk__enc_value(duk_json_enc_ctx *js_ctx, duk_idx_t idx_hold
 		 */
 		DUK_ASSERT(!DUK_HOBJECT_IS_CALLABLE(h));
 
-		if (DUK_HOBJECT_GET_CLASS_NUMBER(h) == DUK_HOBJECT_CLASS_ARRAY) {
+		if (duk_js_isarray_hobject(h)) {
 			duk__enc_array(js_ctx);
 		} else {
 			duk__enc_object(js_ctx);
@@ -2364,7 +2364,7 @@ DUK_LOCAL duk_bool_t duk__json_stringify_fast_value(duk_json_enc_ctx *js_ctx, du
 
 		obj = DUK_TVAL_GET_OBJECT(tv);
 		DUK_ASSERT(obj != NULL);
-		DUK_ASSERT_HOBJECT_VALID(obj);
+		DUK_HOBJECT_ASSERT_VALID(obj);
 
 		/* Once recursion depth is increased, exit path must decrease
 		 * it (though it's OK to abort the fast path).
@@ -3011,7 +3011,7 @@ void duk_bi_json_stringify_helper(duk_hthread *thr,
 	if (h != NULL) {
 		if (DUK_HOBJECT_IS_CALLABLE(h)) {
 			js_ctx->h_replacer = h;
-		} else if (DUK_HOBJECT_GET_CLASS_NUMBER(h) == DUK_HOBJECT_CLASS_ARRAY) {
+		} else if (duk_js_isarray_hobject(h)) {
 			/* Here the specification requires correct array index enumeration
 			 * which is a bit tricky for sparse arrays (it is handled by the
 			 * enum setup code).  We now enumerate ancestors too, although the
